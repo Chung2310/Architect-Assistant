@@ -53,19 +53,26 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT || '22' }}
           script: |
-            TARGET_DIR="/opt/igen-erp/staging"
+            TARGET_DIR="/opt/Architect-Assistant/staging"
             IMAGE_TAG="develop"
-            CONTAINER_NAME="igen-erp-staging"
+            CONTAINER_NAME="Architect-Assistant-staging"
+            ENV_FILE="/root/Architect-Assistant/.env"
 
             # Tạo thư mục đích nếu chưa tồn tại và chuyển vào
             mkdir -p "$TARGET_DIR"
             cd "$TARGET_DIR"
 
             # Tạo file .env trống nếu chưa có để tránh lỗi docker compose
-            if [ ! -f /root/Igen-ERP/.env ]; then
-              mkdir -p /root/Igen-ERP
-              touch /root/Igen-ERP/.env
+            if [ ! -f "$ENV_FILE" ]; then
+              mkdir -p "$(dirname "$ENV_FILE")"
+              touch "$ENV_FILE"
             fi
+
+            # Đọc PORT từ .env, mặc định là 3000 nếu không tìm thấy
+            APP_PORT=$(grep -E '^PORT=' "$ENV_FILE" | head -1 | cut -d= -f2 | tr -d '"' | tr -d "'" | xargs)
+            APP_PORT="${APP_PORT:-3000}"
+
+            echo ">> Deploying with PORT=$APP_PORT"
 
             # Ghi đè file docker-compose.yml bằng echo để đảm bảo định dạng YAML trong cd.yml không bị lỗi
             echo "version: '3.8'" > docker-compose.yml
@@ -76,11 +83,11 @@ jobs:
             echo "    container_name: ${CONTAINER_NAME}" >> docker-compose.yml
             echo "    restart: always" >> docker-compose.yml
             echo "    ports:" >> docker-compose.yml
-            echo "      - \"3000:3000\"" >> docker-compose.yml
+            echo "      - \"${APP_PORT}:${APP_PORT}\"" >> docker-compose.yml
             echo "    env_file:" >> docker-compose.yml
-            echo "      - /root/Architect-Assistant/.env" >> docker-compose.yml
+            echo "      - $ENV_FILE" >> docker-compose.yml
             echo "    volumes:" >> docker-compose.yml
-            echo "      - /root/Architect-Assistant/.env:/app/.env" >> docker-compose.yml
+            echo "      - $ENV_FILE:/app/.env" >> docker-compose.yml
             echo "    networks:" >> docker-compose.yml
             echo "      - default_network" >> docker-compose.yml
             echo "" >> docker-compose.yml
