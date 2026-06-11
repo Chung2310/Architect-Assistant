@@ -1,43 +1,20 @@
 version: '3.8'
 
 services:
-  mongodb:
-    image: mongo:7.0
-    container_name: igen-architect-mongo
-    restart: always
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USER:-admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD:-Admin123456}
-      MONGO_INITDB_DATABASE: igen-architect
-    volumes:
-      - mongo_data:/data/db
-    networks:
-      - default_network
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  igen-architect:
-    build: .
-    container_name: igen-architect-app
+  architect-assistant:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: architect-assistant
     restart: always
     ports:
-      - "3000:3000"
-    env_file: .env
-    environment:
-      - PORT=3000
-      - MONGODB_URI=mongodb://${MONGODB_USER:-admin}:${MONGODB_PASSWORD:-Admin123456}@mongodb:27017/igen-architect?authSource=admin
-    depends_on:
-      mongodb:
-        condition: service_healthy
+      - "3002:3002"
+    env_file:
+      - .env
+    volumes:
+      - .env:/app/.env
     networks:
       - default_network
-
-volumes:
-  mongo_data:
-
 networks:
   default_network:
     external: true
