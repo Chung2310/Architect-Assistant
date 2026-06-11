@@ -37,7 +37,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 # PORT is injected at runtime via env_file in docker-compose.
 # server.ts fallback is 3000.
-EXPOSE 3000
+EXPOSE 3002
 
 # Copy pre-built frontend assets from builder
 COPY --from=builder /app/dist ./dist
