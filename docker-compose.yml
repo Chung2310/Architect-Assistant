@@ -2,10 +2,8 @@ version: '3.8'
 
 services:
   architect-assistant:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: architect-assistant
+    image: ghcr.io/chung2310/architect-assistant:${IMAGE_TAG:-latest}
+    container_name: ${CONTAINER_NAME:-architect-assistant}
     restart: always
     ports:
       - "3002:3002"
@@ -15,6 +13,7 @@ services:
       - .env:/app/.env
     networks:
       - default_network
+
 networks:
   default_network:
     external: true
