@@ -1,0 +1,96 @@
+name: CD (Continuous Deployment)
+
+on:
+  push:
+    branches: [ develop, main ]
+
+jobs:
+
+  deploy-docker-vps:
+    name: Build Docker & Deploy VPS
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=sha
+          
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy via SSH to VPS
+        if: github.ref_name == 'develop'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          script: |
+            TARGET_DIR="/opt/igen-erp/staging"
+            IMAGE_TAG="develop"
+            CONTAINER_NAME="igen-erp-staging"
+
+            # Tạo thư mục đích nếu chưa tồn tại và chuyển vào
+            mkdir -p "$TARGET_DIR"
+            cd "$TARGET_DIR"
+
+            # Tạo file .env trống nếu chưa có để tránh lỗi docker compose
+            if [ ! -f /root/Igen-ERP/.env ]; then
+              mkdir -p /root/Igen-ERP
+              touch /root/Igen-ERP/.env
+            fi
+
+            # Ghi đè file docker-compose.yml bằng echo để đảm bảo định dạng YAML trong cd.yml không bị lỗi
+            echo "version: '3.8'" > docker-compose.yml
+            echo "" >> docker-compose.yml
+            echo "services:" >> docker-compose.yml
+            echo "  Architect-Assistant:" >> docker-compose.yml
+            echo "    image: ghcr.io/chung2310/Architect-Assistant:${IMAGE_TAG}" >> docker-compose.yml
+            echo "    container_name: ${CONTAINER_NAME}" >> docker-compose.yml
+            echo "    restart: always" >> docker-compose.yml
+            echo "    ports:" >> docker-compose.yml
+            echo "      - \"3000:3000\"" >> docker-compose.yml
+            echo "    env_file:" >> docker-compose.yml
+            echo "      - /root/Architect-Assistant/.env" >> docker-compose.yml
+            echo "    volumes:" >> docker-compose.yml
+            echo "      - /root/Architect-Assistant/.env:/app/.env" >> docker-compose.yml
+            echo "    networks:" >> docker-compose.yml
+            echo "      - default_network" >> docker-compose.yml
+            echo "" >> docker-compose.yml
+            echo "networks:" >> docker-compose.yml
+            echo "  default_network:" >> docker-compose.yml
+            echo "    external: true" >> docker-compose.yml
+
+            # Đăng nhập vào GHCR trên VPS
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull image mới và khởi động lại container tương ứng
+            docker compose pull
+            docker compose up -d --remove-orphans

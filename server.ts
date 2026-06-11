@@ -28,8 +28,28 @@ async function startServer() {
   // Common middlewares
   app.use(cookieParser());
   
+  // CORS middleware utilizing allowedOrigins from environment
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    const allowedOrigins = (process.env.LINK_COR || "").split(",").map(o => o.trim());
+    if (origin && allowedOrigins.includes(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+    }
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization,X-User-Api-Key,x-user-api-key");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    if (req.method === "OPTIONS") {
+      res.sendStatus(204);
+      return;
+    }
+    next();
+  });
+
+  // Body parser before routing
+  app.use(express.json({ limit: '50mb' }));
+  
   // Swagger Documentation
-  app.use("/api-docs", swaggerUi.serve as any, swaggerUi.setup(swaggerDocument) as any);
+  app.use("/api-docs", swaggerUi.serve as unknown as express.RequestHandler, swaggerUi.setup(swaggerDocument) as unknown as express.RequestHandler);
 
   // Versioned API routes
   app.use("/api/v1", apiRouter);
@@ -70,16 +90,13 @@ async function startServer() {
       },
       error: (err, req, res) => {
         console.error("Gemini Proxy Error:", err);
-        // @ts-ignore
-        if (res && !res.headersSent) {
-          // @ts-ignore
-          res.status(500).json({ error: "Proxy error", details: err.message });
+        const expressRes = res as express.Response;
+        if (expressRes && !expressRes.headersSent) {
+          expressRes.status(500).json({ error: "Proxy error", details: err.message });
         }
       }
     }
   }));
-
-  app.use(express.json({ limit: '50mb' }));
 
   // Proxy route to bypass CORS for images
   app.get("/api/proxy-image", async (req, res) => {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from './Icon';
-import { apiClient } from '../services/apiClient';
+import { apiClient, ApiResponse } from '../services/apiClient';
 
 interface Transaction {
   _id: string;
@@ -21,7 +21,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({ onClose }) => {
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        const res = await apiClient.get("/api/v1/users/me/transactions?limit=100");
+        const res = await apiClient.get<ApiResponse<Transaction[]>>("/api/v1/users/me/transactions?limit=100");
         if (res.success && Array.isArray(res.data)) {
           setTransactions(res.data);
         }

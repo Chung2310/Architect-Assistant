@@ -1,7 +1,20 @@
 import React, { useState } from 'react';
 import { Icon } from './Icon';
-import { GoogleGenAI } from "@google/genai";
 import { getAIClient, generateContentWithRetry, scaleToResolution } from '../lib/renderUtils';
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+interface Shape {
+  id: number;
+  points: Point[];
+  category?: string;
+  type?: 'polygon' | 'rect';
+}
+
+
 
 export const VirtualStaging: React.FC = () => {
   const [type, setType] = useState('virtual');
@@ -24,8 +37,8 @@ export const VirtualStaging: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState('SOFA');
   const [drawMode, setDrawMode] = useState<'select' | 'polygon' | 'rect'>('select');
   const [viewMode, setViewMode] = useState<'edit' | 'result'>('edit');
-  const [shapes, setShapes] = useState<any[]>([]);
-  const [currentPoints, setCurrentPoints] = useState<any[]>([]);
+  const [shapes, setShapes] = useState<Shape[]>([]);
+  const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [editingShapeId, setEditingShapeId] = useState<number | null>(null);
@@ -36,19 +49,19 @@ export const VirtualStaging: React.FC = () => {
     pointIndex: number | 'all';
     startX: number;
     startY: number;
-    originalPoints: any[];
+    originalPoints: Point[];
   } | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const resultContainerRef = React.useRef<HTMLDivElement>(null);
 
-  const handleWheel = (e: WheelEvent) => {
+  const handleWheel = React.useCallback((e: WheelEvent) => {
     if (viewMode !== 'result') return;
     e.preventDefault();
     const delta = -e.deltaY * 0.002;
     setZoomScale(prev => Math.min(Math.max(1, prev + delta), 5));
-  };
+  }, [viewMode]);
 
   React.useEffect(() => {
     const el = resultContainerRef.current;
@@ -56,12 +69,14 @@ export const VirtualStaging: React.FC = () => {
       el.addEventListener('wheel', handleWheel, { passive: false });
       return () => el.removeEventListener('wheel', handleWheel);
     }
-  }, [viewMode]);
+  }, [viewMode, handleWheel]);
 
   // Reset zoom when switching modes or images
   React.useEffect(() => {
-    setZoomScale(1);
-    setPanPos({ x: 0, y: 0 });
+    setTimeout(() => {
+      setZoomScale(1);
+      setPanPos({ x: 0, y: 0 });
+    }, 0);
   }, [viewMode, uploadedImage]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -152,7 +167,7 @@ export const VirtualStaging: React.FC = () => {
         if (s.id !== shapeId) return s;
         const newPoints = JSON.parse(JSON.stringify(originalPoints));
         if (pointIndex === 'all') {
-          return { ...s, points: newPoints.map((p: any) => ({ x: p.x + dx, y: p.y + dy })) };
+          return { ...s, points: newPoints.map((p: Point) => ({ x: p.x + dx, y: p.y + dy })) };
         } else {
           newPoints[pointIndex] = { x: newPoints[pointIndex].x + dx, y: newPoints[pointIndex].y + dy };
           return { ...s, points: newPoints };
@@ -315,7 +330,7 @@ export const VirtualStaging: React.FC = () => {
           ? `You are an expert interior designer performing PRECISION SELECTIVE EDITING. Modify ONLY the items indicated in the markers. You MUST PRESERVE all surrounding furniture (like beds, sofas, tables), plants, decorations, and lighting exactly as they appear in original to maintain continuity. Non-annotated regions MUST remain identical to source.`
           : `You are an expert interior designer performing room RENOVATION. Modify the space based on user notes while PRESERVING the existing layout and all furniture or objects not specifically mentioned in notes. Do NOT remove essential furniture (like beds) unless explicitly requested. Maintain strict consistency with architectural and design details of the source.`;
 
-      const parts: any[] = [
+      const parts: Record<string, unknown>[] = [
         { inlineData: { data: (originalImage || uploadedImage || '').split(',')[1], mimeType: 'image/jpeg' } },
         { text: `${basePrompt}${shapesDescription}\nUser notes: ${requestNotes}\nExtra instructions: ${prompt}` }
       ];
@@ -328,7 +343,7 @@ export const VirtualStaging: React.FC = () => {
 
       // Generate sequentially to avoid rate limits
       for (let i = 0; i < numImages; i++) {
-        const response: any = await generateContentWithRetry(ai, {
+        const response = await generateContentWithRetry(ai, {
           model: selectedModel,
           contents: { parts },
           config: {
@@ -925,10 +940,10 @@ export const VirtualStaging: React.FC = () => {
                         {shapes.map(shape => {
                           const centerX = shape.type === 'rect' 
                             ? (shape.points[0].x + shape.points[1].x) / 2 
-                            : shape.points.reduce((acc: number, p: any) => acc + p.x, 0) / shape.points.length;
+                            : shape.points.reduce((acc: number, p: Point) => acc + p.x, 0) / shape.points.length;
                           const centerY = shape.type === 'rect' 
                             ? (shape.points[0].y + shape.points[1].y) / 2 
-                            : shape.points.reduce((acc: number, p: any) => acc + p.y, 0) / shape.points.length;
+                            : shape.points.reduce((acc: number, p: Point) => acc + p.y, 0) / shape.points.length;
                           
                           return (
                             <g key={shape.id} className="pointer-events-auto">
@@ -942,14 +957,14 @@ export const VirtualStaging: React.FC = () => {
                                 />
                               ) : (
                                 <polygon 
-                                  points={shape.points.map((p: any) => `${p.x},${p.y}`).join(' ')}
+                                  points={shape.points.map((p: Point) => `${p.x},${p.y}`).join(' ')}
                                   className={editingShapeId === shape.id ? "fill-[#00BCD4]/25 stroke-[#00BCD4] stroke-[0.5]" : "fill-[#00BCD4]/15 stroke-[#00BCD4] stroke-[0.3]"}
                                   vectorEffect="non-scaling-stroke"
                                 />
                               )}
 
                               {/* Control handles in select mode */}
-                              {drawMode === 'select' && shape.points.map((p: any, idx: number) => (
+                              {drawMode === 'select' && shape.points.map((p: Point, idx: number) => (
                                 <circle 
                                   key={idx}
                                   cx={p.x}
@@ -1043,7 +1058,7 @@ export const VirtualStaging: React.FC = () => {
                                   className="stroke-[#00BCD4] stroke-[0.3] stroke-dasharray-1"
                                 />
                                 <polyline 
-                                  points={currentPoints.map((p: any) => `${p.x},${p.y}`).join(' ')}
+                                  points={currentPoints.map((p: Point) => `${p.x},${p.y}`).join(' ')}
                                   className="fill-none stroke-[#00BCD4] stroke-[0.5]"
                                   vectorEffect="non-scaling-stroke"
                                 />

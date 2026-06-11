@@ -31,9 +31,10 @@ export const cloudinaryService = {
         resource_type: "auto",
       });
       return response.secure_url;
-    } catch (error: any) {
+    } catch (error) {
       console.error("[cloudinaryService] Lỗi upload:", error);
-      throw new Error(`Tải lên Cloudinary thất bại: ${error.message || error}`);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Tải lên Cloudinary thất bại: ${errMsg}`, { cause: error });
     }
   },
 
@@ -44,7 +45,7 @@ export const cloudinaryService = {
     ensureConfigured();
     try {
       await cloudinary.uploader.destroy(publicId);
-    } catch (error: any) {
+    } catch (error) {
       console.error("[cloudinaryService] Lỗi xóa media:", error);
     }
   },

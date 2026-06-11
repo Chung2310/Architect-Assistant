@@ -1,5 +1,5 @@
 import * as pdfjsLib from 'pdfjs-dist';
-// @ts-ignore
+// @ts-expect-error: pdfjs worker build import format
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 // Set the worker source
@@ -28,7 +28,7 @@ export const convertPdfToImage = async (file: File): Promise<File[]> => {
       canvas.height = viewport.height;
       canvas.width = viewport.width;
       
-      // @ts-ignore
+      // @ts-expect-error: context type issue in pdfjs-dist render
       await page.render({ canvasContext: context, viewport: viewport }).promise;
       
       const imageFile = await new Promise<File>((resolve, reject) => {

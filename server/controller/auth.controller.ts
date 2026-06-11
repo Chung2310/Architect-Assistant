@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { authService } from "../service/auth.service";
+import { AuthRequest } from "../middleware/auth.middleware";
 import Joi from "joi";
 
 const loginSchema = Joi.object({
@@ -59,8 +60,9 @@ export const authController = {
           },
         },
       });
-    } catch (error: any) {
-      res.status(401).json({ success: false, message: error.message || "Đăng nhập thất bại." });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Đăng nhập thất bại.";
+      res.status(401).json({ success: false, message: errMsg });
     }
   },
 
@@ -96,8 +98,9 @@ export const authController = {
           },
         },
       });
-    } catch (error: any) {
-      res.status(400).json({ success: false, message: error.message || "Đăng ký thất bại." });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Đăng ký thất bại.";
+      res.status(400).json({ success: false, message: errMsg });
     }
   },
 
@@ -130,21 +133,26 @@ export const authController = {
           },
         },
       });
-    } catch (error: any) {
+    } catch {
       res.status(401).json({ success: false, message: "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại." });
     }
   },
 
-  async getMe(req: any, res: Response) {
+  async getMe(req: AuthRequest, res: Response) {
     try {
+      if (!req.user) {
+        res.status(401).json({ success: false, message: "Vui lòng đăng nhập để tiếp tục." });
+        return;
+      }
       const user = await authService.getMe(req.user.userId);
       if (!user) {
         res.status(404).json({ success: false, message: "Không tìm thấy tài khoản." });
         return;
       }
       res.json({ success: true, data: user });
-    } catch (error: any) {
-      res.status(500).json({ success: false, message: error.message || "Lỗi máy chủ." });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Lỗi máy chủ.";
+      res.status(500).json({ success: false, message: errMsg });
     }
   },
 

@@ -12,7 +12,7 @@ services:
     volumes:
       - mongo_data:/data/db
     networks:
-      - igen_network
+      - default_network
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
@@ -27,29 +27,17 @@ services:
       - "3000:3000"
     env_file: .env
     environment:
+      - PORT=3000
       - MONGODB_URI=mongodb://${MONGODB_USER:-admin}:${MONGODB_PASSWORD:-Admin123456}@mongodb:27017/igen-architect?authSource=admin
     depends_on:
       mongodb:
         condition: service_healthy
     networks:
-      - igen_network
-
-  nginx:
-    image: nginx:alpine
-    container_name: igen-architect-nginx
-    restart: always
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - igen-architect
-    networks:
-      - igen_network
+      - default_network
 
 volumes:
   mongo_data:
 
 networks:
-  igen_network:
-    driver: bridge
+  default_network:
+    external: true

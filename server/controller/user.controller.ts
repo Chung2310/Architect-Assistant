@@ -3,7 +3,6 @@ import { AuthRequest } from "../middleware/auth.middleware";
 import { userService } from "../service/user.service";
 import { transactionService } from "../service/transaction.service";
 import { renderJobService } from "../service/render-job.service";
-import { cloudinaryService } from "../service/cloudinary.service";
 import Joi from "joi";
 
 const roleSchema = Joi.object({
@@ -24,19 +23,57 @@ const apiKeySchema = Joi.object({
   apiKey: Joi.string().allow("").required(),
 });
 
+const idParamSchema = Joi.object({
+  id: Joi.string().regex(/^[0-9a-fA-F]{24}$/).required().messages({
+    "string.pattern.base": "ID không đúng định dạng MongoDB ObjectId.",
+    "any.required": "ID là bắt buộc.",
+  }),
+});
+
+const apiKeyParamSchema = Joi.object({
+  id: Joi.alternatives().try(
+    Joi.string().valid("me"),
+    Joi.string().regex(/^[0-9a-fA-F]{24}$/)
+  ).optional(),
+});
+
+const paginationQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).optional().messages({
+    "number.base": "Trang phải là số.",
+    "number.integer": "Trang phải là số nguyên.",
+    "number.min": "Trang tối thiểu là 1.",
+  }),
+  limit: Joi.number().integer().min(1).optional().messages({
+    "number.base": "Giới hạn phải là số.",
+    "number.integer": "Giới hạn phải là số nguyên.",
+    "number.min": "Giới hạn tối thiểu là 1.",
+  }),
+});
+
 export const userController = {
   async getList(req: AuthRequest, res: Response) {
+    const { error } = paginationQuerySchema.validate(req.query);
+    if (error) {
+      res.status(400).json({ success: false, message: error.details[0].message });
+      return;
+    }
     try {
       const page = parseInt(String(req.query.page || "1"), 10);
       const limit = parseInt(String(req.query.limit || "50"), 10);
       const result = await userService.getList(page, limit);
       res.json({ success: true, data: result });
-    } catch (error: any) {
-      res.status(500).json({ success: false, message: error.message });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
+      res.status(500).json({ success: false, message: errMsg });
     }
   },
 
   async getById(req: AuthRequest, res: Response) {
+    const { error } = idParamSchema.validate(req.params);
+    if (error) {
+      res.status(400).json({ success: false, message: error.details[0].message });
+      return;
+    }
     try {
       const user = await userService.getById(req.params.id);
       if (!user) {
@@ -44,12 +81,18 @@ export const userController = {
         return;
       }
       res.json({ success: true, data: user });
-    } catch (error: any) {
-      res.status(500).json({ success: false, message: error.message });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
+      res.status(500).json({ success: false, message: errMsg });
     }
   },
 
   async updateRole(req: AuthRequest, res: Response) {
+    const paramValidation = idParamSchema.validate(req.params);
+    if (paramValidation.error) {
+      res.status(400).json({ success: false, message: paramValidation.error.details[0].message });
+      return;
+    }
     const { error } = roleSchema.validate(req.body);
     if (error) {
       res.status(400).json({ success: false, message: error.details[0].message });
@@ -58,12 +101,18 @@ export const userController = {
     try {
       const user = await userService.updateRole(req.params.id, req.body.role);
       res.json({ success: true, data: user });
-    } catch (error: any) {
-      res.status(500).json({ success: false, message: error.message });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
+      res.status(500).json({ success: false, message: errMsg });
     }
   },
 
   async updateApiKey(req: AuthRequest, res: Response) {
+    const paramValidation = apiKeyParamSchema.validate(req.params);
+    if (paramValidation.error) {
+      res.status(400).json({ success: false, message: paramValidation.error.details[0].message });
+      return;
+    }
     const { error } = apiKeySchema.validate(req.body);
     if (error) {
       res.status(400).json({ success: false, message: error.details[0].message });
@@ -79,12 +128,18 @@ export const userController = {
       }
       const user = await userService.updateApiKey(targetId, req.body.apiKey);
       res.json({ success: true, data: user });
-    } catch (error: any) {
-      res.status(500).json({ success: false, message: error.message });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
+      res.status(500).json({ success: false, message: errMsg });
     }
   },
 
   async updateCredits(req: AuthRequest, res: Response) {
+    const paramValidation = idParamSchema.validate(req.params);
+    if (paramValidation.error) {
+      res.status(400).json({ success: false, message: paramValidation.error.details[0].message });
+      return;
+    }
     const { error } = creditsSchema.validate(req.body);
     if (error) {
       res.status(400).json({ success: false, message: error.details[0].message });
@@ -98,12 +153,18 @@ export const userController = {
         "Admin Top-up"
       );
       res.json({ success: true, data: user });
-    } catch (error: any) {
-      res.status(500).json({ success: false, message: error.message });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
+      res.status(500).json({ success: false, message: errMsg });
     }
   },
 
   async deleteUser(req: AuthRequest, res: Response) {
+    const { error } = idParamSchema.validate(req.params);
+    if (error) {
+      res.status(400).json({ success: false, message: error.details[0].message });
+      return;
+    }
     try {
       const userId = req.params.id;
       // Xóa render jobs
@@ -113,29 +174,49 @@ export const userController = {
       // Xóa user
       await userService.deleteUser(userId);
       res.json({ success: true, message: "Đã xóa người dùng và toàn bộ dữ liệu liên quan thành công." });
-    } catch (error: any) {
-      res.status(500).json({ success: false, message: error.message });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
+      res.status(500).json({ success: false, message: errMsg });
     }
   },
 
   async getTransactions(req: AuthRequest, res: Response) {
+    const { error } = paginationQuerySchema.validate(req.query);
+    if (error) {
+      res.status(400).json({ success: false, message: error.details[0].message });
+      return;
+    }
     try {
       const page = parseInt(String(req.query.page || "1"), 10);
       const limit = parseInt(String(req.query.limit || "100"), 10);
       const result = await transactionService.getAll(page, limit);
       res.json({ success: true, data: result });
-    } catch (error: any) {
-      res.status(500).json({ success: false, message: error.message });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
+      res.status(500).json({ success: false, message: errMsg });
     }
   },
 
   async getMyTransactions(req: AuthRequest, res: Response) {
+    const limitQuerySchema = Joi.object({
+      limit: Joi.number().integer().min(1).optional().messages({
+        "number.base": "Giới hạn phải là số.",
+        "number.integer": "Giới hạn phải số nguyên.",
+        "number.min": "Giới hạn tối thiểu là 1.",
+      }),
+    });
+    const { error } = limitQuerySchema.validate(req.query);
+    if (error) {
+      res.status(400).json({ success: false, message: error.details[0].message });
+      return;
+    }
     try {
       const limit = parseInt(String(req.query.limit || "100"), 10);
       const result = await transactionService.getListByUser(req.user!.userId, limit);
       res.json({ success: true, data: result });
-    } catch (error: any) {
-      res.status(500).json({ success: false, message: error.message });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
+      res.status(500).json({ success: false, message: errMsg });
     }
   },
 };

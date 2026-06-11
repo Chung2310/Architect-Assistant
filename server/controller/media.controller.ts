@@ -8,6 +8,12 @@ const uploadSchema = Joi.object({
   folder: Joi.string().allow("").optional(),
 });
 
+const deleteMediaSchema = Joi.object({
+  publicId: Joi.string().required().messages({
+    "any.required": "publicId là bắt buộc.",
+  }),
+});
+
 export const mediaController = {
   async upload(req: AuthRequest, res: Response) {
     const { error } = uploadSchema.validate(req.body);
@@ -20,23 +26,26 @@ export const mediaController = {
       const folderPath = folder || `igen_architect/${req.user!.userId}`;
       const url = await cloudinaryService.uploadMedia(file, folderPath);
       res.json({ success: true, data: { url } });
-    } catch (error: any) {
+    } catch (error) {
       console.error("[mediaController] Upload error:", error);
-      res.status(500).json({ success: false, message: error.message || "Tải lên thất bại." });
+      const errMsg = error instanceof Error ? error.message : "Tải lên thất bại.";
+      res.status(500).json({ success: false, message: errMsg });
     }
   },
 
   async deleteMedia(req: AuthRequest, res: Response) {
+    const { error } = deleteMediaSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ success: false, message: error.details[0].message });
+      return;
+    }
     try {
       const { publicId } = req.body;
-      if (!publicId) {
-        res.status(400).json({ success: false, message: "publicId là bắt buộc." });
-        return;
-      }
       await cloudinaryService.deleteMedia(publicId);
       res.json({ success: true, message: "Đã xóa media thành công." });
-    } catch (error: any) {
-      res.status(500).json({ success: false, message: error.message });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
+      res.status(500).json({ success: false, message: errMsg });
     }
   },
 };

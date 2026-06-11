@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext';
+import { useAuth } from './context/useAuth';
 import { Layout } from './components/Layout';
 import { HomeScreen } from './components/HomeScreen';
 import { TextureLab } from './components/TextureLab';
@@ -19,19 +19,10 @@ function AppContent() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, loading: authLoading, refreshUser } = useAuth();
-  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (user) {
-      setHasApiKey(!!user.hasSetupApiKey);
-    } else {
-      setHasApiKey(null);
-    }
-  }, [user]);
+  const hasApiKey = user ? !!user.hasSetupApiKey : null;
 
   const handleSetupComplete = async () => {
     if (user) {
-      setHasApiKey(true);
       await refreshUser();
     }
   };

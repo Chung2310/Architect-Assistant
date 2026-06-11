@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from './Icon';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
 import { HistoryModal } from './HistoryModal';
 
 interface PricingItem {
@@ -117,10 +116,8 @@ interface LayoutProps {
   onNavigate: (screen: string) => void;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, currentScreen, onNavigate }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, currentScreen: _currentScreen, onNavigate }) => {
   const [showDropdown, setShowDropdown] = useState(false);
-  const [credits, setCredits] = useState<string>("0.0000");
-  const [role, setRole] = useState<string>("user");
   const [showTopUpModal, setShowTopUpModal] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
@@ -128,18 +125,15 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentScreen, onNavig
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
+  const val = user ? parseFloat(String(user.credits)) : NaN;
+  const credits = isNaN(val) ? "0.0000" : val.toFixed(4);
+  const role = user?.role || "user";
+
   useEffect(() => {
     const handleShowTopUp = () => setShowTopUpModal(true);
     window.addEventListener('show-topup-modal', handleShowTopUp);
     return () => window.removeEventListener('show-topup-modal', handleShowTopUp);
   }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    const val = parseFloat(String(user.credits));
-    setCredits(isNaN(val) ? "0.0000" : val.toFixed(4));
-    setRole(user.role || "user");
-  }, [user]);
 
   const handleLogout = async () => {
     try {

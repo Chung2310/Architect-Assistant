@@ -1,11 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "motion/react";
 import { Icon } from "./Icon";
-import { useAuth } from "../context/AuthContext";
-import { apiClient } from "../services/apiClient";
+import { useAuth } from "../context/useAuth";
+import { apiClient, ApiResponse } from "../services/apiClient";
+import { ImageLibraryModal } from "./render/ImageLibraryModal";
 import {
-  ImageLibraryModal,
   handleDownload,
   getAIClient,
   safeJsonParse,
@@ -16,7 +15,7 @@ import {
   scaleToResolution,
   uploadMedia,
 } from "../lib/renderUtils";
-import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
+import { Type } from "@google/genai";
 import { toast } from "sonner";
 import ReactCrop, { type Crop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
@@ -74,19 +73,13 @@ export const Render: React.FC = () => {
   const [activeTab, setActiveTab] = useState("Render");
   const [pendingTab, setPendingTab] = useState<string | null>(null);
   const [showFeatureModal, setShowFeatureModal] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
-
   const { user } = useAuth();
+  const isAdmin = user ? (user.role === "admin" || user.role === "superadmin") : false;
 
   useEffect(() => {
-    if (user) {
-      setIsAdmin(user.role === "admin" || user.role === "superadmin");
-    }
-  }, [user]);
-
-  useEffect(() => {
-    const handleNavigate = (e: any) => {
-      if (e.detail?.tab) setActiveTab(e.detail.tab);
+    const handleNavigate = (e: Event) => {
+      const detail = (e as CustomEvent<{ tab: string }>).detail;
+      if (detail?.tab) setActiveTab(detail.tab);
     };
     window.addEventListener("igenNavigate", handleNavigate);
     return () => window.removeEventListener("igenNavigate", handleNavigate);
@@ -236,7 +229,7 @@ const EditTabContent: React.FC = () => {
     if (saved) {
       try {
         return JSON.parse(saved);
-      } catch (e) {
+      } catch {
         return [];
       }
     }
@@ -264,17 +257,19 @@ const EditTabContent: React.FC = () => {
 
   useEffect(() => {
     // Reset states when switching sub-tabs (but keep inputImage so users don't lose their uploaded image)
-    setPrompt("");
-    setDescription("");
-    setCrop(undefined);
-    setAnnotatedImage(null);
-    setResultImage(null);
+    setTimeout(() => {
+      setPrompt("");
+      setDescription("");
+      setCrop(undefined);
+      setAnnotatedImage(null);
+      setResultImage(null);
 
-    const editRefUrl = localStorage.getItem("iGen_editReferenceImage");
-    if (editRefUrl) {
-      setInputImage(editRefUrl);
-      localStorage.removeItem("iGen_editReferenceImage");
-    }
+      const editRefUrl = localStorage.getItem("iGen_editReferenceImage");
+      if (editRefUrl) {
+        setInputImage(editRefUrl);
+        localStorage.removeItem("iGen_editReferenceImage");
+      }
+    }, 0);
   }, [activeSubTab]);
 
   const handleDownloadResult = async () => {
@@ -341,12 +336,10 @@ const EditTabContent: React.FC = () => {
     setIsGeneratingPrompt(true);
     setSmoothPromptProgress(0);
     setPromptStatus("Khởi tạo...");
-
-    let progressInterval: NodeJS.Timeout;
     const startTime = Date.now();
     const expectedDuration = 8000; // 8 seconds expected for prompt generation
 
-    progressInterval = setInterval(() => {
+    const progressInterval = setInterval(() => {
       const elapsed = Date.now() - startTime;
       const progress = Math.min(90, (elapsed / expectedDuration) * 90);
       setSmoothPromptProgress(progress);
@@ -368,7 +361,10 @@ const EditTabContent: React.FC = () => {
         };
       };
 
-      const parts: any[] = [];
+      const parts: (
+        | { text: string; inlineData?: undefined }
+        | { inlineData: { data: string; mimeType: string }; text?: undefined }
+      )[] = [];
 
       setPromptStatus("Đang xử lý ảnh đầu vào...");
 
@@ -455,7 +451,7 @@ ${cropInfo}
 
       if (textPrompt) parts.push({ text: textPrompt });
 
-      let config: any = undefined;
+      let config: Record<string, unknown> | undefined = undefined;
       if (activeSubTab === "Crop để sửa") {
         config = {
           systemInstruction: `
@@ -869,7 +865,7 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
 
       clearInterval(progressInterval);
 
-      let finalPromptText = response.text || "";
+      const finalPromptText = typeof response.text === "function" ? response.text() : (response.text || "");
 
       if (
         activeSubTab === "Crop để sửa" ||
@@ -897,10 +893,11 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
       setSmoothPromptProgress(100);
       setPromptStatus("Hoàn tất!");
       toast.success("Đã tạo prompt thành công!");
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error generating prompt:", error);
-      if (error.message !== "Bạn đã hết Credits. Vui lòng nạp thêm.") {
-        toast.error(error.message || "Lỗi khi tạo prompt. Vui lòng thử lại.");
+      const err = error as Error;
+      if (err.message !== "Bạn đã hết Credits. Vui lòng nạp thêm.") {
+        toast.error(err.message || "Lỗi khi tạo prompt. Vui lòng thử lại.");
       }
     } finally {
       clearInterval(progressInterval);
@@ -959,21 +956,21 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
           }, 100);
 
           const baseImageData = await getImageBase64(inputImage, true);
-          let rawMaskImage = annotationMask || annotatedImage || inputImage;
-          let annotationMaskData = await getImageBase64(rawMaskImage, true);
+          const rawMaskImage = annotationMask || annotatedImage || inputImage;
+          const annotationMaskData = await getImageBase64(rawMaskImage, true);
 
           if (!baseImageData?.base64Data || !annotationMaskData?.base64Data) {
             throw new Error("Không thể xử lý ảnh gốc hoặc ảnh mask.");
           }
 
-          let userApiKey = user?.apiKey || "";
+          const userApiKey = user?.apiKey || "";
 
-          // @ts-ignore
+          // @ts-expect-error - aistudio is injected by AI Studio environment
           const isAIStudio = typeof window !== "undefined" && window.aistudio;
           if (isAIStudio && !userApiKey) {
-            // @ts-ignore
+            // @ts-expect-error - aistudio is injected by AI Studio environment
             if (!(await window.aistudio.hasSelectedApiKey())) {
-              // @ts-ignore
+              // @ts-expect-error - aistudio is injected by AI Studio environment
               await window.aistudio.openSelectKey();
             }
           }
@@ -984,7 +981,7 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
             process.env.GEMINI_API_KEY;
 
           let apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`;
-          let headers: Record<string, string> = {
+          const headers: Record<string, string> = {
             "Content-Type": "application/json",
           };
 
@@ -1043,7 +1040,7 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
           if (responseJson.candidates && responseJson.candidates.length > 0) {
             const parts = responseJson.candidates[0].content?.parts || [];
             const imagePart = parts.find(
-              (p: any) => p.inlineData && p.inlineData.data,
+              (p: { inlineData?: { data?: string } }) => p.inlineData && p.inlineData.data,
             );
             if (imagePart) {
               generatedImageUrl = `data:image/jpeg;base64,${imagePart.inlineData.data}`;
@@ -1064,7 +1061,7 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
             let finalImageUrl = generatedImageUrl;
             try {
               if (user) {
-                const res = await apiClient.post("/api/v1/media/upload", {
+                const res = await apiClient.post<ApiResponse<{ url: string }>>("/api/v1/media/upload", {
                   file: generatedImageUrl,
                   folder: "edits"
                 });
@@ -1103,22 +1100,24 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
       let coordinatesLock = undefined;
 
       try {
-        const parsedPrompt = safeJsonParse(prompt);
-        if (parsedPrompt.optimized_english_prompt) {
-          finalPrompt = parsedPrompt.optimized_english_prompt;
-        } else if (parsedPrompt.optimized_inpaint_prompt) {
-          finalPrompt = parsedPrompt.optimized_inpaint_prompt;
+        const parsedPrompt = safeJsonParse(prompt) as Record<string, unknown> | null;
+        if (parsedPrompt && !Array.isArray(parsedPrompt)) {
+          if (parsedPrompt.optimized_english_prompt) {
+            finalPrompt = parsedPrompt.optimized_english_prompt as string;
+          } else if (parsedPrompt.optimized_inpaint_prompt) {
+            finalPrompt = parsedPrompt.optimized_inpaint_prompt as string;
+          }
+          if (parsedPrompt.negative_prompt) {
+            negativePrompt = parsedPrompt.negative_prompt as string;
+          }
+          if (parsedPrompt.detected_aspect_ratio) {
+            detectedAspectRatio = parsedPrompt.detected_aspect_ratio as string;
+          }
+          if (parsedPrompt.coordinates_lock) {
+            coordinatesLock = parsedPrompt.coordinates_lock as { x: number; y: number; width: number; height: number };
+          }
         }
-        if (parsedPrompt.negative_prompt) {
-          negativePrompt = parsedPrompt.negative_prompt;
-        }
-        if (parsedPrompt.detected_aspect_ratio) {
-          detectedAspectRatio = parsedPrompt.detected_aspect_ratio;
-        }
-        if (parsedPrompt.coordinates_lock) {
-          coordinatesLock = parsedPrompt.coordinates_lock;
-        }
-      } catch (e) {
+      } catch {
         // Not JSON, just use the prompt as is
       }
 
@@ -1153,7 +1152,10 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
         finalPrompt += `\nNEGATIVE PROMPT (Do NOT include these elements): ${negativePrompt}`;
       }
 
-      const parts: any[] = [];
+      const parts: (
+        | { text: string; inlineData?: undefined }
+        | { inlineData: { data: string; mimeType: string }; text?: undefined }
+      )[] = [];
       parts.push(await getImagePart(annotatedImage || inputImage));
 
       if (activeSubTab === "Crop để sửa") {
@@ -1240,7 +1242,11 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
         }
       }
 
-      const imageConfig: any = {};
+      const imageConfig: {
+        aspectRatio?: string;
+        imageSize?: string;
+        negativePrompt?: string;
+      } = {};
       if (apiAspectRatio) {
         imageConfig.aspectRatio = apiAspectRatio;
       }
@@ -1252,7 +1258,7 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
         imageConfig.imageSize = selectedResolution;
       }
 
-      const config: any = {};
+      const config: Record<string, unknown> = {};
       if (Object.keys(imageConfig).length > 0) {
         config.imageConfig = imageConfig;
       }
@@ -1311,7 +1317,7 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
           let finalImageUrl = generatedImageUrl;
           try {
             if (user) {
-              const res = await apiClient.post("/api/v1/media/upload", {
+              const res = await apiClient.post<ApiResponse<{ url: string }>>("/api/v1/media/upload", {
                 file: generatedImageUrl,
                 folder: "edits"
               });
@@ -1343,7 +1349,7 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
           );
           let aiText = "Không có nội dung";
           if (response?.text) {
-            aiText = response.text;
+            aiText = typeof response.text === "function" ? response.text() : response.text;
           } else if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
             aiText = response.candidates[0].content.parts[0].text;
           }
@@ -1354,10 +1360,11 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
       } finally {
         if (waitInterval) clearInterval(waitInterval);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error rendering:", error);
+      const err = error as Error;
       toast.error(
-        error.message || "Lỗi khi thực hiện thay đổi. Vui lòng thử lại.",
+        err.message || "Lỗi khi thực hiện thay đổi. Vui lòng thử lại.",
       );
     } finally {
       setTimeout(() => {
@@ -2881,7 +2888,7 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
                       if (e.dataTransfer.files?.[0])
                         handleImageUpload({
                           target: { files: e.dataTransfer.files },
-                        } as any);
+                        } as unknown as React.ChangeEvent<HTMLInputElement>);
                     }}
                   >
                     <input
@@ -2985,7 +2992,7 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
                       if (e.dataTransfer.files?.[0])
                         handleRefImageUpload({
                           target: { files: e.dataTransfer.files },
-                        } as any);
+                        } as unknown as React.ChangeEvent<HTMLInputElement>);
                     }}
                   >
                     <input
@@ -4236,14 +4243,14 @@ const LayoutTabContent: React.FC = () => {
   } | null>(null);
 
   useEffect(() => {
-    let interval: any;
+    let interval: ReturnType<typeof setInterval> | undefined;
     if (isGenerating) {
       interval = setInterval(() => {
         setGeneratingStatus((prev) => {
           if (!prev) return prev;
           if (prev.progress >= 99) return prev;
           
-          let increment = 0;
+          let increment: number;
           if (prev.progress < 30) increment = 0.5;
           else if (prev.progress < 80) increment = 0.2;
           else increment = 0.05;
@@ -4262,7 +4269,7 @@ const LayoutTabContent: React.FC = () => {
     if (saved) {
       try {
         return JSON.parse(saved);
-      } catch (e) {
+      } catch {
         return [];
       }
     }
@@ -4358,6 +4365,9 @@ const LayoutTabContent: React.FC = () => {
       status: "Đang chuẩn bị dữ liệu...",
     });
 
+    let requestContents: unknown = null;
+    let requestConfig: Record<string, unknown> | null = null;
+
     try {
       const ai = await getAIClient(selectedModel);
       let imageData = await getImageBase64(inputImage);
@@ -4375,9 +4385,9 @@ const LayoutTabContent: React.FC = () => {
       });
 
       let prompt = `Create a professional architectural presentation board based on the provided image. The presentation style should be ${presentationStyle}. `;
-      let apiAspectRatio = "3:4";
-      let requestContents: any = null;
-      let requestConfig: any = null;
+      const apiAspectRatio = "3:4";
+      requestContents = null;
+      requestConfig = null;
 
       const styleMapper: Record<string, string> = {
         "Minimalist (Tối giản)":
@@ -4597,7 +4607,7 @@ Nhiệm vụ của bạn là chuyển đổi hình ảnh tham khảo của tòa 
               progress: 85,
               status: "Đang tải ảnh lên lưu trữ...",
             });
-            const res = await apiClient.post("/api/v1/media/upload", {
+            const res = await apiClient.post<ApiResponse<{ url: string }>>("/api/v1/media/upload", {
               file: generatedImageUrl,
               folder: "canvas"
             });
@@ -4625,14 +4635,19 @@ Nhiệm vụ của bạn là chuyển đổi hình ảnh tham khảo của tòa 
       } else {
         throw new Error("Không tìm thấy ảnh trong phản hồi.");
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error generating layout:", error);
-      toast.error(`Error 400 Payload: \${JSON.stringify({ 
+      const err = error as Error;
+      const contentsLen = Array.isArray(requestContents) ? requestContents.length : 0;
+      const partsInfo = Array.isArray(requestContents)
+        ? (requestContents as { parts?: Record<string, unknown>[] }[])[0]?.parts?.map((p) => Object.keys(p))
+        : [];
+      toast.error(`Error 400 Payload: ${JSON.stringify({ 
         model: selectedModel, 
-        contentsLen: requestContents?.length, 
-        parts: requestContents?.[0]?.parts?.map((p: any) => Object.keys(p)),
+        contentsLen, 
+        parts: partsInfo,
         config: requestConfig
-      })}\n\nError: \${error.message}`);
+      })}\n\nError: ${err.message}`);
     } finally {
       setIsGenerating(false);
       setGeneratingStatus(null);
@@ -5161,486 +5176,6 @@ Nhiệm vụ của bạn là chuyển đổi hình ảnh tham khảo của tòa 
   );
 };
 
-const VirtualStagingTabContent: React.FC = () => {
-  const [selectedModel, setSelectedModel] = useState(
-    "gemini-3-pro-image-preview",
-  );
-  const [resolution, setResolution] = useState("2k");
-  const [aspectRatio, setAspectRatio] = useState("Auto");
-  const [numImages, setNumImages] = useState(2);
-  const [processingType, setProcessingType] = useState("Virtual");
-  const [roomType, setRoomType] = useState("Living Room");
-  const [designStyle, setDesignStyle] = useState("Luxury");
-  const [prompt, setPrompt] = useState("");
-  const [inputImage, setInputImage] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleImageUpload = async (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setIsUploading(true);
-    try {
-      const downloadURL = await uploadMedia(file);
-      setInputImage(downloadURL);
-    } catch (error) {
-      console.error("Upload failed:", error);
-      toast.error("Tải ảnh lên thất bại.");
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleStartStaging = () => {
-    if (!inputImage) {
-      toast.error("Vui lòng tải lên ảnh hiện trạng.");
-      return;
-    }
-    setIsProcessing(true);
-    // Logic for staging will be added later
-    setTimeout(() => {
-      setIsProcessing(false);
-      toast.success("Bắt đầu quá trình Virtual Staging...");
-    }, 2000);
-  };
-
-  return (
-    <div className="flex-1 flex flex-col lg:flex-row p-8 gap-8 overflow-y-auto bg-surface">
-      {/* Left Sidebar */}
-      <div className="w-full lg:w-[380px] flex flex-col gap-6">
-        {/* AI Model Configuration */}
-        <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-6 shadow-sm">
-          <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-4">
-            Cấu hình mô hình AI
-          </h3>
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={() => setSelectedModel("gemini-3.1-flash-image-preview")}
-              className={`flex flex-col p-4 rounded-xl border transition-all text-left ${
-                selectedModel === "gemini-3.1-flash-image-preview"
-                  ? "border-primary bg-primary/5 ring-1 ring-primary"
-                  : "border-outline-variant/20 bg-surface-container-low hover:border-primary/50"
-              }`}
-            >
-              <div className="flex justify-between items-center mb-1">
-                <span
-                  className={`text-sm font-bold ${selectedModel === "gemini-3.1-flash-image-preview" ? "text-primary" : "text-on-surface"}`}
-                >
-                  Gemini 3.1 Flash Image Preview
-                </span>
-              </div>
-              <span className="text-[10px] text-on-surface-variant uppercase font-bold">
-                Fast • Standard (Free)
-              </span>
-            </button>
-
-            <button
-              onClick={() => setSelectedModel("gemini-3-pro-image-preview")}
-              className={`flex flex-col p-4 rounded-xl border transition-all text-left relative overflow-hidden ${
-                selectedModel === "gemini-3-pro-image-preview"
-                  ? "border-primary bg-primary/5 ring-1 ring-primary"
-                  : "border-outline-variant/20 bg-surface-container-low hover:border-primary/50"
-              }`}
-            >
-              <div className="flex justify-between items-center mb-1">
-                <span
-                  className={`text-sm font-bold ${selectedModel === "gemini-3-pro-image-preview" ? "text-primary" : "text-on-surface"}`}
-                >
-                  Gemini 3 (Pro/Paid)
-                </span>
-                <span className="bg-primary text-white text-[9px] px-2 py-0.5 rounded-full font-bold uppercase">
-                  Pro
-                </span>
-              </div>
-              <span className="text-[10px] text-on-surface-variant uppercase font-bold">
-                HQ • Multi-Resolution (Paid)
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {/* Resolution & Settings */}
-        <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-6 shadow-sm space-y-6">
-          {/* Resolution */}
-          <div>
-            <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-3">
-              Độ phân giải (Pro Only)
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {["1k", "2k", "4k"].map((res) => (
-                <button
-                  key={res}
-                  onClick={() => setResolution(res)}
-                  className={`py-2 rounded-lg text-xs font-bold transition-all ${
-                    resolution === res
-                      ? "bg-primary text-white shadow-md"
-                      : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
-                  }`}
-                >
-                  {res.toUpperCase()}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Aspect Ratio */}
-          <div>
-            <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-3">
-              Tỷ lệ khung hình
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {["Auto", "1:1", "16:9", "9:16", "4:3", "3:4"].map((ratio) => (
-                <button
-                  key={ratio}
-                  onClick={() => setAspectRatio(ratio)}
-                  className={`py-2 rounded-lg text-xs font-bold transition-all ${
-                    aspectRatio === ratio
-                      ? "bg-primary text-white shadow-md"
-                      : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
-                  }`}
-                >
-                  {ratio}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Number of Images */}
-          <div>
-            <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-3">
-              Số lượng ảnh (Xử lý song song)
-            </label>
-            <div className="grid grid-cols-4 gap-2">
-              {[1, 2, 3, 4].map((num) => (
-                <button
-                  key={num}
-                  onClick={() => setNumImages(num)}
-                  className={`py-2 rounded-lg text-xs font-bold transition-all ${
-                    numImages === num
-                      ? "bg-primary text-white shadow-md"
-                      : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
-                  }`}
-                >
-                  {num}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Processing Type */}
-        <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-6 shadow-sm">
-          <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-3">
-            Loại hình xử lý
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            {["Virtual", "Renovation"].map((type) => (
-              <button
-                key={type}
-                onClick={() => setProcessingType(type)}
-                className={`py-3 rounded-xl text-xs font-bold transition-all ${
-                  processingType === type
-                    ? "bg-primary text-white shadow-md"
-                    : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
-                }`}
-              >
-                {type}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Room Function */}
-        <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-6 shadow-sm">
-          <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-3">
-            Công năng phòng
-          </label>
-          <div className="relative">
-            <select
-              value={roomType}
-              onChange={(e) => setRoomType(e.target.value)}
-              className="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl p-3 text-sm text-on-surface appearance-none outline-none focus:border-primary"
-            >
-              {[
-                "Living Room",
-                "Bedroom",
-                "Kitchen",
-                "Bathroom",
-                "Dining Room",
-                "Home Office",
-                "Kids Room",
-                "Entryway",
-                "Outdoor",
-              ].map((room) => (
-                <option key={room} value={room}>
-                  {room}
-                </option>
-              ))}
-            </select>
-            <Icon
-              name="keyboard_arrow_down"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none"
-            />
-          </div>
-        </div>
-
-        {/* Design Style */}
-        <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-6 shadow-sm">
-          <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-3">
-            Phong cách thiết kế
-          </label>
-          <div className="flex flex-col gap-3">
-            {[
-              {
-                id: "Minimalist",
-                img: "https://picsum.photos/seed/minimalist/400/100",
-              },
-              {
-                id: "Japandi",
-                img: "https://picsum.photos/seed/japandi/400/100",
-              },
-              {
-                id: "Modern",
-                img: "https://picsum.photos/seed/modern/400/100",
-              },
-              {
-                id: "Scandinavian",
-                img: "https://picsum.photos/seed/scandinavian/400/100",
-              },
-              {
-                id: "Luxury",
-                img: "https://picsum.photos/seed/luxury/400/100",
-              },
-            ].map((style) => (
-              <button
-                key={style.id}
-                onClick={() => setDesignStyle(style.id)}
-                className={`relative h-20 rounded-xl overflow-hidden border-2 transition-all group ${
-                  designStyle === style.id
-                    ? "border-[#00BCD4] ring-1 ring-[#00BCD4]"
-                    : "border-transparent hover:border-outline-variant/30"
-                }`}
-              >
-                <img
-                  src={style.img}
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex items-end p-3">
-                  <span className="text-white text-xs font-bold">
-                    {style.id}
-                  </span>
-                </div>
-                {designStyle === style.id && (
-                  <div className="absolute top-2 right-2 w-6 h-6 bg-[#00BCD4] rounded-full flex items-center justify-center shadow-lg">
-                    <Icon name="check" className="text-white text-[14px]" />
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* 4. Tối ưu Prompt và Thông số */}
-        <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-6 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-on-surface">
-              4. Tối ưu Prompt và Thông số
-            </h3>
-            <div className="relative">
-              <select className="bg-surface-container-low border border-outline-variant/20 rounded-lg px-2 py-1 text-[10px] font-bold text-on-surface outline-none appearance-none pr-6">
-                <option>iGen 3 Flash Prev...</option>
-              </select>
-              <Icon
-                name="expand_more"
-                className="absolute right-1 top-1/2 -translate-y-1/2 text-on-surface-variant text-[12px]"
-              />
-            </div>
-          </div>
-
-          <button className="w-full bg-[#00BCD4] text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-sm hover:opacity-90 transition-all active:scale-[0.98]">
-            <Icon name="auto_awesome" className="text-lg" />
-            <span>Phân tích và hoàn thiện prompt</span>
-          </button>
-
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold text-on-surface-variant uppercase">
-              Prompt tạo ảnh hoàn chỉnh:
-            </label>
-            <textarea
-              className="w-full bg-surface-container-low/50 border border-outline-variant/20 rounded-xl p-3 text-xs text-on-surface placeholder:text-on-surface-variant/40 h-24 resize-none outline-none focus:border-[#00BCD4] transition-all"
-              placeholder="Ảnh chụp thực tế công trình, giữ chính xác góc chụp 100% như ảnh đưa vào..."
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 pt-2 border-t border-outline-variant/10">
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-on-surface-variant uppercase">
-                AI Engine
-              </label>
-              <div className="relative">
-                <select className="w-full bg-surface-container-low border border-outline-variant/20 rounded-lg p-2 text-[11px] font-bold text-on-surface outline-none appearance-none">
-                  <option>iGen 2.5 Flash...</option>
-                </select>
-                <Icon
-                  name="expand_more"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-on-surface-variant uppercase">
-                Độ phân giải
-              </label>
-              <div className="relative">
-                <select className="w-full bg-surface-container-low border border-outline-variant/20 rounded-lg p-2 text-[11px] font-bold text-on-surface outline-none appearance-none">
-                  <option>1K Full HD</option>
-                </select>
-                <Icon
-                  name="expand_more"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-on-surface-variant uppercase">
-                Số lượng ảnh
-              </label>
-              <div className="flex bg-surface-container-low rounded-lg p-1">
-                {[1, 2, 4].map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setNumImages(n)}
-                    className={`flex-1 py-1 rounded-md text-[11px] font-bold transition-all ${numImages === n ? "bg-[#00BCD4] text-white shadow-sm" : "text-on-surface-variant hover:text-on-surface"}`}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-on-surface-variant uppercase">
-                Tỷ lệ khung hình
-              </label>
-              <div className="relative">
-                <select className="w-full bg-surface-container-low border border-outline-variant/20 rounded-lg p-2 text-[11px] font-bold text-on-surface outline-none appearance-none">
-                  <option>Tự động</option>
-                </select>
-                <Icon
-                  name="expand_more"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Start Button */}
-        <button
-          onClick={handleStartStaging}
-          disabled={isProcessing || isUploading}
-          className="w-full bg-primary text-white font-black py-5 rounded-2xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-3 uppercase tracking-widest text-sm"
-        >
-          {isProcessing ? (
-            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-          ) : (
-            <Icon name="auto_awesome" className="text-xl" />
-          )}
-          <span>Bắt đầu Staging</span>
-        </button>
-      </div>
-
-      {/* Main Workspace */}
-      <div className="flex-1 flex flex-col gap-8">
-        {/* Upload Area */}
-        <div
-          onClick={() => fileInputRef.current?.click()}
-          className={`flex-1 min-h-[500px] rounded-3xl border-2 border-dashed flex flex-col items-center justify-center text-center p-12 transition-all cursor-pointer relative overflow-hidden ${
-            inputImage
-              ? "border-primary/30 bg-surface-container-lowest"
-              : "border-outline-variant/30 bg-surface-container-low/30 hover:bg-surface-container-low/50 hover:border-primary/50"
-          }`}
-        >
-          <input
-            type="file"
-            ref={fileInputRef}
-            className="hidden"
-            accept="image/*"
-            onChange={handleImageUpload}
-          />
-
-          {isUploading ? (
-            <div className="flex flex-col items-center">
-              <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
-              <p className="text-lg font-bold text-primary">
-                Đang tải ảnh lên...
-              </p>
-            </div>
-          ) : inputImage ? (
-            <div className="w-full h-full flex items-center justify-center">
-              <img
-                src={inputImage}
-                className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
-                referrerPolicy="no-referrer"
-              />
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setInputImage(null);
-                }}
-                className="absolute top-6 right-6 w-10 h-10 bg-black/50 hover:bg-black/80 text-white rounded-full flex items-center justify-center transition-all"
-              >
-                <Icon name="close" />
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center max-w-md">
-              <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-6">
-                <Icon name="cloud_upload" className="text-4xl text-primary" />
-              </div>
-              <h2 className="text-3xl font-black text-on-surface mb-4">
-                Thả ảnh vào không gian này
-              </h2>
-              <p className="text-on-surface-variant mb-8 leading-relaxed">
-                Hãy tải lên một tấm ảnh chụp hiện trạng để bắt đầu quá trình
-                Virtual Staging chuyên nghiệp.
-              </p>
-              <button className="bg-primary text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest hover:scale-105 transition-transform shadow-lg shadow-primary/20">
-                Chọn ảnh từ thiết bị
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* History / Archive */}
-        <div className="bg-surface-container-lowest rounded-3xl border border-outline-variant/20 p-8 shadow-sm">
-          <div className="flex items-center gap-2 mb-8">
-            <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
-            <h3 className="text-xs font-black text-on-surface-variant uppercase tracking-[0.2em]">
-              Lịch sử sáng tạo (Archive)
-            </h3>
-          </div>
-
-          <div className="flex flex-col items-center justify-center py-12 text-on-surface-variant/30">
-            <Icon name="collections" className="text-6xl mb-4" />
-            <p className="text-sm font-bold uppercase tracking-widest">
-              Chưa có lịch sử thiết kế
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const UtilitiesTabContent: React.FC = () => {
   const { user } = useAuth();
@@ -5656,7 +5191,7 @@ const UtilitiesTabContent: React.FC = () => {
   const [results, setResults] = useState<string[]>([]);
   const [prompt, setPrompt] = useState("");
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadProgress] = useState(0);
 
   const [moodProgress, setMoodProgress] = useState(0);
   const [moodResults, setMoodResults] = useState<
@@ -5669,7 +5204,7 @@ const UtilitiesTabContent: React.FC = () => {
     if (saved) {
       try {
         return JSON.parse(saved);
-      } catch (e) {
+      } catch {
         return [];
       }
     }
@@ -5690,7 +5225,7 @@ const UtilitiesTabContent: React.FC = () => {
     if (saved) {
       try {
         return JSON.parse(saved);
-      } catch (e) {
+      } catch {
         return [];
       }
     }
@@ -5715,12 +5250,12 @@ const UtilitiesTabContent: React.FC = () => {
   };
 
   useEffect(() => {
-    let interval: any;
+    let interval: ReturnType<typeof setInterval> | undefined;
     if (isProcessing && activeUtility === "mood") {
       interval = setInterval(() => {
         setMoodProgress((prev) => {
           if (prev >= 99) return prev;
-          let increment = 0;
+          let increment: number;
           if (prev < 30) increment = 0.5;
           else if (prev < 80) increment = 0.2;
           else increment = 0.05;
@@ -5728,7 +5263,9 @@ const UtilitiesTabContent: React.FC = () => {
         });
       }, 100);
     } else {
-      setMoodProgress(0);
+      setTimeout(() => {
+        setMoodProgress(0);
+      }, 0);
     }
     return () => clearInterval(interval);
   }, [isProcessing, activeUtility]);
@@ -5889,7 +5426,7 @@ const UtilitiesTabContent: React.FC = () => {
 
       let systemInstruction = "";
       let userPrompt = "";
-      let numImages = 1;
+      let _numImages = 1;
 
       switch (activeUtility) {
         case "mood":
@@ -5912,7 +5449,7 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
           
           Bảo toàn cấu trúc hình học nguyên bản chi tiết một cách hoàn hảo nhất.`;
           userPrompt = "Tạo 4 prompt không gian ánh sáng dạng JSON cho căn phòng này viết hoàn toàn bằng tiếng Việt.";
-          numImages = 4;
+          _numImages = 4;
           break;
         case "google-map":
           systemInstruction =
@@ -5962,7 +5499,10 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
         throw new Error("Dữ liệu ảnh gốc không hợp lệ.");
       }
 
-      const parts: any[] = [
+      const parts: (
+        | { inlineData: { data: string; mimeType: string }; text?: undefined }
+        | { text: string; inlineData?: undefined }
+      )[] = [
         {
           inlineData: {
             data: imageData.base64Data,
@@ -6035,7 +5575,10 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
               },
             ],
             generationConfig: {
-              imageConfig: { aspectRatio: autoAspectRatio as any, imageSize: utilityResolution },
+              imageConfig: {
+                aspectRatio: autoAspectRatio as "1:1" | "16:9" | "4:3" | "3:4" | "9:16",
+                imageSize: utilityResolution,
+              },
             },
           });
 
@@ -6050,14 +5593,15 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
           }
 
           if (!base64) {
-            const finishReason = imgResponse.candidates?.[0]?.finishReason;
+            const candidate = imgResponse.candidates?.[0] as Record<string, unknown> | undefined;
+            const finishReason = candidate?.finishReason;
             console.error(
               `Mood ${i} image extraction failed. Full Response:`,
               JSON.stringify(imgResponse, null, 2),
             );
-            const safetyRatings = imgResponse.candidates?.[0]?.safetyRatings || [];
+            const safetyRatings = (candidate?.safetyRatings || []) as { blocked?: boolean; probability?: string }[];
             const blockedBySafety = safetyRatings.some(
-              (r: any) =>
+              (r: { blocked?: boolean; probability?: string }) =>
                 r.blocked === true ||
                 r.probability === "HIGH" ||
                 r.probability === "MEDIUM",
@@ -6068,7 +5612,7 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
             throw new Error(`Ảnh trả về rỗng. Vui lòng thử lại. Lỗi: ${finishReason}`);
           }
 
-          const res = await apiClient.post("/api/v1/media/upload", {
+          const res = await apiClient.post<ApiResponse<{ url: string }>>("/api/v1/media/upload", {
             file: `data:image/png;base64,${base64}`,
             folder: "utilities"
           });
@@ -6101,8 +5645,9 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
         }
 
         if (!base64) {
-          const finishReason = imgResponse.candidates?.[0]?.finishReason;
-          const aiText = imgResponse.text || "";
+          const candidate = imgResponse.candidates?.[0] as Record<string, unknown> | undefined;
+          const finishReason = candidate?.finishReason;
+          const aiText = typeof imgResponse.text === "function" ? imgResponse.text() : (imgResponse.text || "");
           console.error(
             "Utility image extraction failed. Full Response:",
             JSON.stringify(imgResponse, null, 2),
@@ -6110,9 +5655,9 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
 
           // Check safety ratings and prompt feedback
           const safetyRatings =
-            imgResponse.candidates?.[0]?.safetyRatings || [];
+            (candidate?.safetyRatings || []) as { blocked?: boolean; probability?: string }[];
           const blockedBySafety = safetyRatings.some(
-            (r: any) =>
+            (r: { blocked?: boolean; probability?: string }) =>
               r.blocked === true ||
               r.probability === "HIGH" ||
               r.probability === "MEDIUM",
@@ -6120,7 +5665,7 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
           const promptBlocked =
             imgResponse.promptFeedback?.blockReason ||
             (imgResponse.promptFeedback?.safetyRatings?.some(
-              (r: any) => r.blocked === true,
+              (r: { blocked?: boolean }) => r.blocked === true,
             )
               ? "SAFETY"
               : null);
@@ -6145,7 +5690,7 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
           );
         }
 
-        const res = await apiClient.post("/api/v1/media/upload", {
+        const res = await apiClient.post<ApiResponse<{ url: string }>>("/api/v1/media/upload", {
           file: `data:image/png;base64,${base64}`,
           folder: "utilities"
         });
@@ -6637,7 +6182,7 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
                       </button>
                       <a
                         href={results[0]}
-                        download={`igen_google_map_3d_${Date.now()}.png`}
+                        download="igen_google_map_3d.png"
                         className="w-10 h-10 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-primary transition-colors backdrop-blur-md"
                         title="Tải xuống"
                         target="_blank"
@@ -6979,15 +6524,3 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
   );
 };
 
-interface ImageLibraryModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSelectImages: (imageUrls: string[]) => void;
-  target?: "input" | "context" | "character" | "reference";
-}
-
-interface MediaItem {
-  url: string;
-  type: "user_image" | "ai_image" | "user_video" | "ai_video";
-  timestamp: number;
-}
