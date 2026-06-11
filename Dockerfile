@@ -4,11 +4,10 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Copy manifests first for layer cache efficiency
-COPY package.json package-lock.json ./
+COPY package.json yarn.lock ./
 
-# --ignore-scripts: skip native addon compilation (canvas, etc.)
-# The builder stage only runs `vite build` — no native modules needed.
-RUN yarn install --frozen-lockfile --ignore-scripts
+# Install dependencies using yarn
+RUN yarn install --frozen-lockfile
 
 # Copy source and build the frontend bundle
 COPY . .
@@ -16,21 +15,6 @@ RUN yarn run build
 
 # ─── Stage 2: Production Runner ──────────────────────────────────────────────
 FROM node:22-alpine AS runner
-
-# Build tools needed by canvas node-gyp at install time
-RUN apk add --no-cache \
-    python3 \
-    py3-setuptools \
-    make \
-    g++ \
-    pkgconf \
-    cairo-dev \
-    pango-dev \
-    libjpeg-turbo-dev \
-    giflib-dev \
-    librsvg-dev \
-    pixman-dev && \
-    ln -sf /usr/bin/python3 /usr/bin/python
 
 WORKDIR /app
 
@@ -47,21 +31,8 @@ COPY --from=builder /app/server.ts ./
 COPY --from=builder /app/server ./server
 COPY --from=builder /app/tsconfig.json ./
 
-# Install all deps including native compilation of canvas
-COPY --from=builder /app/package.json /app/package-lock.json ./
-RUN yarn install
-
-# Remove build tools to reduce final image size
-RUN apk del python3 py3-setuptools make g++ pkgconf \
-    cairo-dev pango-dev libjpeg-turbo-dev giflib-dev librsvg-dev pixman-dev
-
-# Keep only runtime shared libs for canvas
-RUN apk add --no-cache \
-    cairo \
-    pango \
-    libjpeg-turbo \
-    giflib \
-    librsvg \
-    pixman
+# Install dependencies (frozen-lockfile ensures deterministic, fast installation)
+COPY --from=builder /app/package.json /app/yarn.lock ./
+RUN yarn install --frozen-lockfile
 
 CMD ["yarn", "run", "start"]
