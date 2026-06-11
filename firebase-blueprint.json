@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the application",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The unique identifier for the user"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "The user's email address"
+        },
+        "apiKey": {
+          "type": "string",
+          "description": "The Firebase API key"
+        },
+        "credits": {
+          "type": "string",
+          "description": "The user's credits balance"
+        },
+        "hasClaimedCredits": {
+          "type": "boolean",
+          "description": "Whether the user has claimed their initial credits"
+        },
+        "role": {
+          "type": "string",
+          "description": "The user's role (e.g., admin, user)"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "The time the user was created (ISO string)"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "The time the user was last updated (ISO string)"
+        }
+      },
+      "required": ["id", "email", "createdAt"]
+    },
+    "RenderJob": {
+      "title": "RenderJob",
+      "description": "A rendering job created by a user",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The ID of the user who created the job"
+        },
+        "type": {
+          "type": "string",
+          "description": "The type of render (e.g., Ngoại thất, Nội thất)"
+        },
+        "inputImageUrl": {
+          "type": "string",
+          "description": "The URL of the uploaded input image in Firebase Storage"
+        },
+        "outputImageUrls": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "The URLs of the generated output images in Firebase Storage"
+        },
+        "status": {
+          "type": "string",
+          "description": "The status of the job (e.g., pending, completed, failed)"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "The time the job was created (ISO string)"
+        }
+      },
+      "required": ["userId", "type", "inputImageUrl", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/User"
+      },
+      "description": "The collection of users"
+    },
+    "/renderJobs/{jobId}": {
+      "schema": {
+        "$ref": "#/entities/RenderJob"
+      },
+      "description": "The collection of render jobs"
+    }
+  }
+}
