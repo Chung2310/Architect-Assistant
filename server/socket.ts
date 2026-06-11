@@ -49,7 +49,7 @@ export function getIO(): Server {
   return io;
 }
 
-export function emitToUser(userId: string, event: string, data: any) {
+export function emitToUser(userId: string, event: string, data: unknown) {
   if (io) {
     io.to(userId.toString()).emit(event, data);
   }

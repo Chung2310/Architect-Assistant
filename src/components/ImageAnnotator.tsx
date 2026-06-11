@@ -2,12 +2,38 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Image as KonvaImage, Arrow, Text, Transformer } from 'react-konva';
 import useImage from 'use-image';
 
-const StageAny = Stage as any;
-const LayerAny = Layer as any;
-const KonvaImageAny = KonvaImage as any;
-const ArrowAny = Arrow as any;
-const TextAny = Text as any;
-const TransformerAny = Transformer as any;
+const StageAny = Stage as unknown as React.ElementType;
+const LayerAny = Layer as unknown as React.ElementType;
+const KonvaImageAny = KonvaImage as unknown as React.ElementType;
+const ArrowAny = Arrow as unknown as React.ElementType;
+const TextAny = Text as unknown as React.ElementType;
+const TransformerAny = Transformer as unknown as React.ElementType;
+
+interface StageRef {
+  findOne: (selector: string) => unknown;
+  toDataURL: (options?: { pixelRatio?: number }) => string;
+  container: () => { getBoundingClientRect: () => DOMRect } | undefined;
+  getPointerPosition: () => { x: number; y: number } | null;
+}
+
+interface LayerRef {
+  hide: () => void;
+  show: () => void;
+  batchDraw: () => void;
+}
+
+interface TransformerRef {
+  nodes: (nodes: unknown[]) => void;
+  getLayer: () => { batchDraw: () => void } | null;
+}
+
+interface KonvaEvent {
+  target: {
+    getStage: () => { getPointerPosition: () => { x: number; y: number } | null } | null;
+    hasName: (name: string) => boolean;
+    getAbsolutePosition: () => { x: number; y: number };
+  };
+}
 import { toast } from 'sonner';
 import { Icon } from './Icon';
 import { getImageBase64 } from '../lib/renderUtils';
@@ -55,9 +81,9 @@ export const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ imageUrl, onSave
   const [textInputPos, setTextInputPos] = useState({ x: 0, y: 0 });
   const [textInputValue, setTextInputValue] = useState('');
 
-  const stageRef = useRef<any>(null);
-  const imageLayerRef = useRef<any>(null);
-  const trRef = useRef<any>(null);
+  const stageRef = useRef<StageRef>(null);
+  const imageLayerRef = useRef<LayerRef>(null);
+  const trRef = useRef<TransformerRef>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
@@ -137,17 +163,19 @@ export const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ imageUrl, onSave
   };
 
   // Mouse events
-  const handleMouseDown = (e: any) => {
+  const handleMouseDown = (e: KonvaEvent) => {
     if (editingTextId) return; // Don't start drawing if editing text
 
-    const clickedOnEmpty = e.target === e.target.getStage() || e.target.hasName('bg-image');
+    const stage = e.target.getStage();
+    const clickedOnEmpty = stage && ((e.target as unknown) === stage || e.target.hasName('bg-image'));
     if (clickedOnEmpty) {
       setSelectedId(null);
     }
 
     if (tool === 'select') return;
 
-    const pos = e.target.getStage().getPointerPosition();
+    const pos = stage?.getPointerPosition();
+    if (!pos) return;
     const x = pos.x / scale;
     const y = pos.y / scale;
 
@@ -191,11 +219,12 @@ export const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ imageUrl, onSave
     }
   };
 
-  const handleMouseMove = (e: any) => {
+  const handleMouseMove = (e: KonvaEvent) => {
     if (!isDrawing || tool !== 'arrow') return;
 
     const stage = e.target.getStage();
-    const pos = stage.getPointerPosition();
+    const pos = stage?.getPointerPosition();
+    if (!pos) return;
     const x = pos.x / scale;
     const y = pos.y / scale;
 
@@ -234,13 +263,13 @@ export const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ imageUrl, onSave
   }, [selectedId, tool, elements]);
 
   // Text Editing
-  const handleTextDblClick = (e: any, id: string) => {
+  const handleTextDblClick = (e: KonvaEvent, id: string) => {
     if (tool !== 'select') return;
     
     const textNode = e.target;
-    const textElement = elements.find(el => el.id === id) as any;
+    const textElement = elements.find(el => el.id === id);
     
-    if (textElement) {
+    if (textElement && textElement.type === 'text') {
       setEditingTextId(id);
       setTextInputValue(textElement.text === 'Nhập chữ...' ? '' : textElement.text);
       

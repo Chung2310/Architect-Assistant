@@ -19,7 +19,12 @@ export interface AppErrorInfo {
   }
 }
 
-export function handleAppError(error: unknown, operationType: OperationType, path: string | null, currentUser?: any) {
+export function handleAppError(
+  error: unknown,
+  operationType: OperationType,
+  path: string | null,
+  currentUser?: { _id?: string; userId?: string; email?: string | null; role?: string }
+) {
   const errInfo: AppErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -31,5 +36,5 @@ export function handleAppError(error: unknown, operationType: OperationType, pat
     path
   }
   console.error('App Error: ', JSON.stringify(errInfo));
-  throw new Error(errInfo.error);
+  throw new Error(errInfo.error, { cause: error });
 }

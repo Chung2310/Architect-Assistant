@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Icon } from "../Icon";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../context/useAuth";
 import { apiClient } from "../../services/apiClient";
-import { uploadMedia } from "../../lib/renderUtils";
 import { toast } from "sonner";
 import { Type } from "@google/genai";
 import { convertPdfToImage } from "../../lib/pdfUtils";
-import { ImageLibraryModal, getAIClient, checkUserCredits, generateContentWithRetry, getImageBase64, cacheImage, scaleToResolution } from "../../lib/renderUtils";
+import { ImageLibraryModal } from "./ImageLibraryModal";
+import { uploadMedia, getAIClient, checkUserCredits, generateContentWithRetry, getImageBase64, cacheImage, scaleToResolution } from "../../lib/renderUtils";
 
 const MODELS = [
   {
@@ -37,7 +37,7 @@ export const UpscaleTabContent: React.FC = () => {
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isUpscaling) {
-      setUpscaleProgress(0);
+      setTimeout(() => setUpscaleProgress(0), 0);
       interval = setInterval(() => {
         setUpscaleProgress((prev) => {
           if (prev < 90) {
@@ -49,7 +49,7 @@ export const UpscaleTabContent: React.FC = () => {
         });
       }, 500);
     } else {
-      setUpscaleProgress(100);
+      setTimeout(() => setUpscaleProgress(100), 0);
     }
     return () => clearInterval(interval);
   }, [isUpscaling]);
@@ -68,7 +68,7 @@ export const UpscaleTabContent: React.FC = () => {
     if (saved) {
       try {
         return JSON.parse(saved);
-      } catch (e) {
+      } catch {
         return [];
       }
     }
@@ -169,7 +169,7 @@ export const UpscaleTabContent: React.FC = () => {
         await apiClient.delete("/api/v1/media", {
           body: { publicId: inputImage }
         });
-      } catch (error: any) {
+      } catch (error) {
         console.error("Error deleting image from Cloudinary:", error);
       }
     }
@@ -340,7 +340,7 @@ If the image is too blurry to identify specific details, describe the general sh
         console.log("Upscale AI Analysis Result:", parsedResult);
       } catch (e) {
         console.error("Parse JSON error", e);
-        throw new Error("Invalid output format from AI.");
+        throw new Error("Invalid output format from AI.", { cause: e });
       }
 
       const finalPrompt =
@@ -352,7 +352,11 @@ If the image is too blurry to identify specific details, describe the general sh
 
       const ai = await getAIClient(selectedModel);
 
-      const imageConfig: any = {
+      const imageConfig: {
+        aspectRatio: string;
+        imageSize?: string;
+        negativePrompt?: string;
+      } = {
         aspectRatio: detectedAspectRatio,
       };
 

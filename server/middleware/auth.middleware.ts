@@ -16,7 +16,7 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
     const payload = verifyAccessToken(token);
     req.user = payload;
     next();
-  } catch (error) {
+  } catch {
     res.status(401).json({ success: false, message: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." });
   }
 }

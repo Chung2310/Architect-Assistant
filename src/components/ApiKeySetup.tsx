@@ -27,9 +27,10 @@ export const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onSetupComplete }) => 
       
       if (onSetupComplete) onSetupComplete();
       navigate('/home', { replace: true });
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error during setup:", error);
-      toast.error(error.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
+      const errMsg = error instanceof Error ? error.message : String(error);
+      toast.error(errMsg || 'Có lỗi xảy ra. Vui lòng thử lại.');
     } finally {
       setIsSubmitting(false);
     }

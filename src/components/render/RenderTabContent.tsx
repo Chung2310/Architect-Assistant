@@ -1,13 +1,32 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
 import { motion } from "motion/react";
 import { Icon } from "../Icon";
 import { toast } from "sonner";
-import { useAuth } from "../../context/AuthContext";
-import { apiClient } from "../../services/apiClient";
-import { ImageLibraryModal, getAIClient, safeJsonParse, checkUserCredits, generateContentWithRetry, getImageBase64, handleDownload, cacheImage, scaleToResolution, globalImageCache, uploadMedia } from "../../lib/renderUtils";
+import { useAuth } from "../../context/useAuth";
+import { apiClient, ApiResponse } from "../../services/apiClient";
+import { ImageLibraryModal } from "./ImageLibraryModal";
+import { getAIClient, safeJsonParse, checkUserCredits, generateContentWithRetry, getImageBase64, handleDownload, cacheImage, scaleToResolution, uploadMedia } from "../../lib/renderUtils";
 import { Type } from "@google/genai";
 import { convertPdfToImage } from "../../lib/pdfUtils";
+
+interface RenderJob {
+  _id?: string;
+  id?: string;
+  type?: string;
+  status: string;
+  progress?: number;
+  statusMessage?: string;
+  createdAt?: string | { toMillis?: () => number } | null;
+  inputImageUrls?: string[];
+  outputImageUrls?: string[];
+  settings?: {
+    prompt?: string;
+    numImages?: number;
+    aspectRatio?: string;
+    model?: string;
+    resolution?: string;
+  };
+}
 
 const MODELS = [
   {
@@ -67,6 +86,49 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
   const [cameraAngle, setCameraAngle] = useState("");
   const [customCameraAngle, setCustomCameraAngle] = useState("");
 
+  const [prompt, setPrompt] = useState("");
+  const [promptModel, setPromptModel] = useState("gemini-3.1-pro-preview");
+  const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
+  const [promptProgress, setPromptProgress] = useState(0);
+  const [promptStatus, setPromptStatus] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const [isDraggingRef, setIsDraggingRef] = useState(false);
+
+  const [selectedModel, setSelectedModel] = useState(
+    "gemini-3-pro-image-preview",
+  );
+  const [selectedResolution, setSelectedResolution] = useState("1K");
+
+  const [renderJobs, setRenderJobs] = useState<RenderJob[]>([]);
+  const [showVRModal, setShowVRModal] = useState(false);
+  const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [libraryTarget, setLibraryTarget] = useState<"input" | "reference">(
+    "input",
+  );
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const refInputRef = useRef<HTMLInputElement>(null);
+
+  const [referenceImages, setReferenceImages] = useState<string[]>([]);
+  const [isUploadingRef, setIsUploadingRef] = useState(false);
+  const [uploadProgressRef, setUploadProgressRef] = useState(0);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [jobToDelete, setJobToDelete] = useState<RenderJob | null>(null);
+  const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
+  const [smoothProgress, setSmoothProgress] = useState<{
+    [jobId: string]: number;
+  }>({});
+  const [smoothPromptProgress, setSmoothPromptProgress] = useState(0);
+  const [sessionStartTimeMs] = useState(() => Date.now());
+
+  const isCurrentSession = (job: RenderJob) => {
+    if (!job.createdAt) return true;
+    const jobTimeMs = (typeof job.createdAt === "object" && job.createdAt && "toMillis" in job.createdAt && typeof job.createdAt.toMillis === "function")
+      ? job.createdAt.toMillis()
+      : new Date(job.createdAt as string).getTime();
+    return jobTimeMs >= sessionStartTimeMs;
+  };
+
   const getImageDimensions = (
     url: string,
   ): Promise<{ width: number; height: number }> => {
@@ -99,64 +161,56 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
     };
     detect();
   }, [inputImages]);
-  const [prompt, setPrompt] = useState("");
-  const [promptModel, setPromptModel] = useState("gemini-3.1-pro-preview");
-  const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
-  const [promptProgress, setPromptProgress] = useState(0);
-  const [promptStatus, setPromptStatus] = useState("");
-  const [isDragging, setIsDragging] = useState(false);
-  const [isDraggingRef, setIsDraggingRef] = useState(false);
 
   useEffect(() => {
     // Reset states when switching sub-tabs
-    setInputImages([]);
-    setReferenceImages([]);
-    setPrompt("");
-    setDescription("");
-    setContext("");
-    setLighting("");
-    setColorTone("");
-    setRoomType("");
-    setInteriorStyle("");
-    setCameraAngle("");
-    setCustomCameraAngle("");
-    setAspectRatio("Tự động");
+    setTimeout(() => {
+      setInputImages([]);
+      setReferenceImages([]);
+      setPrompt("");
+      setDescription("");
+      setContext("");
+      setLighting("");
+      setColorTone("");
+      setRoomType("");
+      setInteriorStyle("");
+      setCameraAngle("");
+      setCustomCameraAngle("");
+      setAspectRatio("Tự động");
 
-    // Set defaults based on activeSubTab
-    if (activeSubTab === "Render Ngoại Thất") {
-      setStyle("Ảnh chụp thực tế công trình");
-    } else if (activeSubTab === "Render Nội Thất") {
-      setStyle("Ảnh chụp thực tế nội thất");
-    } else if (activeSubTab === "Render VR 360") {
-      setStyle("Ảnh Panorama 360 độ");
-      setAspectRatio("21:9 (Panorama)");
-    } else if (activeSubTab === "Floorplan to 3D") {
-      setStyle("Phối cảnh thực tế");
-      setCameraAngleStyle("Ảnh cầm tay ngang tầm mắt");
-    } else if (activeSubTab === "Floorplan to 3D Floorplan") {
-      setStyle("Ảnh phối cảnh 3D mặt bằng");
-      setInteriorStyle("Hiện đại");
-      setLighting("Có nắng");
-      setBuildingStyle("Căn hộ");
-      setCameraAngleStyle("Phối cảnh Trục đo (Isometric)");
-    } else if (activeSubTab === "Masterplan to 3D") {
-      setStyle("Ảnh phối cảnh 3D tổng thể");
-      setPrompt(
-        "Ảnh chụp thực tế công trình. Biến bản vẽ mặt bằng tổng thể này thành ảnh phối cảnh 3D thực tế từ trên cao.",
-      );
-    }
+      // Set defaults based on activeSubTab
+      if (activeSubTab === "Render Ngoại Thất") {
+        setStyle("Ảnh chụp thực tế công trình");
+      } else if (activeSubTab === "Render Nội Thất") {
+        setStyle("Ảnh chụp thực tế nội thất");
+      } else if (activeSubTab === "Render VR 360") {
+        setStyle("Ảnh Panorama 360 độ");
+        setAspectRatio("21:9 (Panorama)");
+      } else if (activeSubTab === "Floorplan to 3D") {
+        setStyle("Phối cảnh thực tế");
+        setCameraAngleStyle("Ảnh cầm tay ngang tầm mắt");
+      } else if (activeSubTab === "Floorplan to 3D Floorplan") {
+        setStyle("Ảnh phối cảnh 3D mặt bằng");
+        setInteriorStyle("Hiện đại");
+        setLighting("Có nắng");
+        setBuildingStyle("Căn hộ");
+        setCameraAngleStyle("Phối cảnh Trục đo (Isometric)");
+      } else if (activeSubTab === "Masterplan to 3D") {
+        setStyle("Ảnh phối cảnh 3D tổng thể");
+        setPrompt(
+          "Ảnh chụp thực tế công trình. Biến bản vẽ mặt bằng tổng thể này thành ảnh phối cảnh 3D thực tế từ trên cao.",
+        );
+      }
+    }, 0);
   }, [activeSubTab]);
-  const [selectedModel, setSelectedModel] = useState(
-    "gemini-3-pro-image-preview",
-  );
-  const [selectedResolution, setSelectedResolution] = useState("1K");
 
   // Reset prompt when core parameters change to encourage re-analysis and ensure output matches selected options
   useEffect(() => {
     if (prompt && !prompt.includes("Biến bản vẽ mặt bằng tổng thể")) {
-      setPrompt("");
+      setTimeout(() => setPrompt(""), 0);
     }
   }, [
+    prompt,
     style,
     context,
     lighting,
@@ -166,36 +220,6 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
     customCameraAngle,
     activeSubTab,
   ]);
-
-  const [renderJobs, setRenderJobs] = useState<any[]>([]);
-  const [showVRModal, setShowVRModal] = useState(false);
-  const [showLibraryModal, setShowLibraryModal] = useState(false);
-  const [libraryTarget, setLibraryTarget] = useState<"input" | "reference">(
-    "input",
-  );
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const refInputRef = useRef<HTMLInputElement>(null);
-
-  const [referenceImages, setReferenceImages] = useState<string[]>([]);
-  const [isUploadingRef, setIsUploadingRef] = useState(false);
-  const [uploadProgressRef, setUploadProgressRef] = useState(0);
-  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
-  const [jobToDelete, setJobToDelete] = useState<any | null>(null);
-  const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
-  const [smoothProgress, setSmoothProgress] = useState<{
-    [jobId: string]: number;
-  }>({});
-  const [smoothPromptProgress, setSmoothPromptProgress] = useState(0);
-  const sessionStartTimeMs = useRef(Date.now());
-
-  const isCurrentSession = (job: any) => {
-    if (!job.createdAt) return true;
-    const jobTimeMs = job.createdAt.toMillis
-      ? job.createdAt.toMillis()
-      : new Date(job.createdAt).getTime();
-    return jobTimeMs >= sessionStartTimeMs.current;
-  };
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -244,7 +268,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
         await apiClient.delete("/api/v1/media", {
           body: { publicId: urlToDelete }
         });
-      } catch (error: any) {
+      } catch (error) {
         console.error("Error deleting image from Cloudinary:", error);
       }
     }
@@ -262,7 +286,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
         await apiClient.delete("/api/v1/media", {
           body: { publicId: urlToDelete }
         });
-      } catch (error: any) {
+      } catch (error) {
         console.error("Error deleting image from Cloudinary:", error);
       }
     }
@@ -292,7 +316,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
     }
   };
 
-  const handleDeleteJob = async (job: any) => {
+  const handleDeleteJob = async (job: RenderJob) => {
     try {
       await apiClient.delete(`/api/v1/render-jobs/${job._id || job.id}`);
       
@@ -310,7 +334,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
         }
       }
       toast.success("Đã xóa render job.");
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error deleting job:", error);
       toast.error("Có lỗi xảy ra khi xóa. Vui lòng thử lại.");
     } finally {
@@ -322,13 +346,13 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
 
   useEffect(() => {
     if (!user) {
-      setRenderJobs([]);
+      setTimeout(() => setRenderJobs([]), 0);
       return;
     }
 
     const fetchJobs = async () => {
       try {
-        const res = await apiClient.get("/api/v1/render-jobs?limit=50");
+        const res = await apiClient.get<ApiResponse<RenderJob[]>>("/api/v1/render-jobs?limit=50");
         if (res.success && Array.isArray(res.data)) {
           setRenderJobs(res.data);
         }
@@ -342,7 +366,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
   useEffect(() => {
     if (!socket) return;
     
-    const handleJobUpdate = (updatedJob: any) => {
+    const handleJobUpdate = (updatedJob: RenderJob) => {
       setRenderJobs((prevJobs) => {
         const exists = prevJobs.some(j => (j._id || j.id) === (updatedJob._id || updatedJob.id));
         if (exists) {
@@ -380,7 +404,10 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
         };
       };
 
-      const parts: any[] = [];
+      const parts: (
+        | { text: string; inlineData?: undefined }
+        | { inlineData: { data: string; mimeType: string }; text?: undefined }
+      )[] = [];
 
       setPromptProgress(30);
       setPromptStatus("Đang xử lý ảnh đầu vào...");
@@ -500,7 +527,7 @@ ${floorplanStylePrompt}- Quy tắc bố cục: giữ nguyên 100% vị trí tư�
       }
 
       let systemInstruction = "";
-      let responseSchema: any = {};
+      let responseSchema: Record<string, unknown> = {};
 
       if (activeSubTab === "Render Ngoại Thất") {
         systemInstruction = `<vai_tro>
@@ -735,7 +762,7 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
         };
       }
 
-      let generationConfig: any = {
+      const generationConfig: Record<string, unknown> = {
         temperature: 1.0,
         responseMimeType: "application/json",
         responseSchema: responseSchema,
@@ -761,20 +788,23 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
       });
 
       try {
-        const jsonStr = response.text?.trim() || "{}";
+        const rawText = typeof response.text === "function" ? response.text() : response.text;
+        const jsonStr = rawText?.trim() || "{}";
         const result = safeJsonParse(jsonStr);
         setPrompt(JSON.stringify(result, null, 2));
         setPromptProgress(100);
         setPromptStatus("Hoàn tất!");
       } catch (parseError) {
         console.error("Error parsing JSON response:", parseError);
-        setPrompt(response.text || "");
+        const rawText = typeof response.text === "function" ? response.text() : response.text;
+        setPrompt(rawText || "");
         setPromptProgress(100);
         setPromptStatus("Hoàn tất!");
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error generating prompt:", error);
-      if (error.message !== "Bạn đã hết Credits. Vui lòng nạp thêm.") {
+      const err = error as Error;
+      if (err.message !== "Bạn đã hết Credits. Vui lòng nạp thêm.") {
         toast.error("Đã xảy ra lỗi khi tạo prompt. Vui lòng thử lại.");
       }
     } finally {
@@ -822,7 +852,7 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
         },
       };
 
-      const jobRes = await apiClient.post("/api/v1/render-jobs", jobData);
+      const jobRes = await apiClient.post<ApiResponse<RenderJob>>("/api/v1/render-jobs", jobData);
       if (!jobRes.success || !jobRes.data) {
         throw new Error("Không thể khởi tạo render job trên server.");
       }
@@ -846,7 +876,7 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
       let finalPrompt = prompt;
       let negativePromptContent = "";
       try {
-        const parsedPrompt = safeJsonParse(prompt);
+        const parsedPrompt = safeJsonParse(prompt) as Record<string, string> | null;
         if (parsedPrompt) {
           const finalPr = parsedPrompt.prompt_tieng_viet_toi_uu || parsedPrompt.optimized_english_prompt;
           if (finalPr) {
@@ -857,7 +887,7 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
             negativePromptContent = negPr;
           }
         }
-      } catch (e) {
+      } catch {
         // Not JSON, use as is
       }
 
@@ -909,7 +939,10 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
       for (let imgIdx = 0; imgIdx < inputsToProcess.length; imgIdx++) {
         const currentInputUrl = inputsToProcess[imgIdx];
 
-        const parts: any[] = [];
+        const parts: (
+          | { text: string; inlineData?: undefined }
+          | { inlineData: { data: string; mimeType: string }; text?: undefined }
+        )[] = [];
         if (currentInputUrl) {
           parts.push({
             text: `
@@ -951,7 +984,11 @@ ${negativePromptContent ? `\n[NEGATIVE PROMPT / STRICT EXCLUSIONS]:\n${negativeP
 
         for (let index = 0; index < numImages; index++) {
           try {
-            const imageConfig: any = {
+            const imageConfig: {
+              aspectRatio: string;
+              imageSize?: string;
+              negativePrompt?: string;
+            } = {
               aspectRatio: apiAspectRatio,
             };
 
@@ -1030,9 +1067,6 @@ ${negativePromptContent ? `\n[NEGATIVE PROMPT / STRICT EXCLUSIONS]:\n${negativeP
     }
   };
 
-  const processFilesNested = async (files: File[]) => {
-    await processFiles(files);
-  };
 
   const processFiles = async (files: File[]) => {
     if (files.length === 0) return;

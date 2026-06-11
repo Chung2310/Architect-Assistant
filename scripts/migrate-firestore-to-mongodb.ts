@@ -24,13 +24,13 @@ async function run() {
   const serviceAccount = JSON.parse(fs.readFileSync(saResolved, "utf8"));
   
   // Đọc databaseId từ firebase-applet-config.json nếu có
-  let databaseId = "(default)";
+  let _databaseId = "(default)";
   try {
     const appletConfig = JSON.parse(fs.readFileSync("./firebase-applet-config.json", "utf8"));
     if (appletConfig.firestoreDatabaseId) {
-      databaseId = appletConfig.firestoreDatabaseId;
+      _databaseId = appletConfig.firestoreDatabaseId;
     }
-  } catch (err) {
+  } catch {
     // Bỏ qua
   }
 

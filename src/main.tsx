@@ -7,7 +7,7 @@ import './index.css';
 // Unregister any existing service workers to prevent AI Studio proxy interception in published app
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(function(registrations) {
-    for(let registration of registrations) {
+    for(const registration of registrations) {
       registration.unregister();
     }
   });

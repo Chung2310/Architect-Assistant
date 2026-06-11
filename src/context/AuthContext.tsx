@@ -1,19 +1,8 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { authService, User } from "../services/authService";
 import { apiClient } from "../services/apiClient";
 import { io, Socket } from "socket.io-client";
-
-interface AuthContextType {
-  user: User | null;
-  loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, displayName: string) => Promise<void>;
-  logout: () => Promise<void>;
-  refreshUser: () => Promise<void>;
-  socket: Socket | null;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+import { AuthContext } from "./useAuth";
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -24,7 +13,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const u = await authService.getMe();
       setUser(u);
-    } catch (error) {
+    } catch {
       setUser(null);
       apiClient.clearAccessToken();
     }
@@ -53,33 +42,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       window.removeEventListener("auth-logout", handleGlobalLogout);
     };
-  }, []);
+  }, [socket]);
 
   // Socket setup based on logged-in user
   useEffect(() => {
-    if (user) {
-      const newSocket = io(window.location.origin, {
-        transports: ["websocket"],
-      });
-
-      newSocket.on("connect", () => {
-        console.log("[Socket] Connected to server");
-        newSocket.emit("join", user._id);
-      });
-
-      setSocket(newSocket);
-
-      return () => {
-        newSocket.disconnect();
-        setSocket(null);
-      };
-    } else {
-      if (socket) {
-        socket.disconnect();
-        setSocket(null);
-      }
+    if (!user) {
+      return;
     }
-  }, [user?._id]);
+
+    const newSocket = io(window.location.origin, {
+      transports: ["websocket"],
+    });
+
+    newSocket.on("connect", () => {
+      console.log("[Socket] Connected to server");
+      newSocket.emit("join", user._id);
+    });
+
+    setTimeout(() => {
+      setSocket(newSocket);
+    }, 0);
+
+    return () => {
+      newSocket.disconnect();
+      setTimeout(() => {
+        setSocket(null);
+      }, 0);
+    };
+  }, [user]);
 
   const login = async (email: string, password: string) => {
     setLoading(true);
@@ -120,12 +110,4 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
 };

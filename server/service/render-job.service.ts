@@ -54,7 +54,7 @@ export const renderJobService = {
     outputImageUrls?: string[],
     progress?: number
   ): Promise<IRenderJob | null> {
-    const update: any = { status };
+    const update: Record<string, unknown> = { status };
     if (outputImageUrls !== undefined) update.outputImageUrls = outputImageUrls;
     if (progress !== undefined) update.progress = progress;
     return RenderJobModel.findByIdAndUpdate(jobId, update, { new: true });

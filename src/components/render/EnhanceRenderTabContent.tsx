@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-import { motion } from "motion/react";
 import { Icon } from "../Icon";
 import { toast } from "sonner";
-import { useAuth } from "../../context/AuthContext";
-import { apiClient } from "../../services/apiClient";
-import { ImageLibraryModal, getAIClient, safeJsonParse, checkUserCredits, generateContentWithRetry, getImageBase64, handleDownload, cacheImage, scaleToResolution, globalImageCache, uploadMedia } from "../../lib/renderUtils";
+import { useAuth } from "../../context/useAuth";
+import { apiClient, ApiResponse } from "../../services/apiClient";
+import { ImageLibraryModal } from "./ImageLibraryModal";
+import { getAIClient, safeJsonParse, checkUserCredits, generateContentWithRetry, getImageBase64, handleDownload, cacheImage, scaleToResolution, uploadMedia } from "../../lib/renderUtils";
 
 const MODELS = [
   {
@@ -82,6 +82,25 @@ const INTERIOR_LIGHTING_OPTIONS = [
   "Ánh sáng đèn neon hiện đại, cá tính",
 ];
 
+interface RenderJob {
+  _id?: string;
+  id?: string;
+  type: string;
+  status: string;
+  progress?: number;
+  statusMessage?: string;
+  createdAt?: string | { toMillis?: () => number } | null;
+  inputImageUrls?: string[];
+  outputImageUrls?: string[];
+  settings?: {
+    prompt?: string;
+    numImages?: number;
+    aspectRatio?: string;
+    model?: string;
+    resolution?: string;
+  };
+}
+
 export const EnhanceRenderTabContent: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState("Cải Thiện Ngoại Thất");
   const [customPrompt, setCustomPrompt] = useState("");
@@ -115,33 +134,35 @@ export const EnhanceRenderTabContent: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isRendering, setIsRendering] = useState(false);
 
-  const [renderJobs, setRenderJobs] = useState<any[]>([]);
+  const [renderJobs, setRenderJobs] = useState<RenderJob[]>([]);
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
   const [smoothProgress, setSmoothProgress] = useState<{
     [jobId: string]: number;
   }>({});
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
-  const [jobToDelete, setJobToDelete] = useState<any | null>(null);
-  const sessionStartTimeMs = useRef(Date.now());
+  const [jobToDelete, setJobToDelete] = useState<RenderJob | null>(null);
+  const [sessionStartTimeMs] = useState(() => Date.now());
 
-  const isCurrentSession = (job: any) => {
+  const isCurrentSession = (job: RenderJob) => {
     if (!job.createdAt) return true;
-    const jobTimeMs = job.createdAt.toMillis
+    const jobTimeMs = (typeof job.createdAt === "object" && job.createdAt && "toMillis" in job.createdAt && typeof job.createdAt.toMillis === "function")
       ? job.createdAt.toMillis()
-      : new Date(job.createdAt).getTime();
-    return jobTimeMs >= sessionStartTimeMs.current;
+      : new Date(job.createdAt as string).getTime();
+    return jobTimeMs >= sessionStartTimeMs;
   };
 
   useEffect(() => {
     // Reset states when switching sub-tabs
-    setInputImages([]);
-    setCustomPrompt("");
-    setContextOption(".... (Tự nhập prompt)");
-    setLightingOption(".... (Tự nhập prompt)");
-    setInteriorRoomType(".... (Tự nhập prompt)");
-    setInteriorStyle(".... (Tự nhập prompt)");
-    setInteriorLighting(".... (Tự nhập prompt)");
-    setPrompt("");
+    setTimeout(() => {
+      setInputImages([]);
+      setCustomPrompt("");
+      setContextOption(".... (Tự nhập prompt)");
+      setLightingOption(".... (Tự nhập prompt)");
+      setInteriorRoomType(".... (Tự nhập prompt)");
+      setInteriorStyle(".... (Tự nhập prompt)");
+      setInteriorLighting(".... (Tự nhập prompt)");
+      setPrompt("");
+    }, 0);
   }, [activeSubTab]);
 
   useEffect(() => {
@@ -153,11 +174,8 @@ export const EnhanceRenderTabContent: React.FC = () => {
       if (lightingOption && lightingOption !== ".... (Tự nhập prompt)")
         parts.push(lightingOption);
 
-      if (parts.length > 0) {
-        setPrompt(`Ảnh chụp thực tế công trình, ${parts.join(", ")}`);
-      } else {
-        setPrompt("");
-      }
+      const computedPrompt = parts.length > 0 ? `Ảnh chụp thực tế công trình, ${parts.join(", ")}` : "";
+      setTimeout(() => setPrompt(computedPrompt), 0);
     } else {
       if (customPrompt) parts.push(customPrompt);
       if (interiorRoomType && interiorRoomType !== ".... (Tự nhập prompt)")
@@ -167,11 +185,8 @@ export const EnhanceRenderTabContent: React.FC = () => {
       if (interiorLighting && interiorLighting !== ".... (Tự nhập prompt)")
         parts.push(interiorLighting);
 
-      if (parts.length > 0) {
-        setPrompt(`Ảnh chụp thực tế nội thất căn phòng, ${parts.join(", ")}`);
-      } else {
-        setPrompt("");
-      }
+      const computedPrompt = parts.length > 0 ? `Ảnh chụp thực tế nội thất căn phòng, ${parts.join(", ")}` : "";
+      setTimeout(() => setPrompt(computedPrompt), 0);
     }
   }, [
     customPrompt,
@@ -223,13 +238,13 @@ export const EnhanceRenderTabContent: React.FC = () => {
 
   useEffect(() => {
     if (!user) {
-      setRenderJobs([]);
+      setTimeout(() => setRenderJobs([]), 0);
       return;
     }
 
     const fetchJobs = async () => {
       try {
-        const res = await apiClient.get(`/api/v1/render-jobs?type=${encodeURIComponent(activeSubTab)}&limit=50`);
+        const res = await apiClient.get<ApiResponse<RenderJob[]>>(`/api/v1/render-jobs?type=${encodeURIComponent(activeSubTab)}&limit=50`);
         if (res.success && Array.isArray(res.data)) {
           setRenderJobs(res.data);
         }
@@ -243,7 +258,7 @@ export const EnhanceRenderTabContent: React.FC = () => {
   useEffect(() => {
     if (!socket) return;
     
-    const handleJobUpdate = (updatedJob: any) => {
+    const handleJobUpdate = (updatedJob: RenderJob) => {
       if (updatedJob.type !== activeSubTab) return;
       setRenderJobs((prevJobs) => {
         const exists = prevJobs.some(j => (j._id || j.id) === (updatedJob._id || updatedJob.id));
@@ -308,7 +323,7 @@ export const EnhanceRenderTabContent: React.FC = () => {
         await apiClient.delete("/api/v1/media", {
           body: { publicId: urlToDelete }
         });
-      } catch (error: any) {
+      } catch (error) {
         console.error("Error deleting image from Cloudinary:", error);
       }
     }
@@ -338,7 +353,7 @@ export const EnhanceRenderTabContent: React.FC = () => {
     }
   };
 
-  const handleDeleteJob = async (job: any) => {
+  const handleDeleteJob = async (job: RenderJob) => {
     try {
       const jobId = job._id || job.id;
       await apiClient.delete(`/api/v1/render-jobs/${jobId}`);
@@ -396,7 +411,7 @@ export const EnhanceRenderTabContent: React.FC = () => {
         },
       };
 
-      const jobRes = await apiClient.post("/api/v1/render-jobs", jobData);
+      const jobRes = await apiClient.post<ApiResponse<RenderJob>>("/api/v1/render-jobs", jobData);
       if (!jobRes.success || !jobRes.data) {
         throw new Error("Không thể khởi tạo render job trên server.");
       }
@@ -412,7 +427,7 @@ export const EnhanceRenderTabContent: React.FC = () => {
       else if (aspectRatio.includes("3:4")) apiAspectRatio = "3:4";
       else if (aspectRatio.includes("21:9")) apiAspectRatio = "21:9";
 
-      const parts: any[] = [];
+      const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [];
 
       const getImagePart = async (url: string) => {
         const imageData = await getImageBase64(url, true);
@@ -450,7 +465,7 @@ export const EnhanceRenderTabContent: React.FC = () => {
 
       for (let index = 0; index < numImages; index++) {
         try {
-          const imageConfig: any = {
+          const imageConfig: Record<string, unknown> = {
             aspectRatio: apiAspectRatio,
           };
 
@@ -551,7 +566,7 @@ export const EnhanceRenderTabContent: React.FC = () => {
         };
       };
 
-      const parts: any[] = [];
+      const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [];
       setPromptProgress(30);
       setPromptStatus("Đang xử lý ảnh đầu vào...");
 
@@ -626,15 +641,17 @@ Trả về một đối tượng JSON có định dạng sau:
       });
 
       try {
-        const jsonStr = response.text?.trim() || "{}";
+        const rawText = typeof response.text === "function" ? response.text() : response.text;
+        const jsonStr = rawText?.trim() || "{}";
         const result = safeJsonParse(jsonStr);
-        setPrompt(result.optimized_english_prompt || response.text || "");
+        setPrompt((result as Record<string, string>).optimized_english_prompt || rawText || "");
         setPromptProgress(100);
         setPromptStatus("Hoàn tất!");
         toast.success("Đã tối ưu hóa prompt thành công!");
       } catch (parseError) {
         console.error("Error parsing JSON response:", parseError);
-        setPrompt(response.text || "");
+        const rawText = typeof response.text === "function" ? response.text() : response.text;
+        setPrompt(rawText || "");
         setPromptProgress(100);
         setPromptStatus("Hoàn tất!");
       }

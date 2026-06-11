@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from './Icon';
-import { apiClient } from '../services/apiClient';
-import { useAuth } from '../context/AuthContext';
+import { apiClient, ApiResponse } from '../services/apiClient';
+import { useAuth } from '../context/useAuth';
 import { toast } from 'sonner';
 
 interface User {
@@ -12,6 +12,15 @@ interface User {
   createdAt: string;
   apiKey?: string;
   credits?: number;
+}
+
+interface Transaction {
+  _id: string;
+  userId: string | { _id: string; email: string; displayName?: string };
+  amount: number;
+  type: string;
+  description?: string;
+  createdAt: string;
 }
 
 export const AdminPanel: React.FC = () => {
@@ -25,7 +34,7 @@ export const AdminPanel: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [editingCreditsUser, setEditingCreditsUser] = useState<User | null>(null);
   const [creditChangeAmount, setCreditChangeAmount] = useState<string>('');
-  const [transactions, setTransactions] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -44,32 +53,35 @@ export const AdminPanel: React.FC = () => {
 
       try {
         // 1. Tải danh sách người dùng
-        const usersRes = await apiClient.get('/api/v1/users?limit=1000');
+        const usersRes = await apiClient.get<ApiResponse<{ users: User[] }>>('/api/v1/users?limit=1000');
         if (usersRes.success && usersRes.data?.users) {
           setUsers(usersRes.data.users);
         }
 
         // 2. Tải danh sách render jobs để đếm số lượng
-        const jobsRes = await apiClient.get('/api/v1/render-jobs/all?limit=10000');
+        const jobsRes = await apiClient.get<ApiResponse<{ jobs: { userId?: string | { _id?: string } }[] }>>('/api/v1/render-jobs/all?limit=10000');
         if (jobsRes.success && Array.isArray(jobsRes.data?.jobs)) {
           const counts: Record<string, number> = {};
-          jobsRes.data.jobs.forEach((job: any) => {
+          jobsRes.data.jobs.forEach((job) => {
             if (job.userId) {
-              const uId = typeof job.userId === 'object' ? job.userId._id || job.userId : job.userId;
-              counts[uId] = (counts[uId] || 0) + 1;
+              const uId = typeof job.userId === 'object' ? job.userId._id || '' : job.userId;
+              if (uId) {
+                counts[uId] = (counts[uId] || 0) + 1;
+              }
             }
           });
           setImageCounts(counts);
         }
 
         // 3. Tải danh sách transactions
-        const txRes = await apiClient.get('/api/v1/users/transactions?limit=10000');
+        const txRes = await apiClient.get<ApiResponse<{ transactions: Transaction[] }>>('/api/v1/users/transactions?limit=10000');
         if (txRes.success && Array.isArray(txRes.data?.transactions)) {
           setTransactions(txRes.data.transactions);
         }
-      } catch (error: any) {
+      } catch (error) {
         console.error("Error loading admin data:", error);
-        toast.error(error.message || 'Lỗi khi tải dữ liệu');
+        const errMsg = error instanceof Error ? error.message : String(error);
+        toast.error(errMsg || 'Lỗi khi tải dữ liệu');
       } finally {
         setLoading(false);
       }
@@ -91,8 +103,9 @@ export const AdminPanel: React.FC = () => {
       await apiClient.patch(`/api/v1/users/${userId}/role`, { role: newRole });
       setUsers(users.map(u => u._id === userId ? { ...u, role: newRole } : u));
       toast.success('Đã cập nhật vai trò');
-    } catch (error: any) {
-      toast.error(error.message || 'Lỗi khi cập nhật vai trò');
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      toast.error(errMsg || 'Lỗi khi cập nhật vai trò');
     }
   };
 
@@ -103,8 +116,9 @@ export const AdminPanel: React.FC = () => {
       setUsers(users.filter(u => u._id !== userId));
       toast.success('Đã xoá người dùng và toàn bộ dữ liệu liên quan thành công.');
       setDeletingUser(null);
-    } catch (error: any) {
-      toast.error(error.message || 'Lỗi khi xoá người dùng');
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      toast.error(errMsg || 'Lỗi khi xoá người dùng');
     } finally {
       setIsDeleting(false);
     }
@@ -126,8 +140,9 @@ export const AdminPanel: React.FC = () => {
       setUsers(users.map(u => u._id === editingUser._id ? { ...u, apiKey: editKeys.apiKey } : u));
       setEditingUser(null);
       toast.success('Đã cập nhật API Keys');
-    } catch (error: any) {
-      toast.error(error.message || 'Lỗi khi cập nhật API Keys');
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      toast.error(errMsg || 'Lỗi khi cập nhật API Keys');
     }
   };
 
@@ -140,7 +155,7 @@ export const AdminPanel: React.FC = () => {
     }
 
     try {
-      const res = await apiClient.patch(`/api/v1/users/${editingCreditsUser._id}/credits`, {
+      const res = await apiClient.patch<ApiResponse<User>>(`/api/v1/users/${editingCreditsUser._id}/credits`, {
         amount: amount
       });
       
@@ -149,7 +164,7 @@ export const AdminPanel: React.FC = () => {
         setUsers(users.map(u => u._id === editingCreditsUser._id ? { ...u, credits: updatedUser.credits } : u));
         
         // Refresh transactions list
-        const txRes = await apiClient.get('/api/v1/users/transactions?limit=10000');
+        const txRes = await apiClient.get<ApiResponse<{ transactions: Transaction[] }>>('/api/v1/users/transactions?limit=10000');
         if (txRes.success && Array.isArray(txRes.data?.transactions)) {
           setTransactions(txRes.data.transactions);
         }
@@ -158,8 +173,9 @@ export const AdminPanel: React.FC = () => {
         setCreditChangeAmount('');
         toast.success(`Đã cập nhật Credits thành công. Số dư mới: ${updatedUser.credits}`);
       }
-    } catch (error: any) {
-      toast.error(error.message || 'Lỗi khi cập nhật Credits');
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      toast.error(errMsg || 'Lỗi khi cập nhật Credits');
     }
   };
 

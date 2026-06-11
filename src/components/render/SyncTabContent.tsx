@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef } from "react";
 import { Icon } from "../Icon";
 import { toast } from "sonner";
 import Markdown from "react-markdown";
-import { useAuth } from "../../context/AuthContext";
-import { apiClient } from "../../services/apiClient";
-import { ImageLibraryModal, getAIClient, checkUserCredits, generateContentWithRetry, getImageBase64, cacheImage, scaleToResolution, safeJsonParse, uploadMedia } from "../../lib/renderUtils";
+import { useAuth } from "../../context/useAuth";
+import { apiClient, ApiResponse } from "../../services/apiClient";
+import { ImageLibraryModal } from "./ImageLibraryModal";
+import { getAIClient, checkUserCredits, generateContentWithRetry, getImageBase64, cacheImage, scaleToResolution, safeJsonParse, uploadMedia } from "../../lib/renderUtils";
 
 interface AngleSuggestion {
   id: string;
@@ -17,7 +18,7 @@ interface AngleSuggestion {
   generationProgress?: number;
   generationStatus?: string;
   _lastTranslatedTitle?: string;
-  _timeoutId?: any;
+  _timeoutId?: number | NodeJS.Timeout | null;
   isUpdatingPrompt?: boolean;
 }
 
@@ -25,6 +26,23 @@ interface AngleCategory {
   name: string;
   suggestions: AngleSuggestion[];
   isExpanded?: boolean;
+}
+
+interface RenderJob {
+  _id?: string;
+  id?: string;
+  type?: string;
+  status: string;
+  progress?: number;
+  statusMessage?: string;
+  createdAt?: string | { toMillis?: () => number } | null;
+  inputImageUrls?: string[];
+  outputImageUrls?: string[];
+  settings?: {
+    prompt?: string;
+    model?: string;
+    suggestionText?: string;
+  };
 }
 
 const MODELS = [
@@ -48,7 +66,7 @@ const RESOLUTIONS = [
 export const SyncTabContent: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState("Đồng Bộ Công Trình");
   const [inputImage, setInputImage] = useState<string | null>(null);
-  const [inputImageBase64, setInputImageBase64] = useState<string | null>(null);
+  const [_inputImageBase64, setInputImageBase64] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
@@ -65,26 +83,26 @@ export const SyncTabContent: React.FC = () => {
     "input" | "context" | "character"
   >("input");
   const [isDragging, setIsDragging] = useState(false);
-  const [renderJobs, setRenderJobs] = useState<any[]>([]);
-  const [jobToDelete, setJobToDelete] = useState<any | null>(null);
+  const [renderJobs, setRenderJobs] = useState<RenderJob[]>([]);
+  const [jobToDelete, setJobToDelete] = useState<RenderJob | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { user, socket } = useAuth();
 
   useEffect(() => {
     if (!user) {
-      setRenderJobs([]);
+      setTimeout(() => setRenderJobs([]), 0);
       return;
     }
 
     const fetchJobs = async () => {
       try {
-        const res = await apiClient.get(`/api/v1/render-jobs?type=${encodeURIComponent(activeSubTab)}&limit=50`);
+        const res = await apiClient.get<ApiResponse<RenderJob[]>>(`/api/v1/render-jobs?type=${encodeURIComponent(activeSubTab)}&limit=50`);
         if (res.success && Array.isArray(res.data)) {
           const jobs = res.data;
-          jobs.sort((a: any, b: any) => {
-            const timeA = new Date(a.createdAt || 0).getTime();
-            const timeB = new Date(b.createdAt || 0).getTime();
+          jobs.sort((a: RenderJob, b: RenderJob) => {
+            const timeA = new Date(typeof a.createdAt === "string" ? a.createdAt : 0).getTime();
+            const timeB = new Date(typeof b.createdAt === "string" ? b.createdAt : 0).getTime();
             return timeB - timeA;
           });
           setRenderJobs(jobs);
@@ -99,19 +117,16 @@ export const SyncTabContent: React.FC = () => {
   useEffect(() => {
     if (!socket) return;
     
-    const handleJobUpdate = (updatedJob: any) => {
+    const handleJobUpdate = (updatedJob: RenderJob) => {
       if (updatedJob.type !== activeSubTab) return;
       setRenderJobs((prevJobs) => {
         const exists = prevJobs.some(j => (j._id || j.id) === (updatedJob._id || updatedJob.id));
-        let newJobs = prevJobs;
-        if (exists) {
-          newJobs = prevJobs.map(j => (j._id || j.id) === (updatedJob._id || updatedJob.id) ? updatedJob : j);
-        } else {
-          newJobs = [updatedJob, ...prevJobs];
-        }
-        return [...newJobs].sort((a: any, b: any) => {
-          const timeA = new Date(a.createdAt || 0).getTime();
-          const timeB = new Date(b.createdAt || 0).getTime();
+        const newJobs = exists
+          ? prevJobs.map(j => (j._id || j.id) === (updatedJob._id || updatedJob.id) ? updatedJob : j)
+          : [updatedJob, ...prevJobs];
+        return [...newJobs].sort((a: RenderJob, b: RenderJob) => {
+          const timeA = new Date(typeof a.createdAt === "string" ? a.createdAt : 0).getTime();
+          const timeB = new Date(typeof b.createdAt === "string" ? b.createdAt : 0).getTime();
           return timeB - timeA;
         });
       });
@@ -209,15 +224,17 @@ export const SyncTabContent: React.FC = () => {
   const [isDraggingCharacter, setIsDraggingCharacter] = useState(false);
 
   useEffect(() => {
-    setInputImage(null);
-    setInputImageBase64(null);
-    setAnalysisResult(null);
-    setAnalysisCategories(null);
-    setCharacterContextImages([]);
-    setCharacterProvideType("upload");
-    setCharacterImage(null);
-    setCharacterPrompt("");
-    setSyncResults([]);
+    setTimeout(() => {
+      setInputImage(null);
+      setInputImageBase64(null);
+      setAnalysisResult(null);
+      setAnalysisCategories(null);
+      setCharacterContextImages([]);
+      setCharacterProvideType("upload");
+      setCharacterImage(null);
+      setCharacterPrompt("");
+      setSyncResults([]);
+    }, 0);
   }, [activeSubTab]);
 
   const handleContextDragOver = (e: React.DragEvent) => {
@@ -234,7 +251,7 @@ export const SyncTabContent: React.FC = () => {
     e.preventDefault();
     setIsDraggingContext(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      Array.from(e.dataTransfer.files).forEach((file: any) => {
+      Array.from(e.dataTransfer.files).forEach((file: File) => {
         if (!file.type.startsWith("image/")) return;
         const reader = new FileReader();
         reader.onload = (ev) => {
@@ -282,7 +299,7 @@ export const SyncTabContent: React.FC = () => {
     const files = event.target.files;
     if (!files) return;
 
-    Array.from(files).forEach((file: any) => {
+    Array.from(files).forEach((file: File) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         if (e.target?.result) {
@@ -405,6 +422,7 @@ export const SyncTabContent: React.FC = () => {
     setSyncResults([]);
     setSyncProgress(0);
 
+    const numImages = characterContextImages.length;
     const startTime = Date.now();
     const expectedDuration = characterContextImages.length * 15000;
     const progressInterval = setInterval(() => {
@@ -453,8 +471,7 @@ export const SyncTabContent: React.FC = () => {
       if (characterAspectRatio === "4:3") aspectRatio = "4:3";
       if (characterAspectRatio === "3:4") aspectRatio = "3:4";
 
-      const numImages = characterContextImages.length;
-      const taskProgress: any = [];
+      const taskProgress: number[] = [];
 
       const uploadedInputImages = await uploadInputImagesPromise;
       const uploadedCharImage = uploadedInputImages[0];
@@ -507,7 +524,10 @@ User Request: ${userAction}`;
           const negativePromptText =
             "mutated hands, extra fingers, deformed face, morphed identity, mismatched lighting, flat lighting, floating subject, missing cast shadows, incorrect perspective, wrong scale, giant person, tiny person, clipping through objects, unnatural skin tone, cartoon, illustration, heavy vignette, distorted architecture, blurry subject, artificial outline, green screen edges.";
 
-          const parts: any[] = [
+          const parts: (
+            | { inlineData: { data: string; mimeType: string }; text?: undefined }
+            | { text: string; inlineData?: undefined }
+          )[] = [
             {
               inlineData: {
                 data: ctxImageData.base64Data,
@@ -525,7 +545,11 @@ User Request: ${userAction}`;
             },
           ];
 
-          const imageConfig: any = {
+          const imageConfig: {
+            aspectRatio: string;
+            imageSize?: string;
+            negativePrompt?: string;
+          } = {
             aspectRatio:
               characterAspectRatio === "Tự động" ? "1:1" : aspectRatio,
           };
@@ -661,9 +685,10 @@ User Request: ${userAction}`;
       } else {
         toast.error("Có lỗi xảy ra khi lưu ảnh.");
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error syncing character:", error);
-      toast.error(error.message || "Đã có lỗi xảy ra khi đồng bộ.");
+      const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra khi đồng bộ.";
+      toast.error(errMsg);
     } finally {
       clearInterval(progressInterval);
       setTimeout(() => {
@@ -681,7 +706,7 @@ User Request: ${userAction}`;
         await apiClient.delete("/api/v1/media", {
           body: { publicId: urlToDelete }
         });
-      } catch (error: any) {
+      } catch (error) {
         console.error("Error deleting image from Cloudinary:", error);
       }
     }
@@ -724,7 +749,7 @@ User Request: ${userAction}`;
         await apiClient.delete("/api/v1/media", {
           body: { publicId: inputImage }
         });
-      } catch (error: any) {
+      } catch (error) {
         console.error("Error deleting image from Cloudinary:", error);
       }
     }
@@ -769,12 +794,7 @@ User Request: ${userAction}`;
           body: { publicId: suggestion.generatedImage }
         }).catch(console.error);
       }
-      if (suggestion.generatedImage2 && suggestion.generatedImage2.includes("cloudinary.com")) {
-        await apiClient.delete("/api/v1/media", {
-          body: { publicId: suggestion.generatedImage2 }
-        }).catch(console.error);
-      }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error deleting image:", error);
     }
 
@@ -812,10 +832,12 @@ User Request: ${userAction}`;
       (async () => {
         try {
           const ai = await getAIClient("gemini-3.1-pro-preview");
-          let parsedText: any = {};
+          let parsedText: { hidden_api_prompt_en?: string; display_title_vi?: string } = {};
           try {
             parsedText = JSON.parse(suggestion.text);
-          } catch (e) {}
+          } catch {
+            // Ignore JSON parse error
+          }
 
           const promptText = `I have updated the Vietnamese title for an architectural visualization camera angle. 
 New Vietnamese Title: "${currentTitle}".
@@ -833,8 +855,9 @@ Output strictly JSON: { "hidden_api_prompt_en": "new english prompt here" }`;
             },
           });
 
+          const rawText = typeof result.text === "function" ? result.text() : result.text;
           const newJsonString =
-            result.text?.replace(/```json\n?|\n?```/g, "").trim() || "{}";
+            rawText?.replace(/```json\n?|\n?```/g, "").trim() || "{}";
           const newJson = JSON.parse(newJsonString);
 
           if (newJson && newJson.hidden_api_prompt_en) {
@@ -842,7 +865,7 @@ Output strictly JSON: { "hidden_api_prompt_en": "new english prompt here" }`;
             setAnalysisCategories((latest) => {
               if (!latest) return latest;
               const cats = [...latest];
-              let pText = cats[catIndex].suggestions[sugIndex].text;
+              const pText = cats[catIndex].suggestions[sugIndex].text;
               try {
                 const pObj = JSON.parse(pText);
                 pObj.hidden_api_prompt_en = newJson.hidden_api_prompt_en;
@@ -854,7 +877,9 @@ Output strictly JSON: { "hidden_api_prompt_en": "new english prompt here" }`;
                 );
                 cats[catIndex].suggestions[sugIndex]._lastTranslatedTitle =
                   currentTitle;
-              } catch (e) {}
+              } catch {
+                // Ignore JSON parse error
+              }
               cats[catIndex].suggestions[sugIndex].isUpdatingPrompt = false;
               return cats;
             });
@@ -959,7 +984,7 @@ Output strictly JSON: { "hidden_api_prompt_en": "new english prompt here" }`;
         if (parsedNode && parsedNode.hidden_api_prompt_en) {
           promptInstruction = parsedNode.hidden_api_prompt_en;
         }
-      } catch (err) {
+      } catch {
         // use raw
       }
 
@@ -968,7 +993,7 @@ Keep the core subject (building/character) exactly the same as in the original i
       const selectedModel =
         suggestion.selectedModel || "gemini-3.1-flash-image-preview";
 
-      let generatedImageUrls: string[] = [];
+      const generatedImageUrls: string[] = [];
 
       updateStatus(10, "Đang gửi yêu cầu đến AI...");
 
@@ -999,7 +1024,19 @@ Keep the core subject (building/character) exactly the same as in the original i
 
       updateStatus(50, "Đang nhận dữ liệu từ AI...");
 
-      const processResult = async (result: any) => {
+      const processResult = async (res: unknown) => {
+        const result = res as {
+          candidates?: {
+            content?: {
+              parts?: {
+                inlineData?: {
+                  data: string;
+                  mimeType?: string;
+                };
+              }[];
+            };
+          }[];
+        };
         for (const part of result.candidates?.[0]?.content?.parts || []) {
           if (part.inlineData) {
             const b64 = part?.inlineData?.data;
@@ -1025,7 +1062,7 @@ Keep the core subject (building/character) exactly the same as in the original i
 
       if (generatedImageUrls.length > 0) {
         const jobData = {
-          userId: user._id,
+          userId: user?._id,
           type: "Đồng Bộ Công Trình",
           inputImageUrls: [inputImage],
           outputImageUrls: generatedImageUrls,
@@ -1081,7 +1118,7 @@ Keep the core subject (building/character) exactly the same as in the original i
     setAnalysisResult(null);
     setAnalysisCategories(null);
 
-    let progressInterval: any;
+    let progressInterval: NodeJS.Timeout | number | undefined = undefined;
 
     try {
       setAnalyzeProgress(10);
@@ -1108,7 +1145,7 @@ Keep the core subject (building/character) exactly the same as in the original i
 
       let promptText = "";
       let systemInstruction = undefined;
-      let generationConfig: any = {
+      let generationConfig: Record<string, unknown> = {
         responseMimeType: "application/json",
       };
 
@@ -1222,7 +1259,7 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
         });
       }, 500);
 
-      const apiParams: any = {
+      const apiParams: Record<string, unknown> = {
         model: promptModel,
         contents: [{ role: "user", parts: [imagePart, { text: promptText }] }],
         config: generationConfig,
@@ -1240,12 +1277,13 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
 
       if (result.text) {
         try {
-          const jsonString = result.text
+          const rawText = typeof result.text === "function" ? result.text() : result.text;
+          const jsonString = (rawText || "")
             .replace(/```json\n?|\n?```/g, "")
             .trim();
           const parsed = safeJsonParse(jsonString);
 
-          let categories = parsed.categories;
+          let categories = (parsed as Record<string, unknown> | null)?.categories;
           if (!categories && Array.isArray(parsed)) {
             categories = parsed;
           }
@@ -1255,28 +1293,41 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
             Array.isArray(categories) &&
             categories.length > 0
           ) {
-            const formattedCategories: AngleCategory[] = categories.map(
-              (cat: any) => ({
+            interface ParsedShot {
+              display_title_vi?: string;
+              hidden_api_prompt_en?: string;
+              text?: string;
+            }
+            interface ParsedCategory {
+              name?: string;
+              category_name?: string;
+              suggestions?: (ParsedShot | string)[];
+              shots?: ParsedShot[];
+            }
+            const formattedCategories: AngleCategory[] = (categories as ParsedCategory[]).map(
+              (cat) => ({
                 name: cat.name || cat.category_name || "Góc chụp",
                 isExpanded: true,
-                suggestions: (cat.suggestions || cat.shots || []).map(
-                  (sug: any) => ({
-                    id: Math.random().toString(36).substring(7),
-                    title: sug.display_title_vi || "",
-                    _lastTranslatedTitle: sug.display_title_vi || "",
-                    text: JSON.stringify(
-                      {
-                        display_title_vi: sug.display_title_vi || "",
-                        hidden_api_prompt_en:
-                          sug.hidden_api_prompt_en ||
-                          sug.text ||
-                          (typeof sug === "string" ? sug : ""),
-                      },
-                      null,
-                      2,
-                    ),
-                    selectedModel: "gemini-3.1-flash-image-preview",
-                  }),
+                suggestions: ((cat.suggestions || cat.shots || []) as (ParsedShot | string)[]).map(
+                  (sug) => {
+                    const isStr = typeof sug === "string";
+                    const displayTitle = isStr ? "" : (sug.display_title_vi || "");
+                    const hiddenPrompt = isStr ? sug : (sug.hidden_api_prompt_en || sug.text || "");
+                    return {
+                      id: Math.random().toString(36).substring(7),
+                      title: displayTitle,
+                      _lastTranslatedTitle: displayTitle,
+                      text: JSON.stringify(
+                        {
+                          display_title_vi: displayTitle,
+                          hidden_api_prompt_en: hiddenPrompt,
+                        },
+                        null,
+                        2,
+                      ),
+                      selectedModel: "gemini-3.1-flash-image-preview",
+                    };
+                  }
                 ),
               }),
             );
@@ -1587,7 +1638,7 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                                                 2,
                                               );
                                             }
-                                          } catch (err) {
+                                          } catch {
                                             // Ignore
                                           }
 
@@ -1609,7 +1660,7 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                                               catIndex,
                                               sugIndex,
                                             );
-                                          }, 1500) as any;
+                                          }, 1500);
 
                                           setAnalysisCategories(newCats);
                                         }}
@@ -1620,11 +1671,11 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                                           )
                                         }
                                         disabled={
-                                          (suggestion as any).isUpdatingPrompt
+                                          suggestion.isUpdatingPrompt
                                         }
                                         title="Bạn có thể sửa tiêu đề này, AI sẽ tự động điều chỉnh câu lệnh tạo ảnh tương ứng."
                                       />
-                                      {(suggestion as any).isUpdatingPrompt && (
+                                      {suggestion.isUpdatingPrompt && (
                                         <div className="flex items-center gap-2 pr-2">
                                           <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0"></div>
                                           <span className="text-xs text-primary font-medium animate-pulse">
@@ -1656,7 +1707,7 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                                             ].title =
                                               parsedText.display_title_vi;
                                           }
-                                        } catch (err) {
+                                        } catch {
                                           // Ignore
                                         }
                                         setAnalysisCategories(newCats);
@@ -1704,11 +1755,9 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                                         }
                                         disabled={
                                           suggestion.isGenerating ||
-                                          (suggestion as any)
-                                            .isUpdatingPrompt ||
+                                          suggestion.isUpdatingPrompt ||
                                           suggestion.title !==
-                                            (suggestion as any)
-                                              ._lastTranslatedTitle
+                                            suggestion._lastTranslatedTitle
                                         }
                                         className="bg-[#00BCD4]/10 text-[#00BCD4] hover:bg-[#00BCD4]/20 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden"
                                       >
@@ -2651,7 +2700,7 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                             await apiClient.delete("/api/v1/media", {
                               body: { publicId: url }
                             });
-                          } catch (error: any) {
+                          } catch (error) {
                             console.error("Error deleting image from Cloudinary:", error);
                           }
                         }

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Icon } from './Icon';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { useNavigate } from 'react-router-dom';
 
-export const Login: React.FC<{ onNavigate: (screen: string) => void }> = ({ onNavigate }) => {
+export const Login: React.FC<{ onNavigate: (screen: string) => void }> = ({ onNavigate: _onNavigate }) => {
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,9 +31,10 @@ export const Login: React.FC<{ onNavigate: (screen: string) => void }> = ({ onNa
         await login(email, password);
       }
       navigate('/home');
-    } catch (err: any) {
+    } catch (err) {
       console.error("Auth error:", err);
-      setError(err.message || "Đăng nhập hoặc đăng ký thất bại. Vui lòng kiểm tra lại thông tin.");
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setError(errMsg || "Đăng nhập hoặc đăng ký thất bại. Vui lòng kiểm tra lại thông tin.");
     }
   };
 
