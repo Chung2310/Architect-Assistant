@@ -8,11 +8,11 @@ COPY package.json package-lock.json ./
 
 # --ignore-scripts: skip native addon compilation (canvas, etc.)
 # The builder stage only runs `vite build` — no native modules needed.
-RUN npm ci --ignore-scripts
+RUN yarn install --frozen-lockfile --ignore-scripts
 
 # Copy source and build the frontend bundle
 COPY . .
-RUN npm run build
+RUN yarn run build
 
 # ─── Stage 2: Production Runner ──────────────────────────────────────────────
 FROM node:22-alpine AS runner
@@ -49,7 +49,7 @@ COPY --from=builder /app/tsconfig.json ./
 
 # Install all deps including native compilation of canvas
 COPY --from=builder /app/package.json /app/package-lock.json ./
-RUN npm ci
+RUN yarn install
 
 # Remove build tools to reduce final image size
 RUN apk del python3 py3-setuptools make g++ pkgconf \
@@ -64,4 +64,4 @@ RUN apk add --no-cache \
     librsvg \
     pixman
 
-CMD ["npm", "run", "start"]
+CMD ["yarn", "run", "start"]
