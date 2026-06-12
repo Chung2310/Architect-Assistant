@@ -52,6 +52,11 @@ const RenderJobSchema = new Schema<IRenderJob>(
       type: String,
       default: "1K",
     },
+    piapiTaskId: {
+      type: String,
+      default: "",
+      index: true,
+    },
   },
   {
     timestamps: true,

@@ -12,6 +12,9 @@ export const renderJobService = {
     prompt?: string;
     model?: string;
     resolution?: string;
+    status?: string;
+    progress?: number;
+    piapiTaskId?: string;
   }): Promise<IRenderJob> {
     const job = await new RenderJobModel({
       userId: new Types.ObjectId(data.userId),
@@ -21,10 +24,11 @@ export const renderJobService = {
       referenceImageUrls: data.referenceImageUrls || [],
       outputImageUrls: [],
       prompt: data.prompt || "",
-      status: "pending",
-      progress: 0,
+      status: data.status || "pending",
+      progress: data.progress !== undefined ? data.progress : 0,
       model: data.model || "",
       resolution: data.resolution || "1K",
+      piapiTaskId: data.piapiTaskId || "",
     }).save();
     return job;
   },

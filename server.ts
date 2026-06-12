@@ -13,10 +13,14 @@ import { connectDB } from "./server/config/database";
 import { apiRouter } from "./server/router/index";
 import { swaggerDocument } from "./server/swagger/index";
 import { initSocket } from "./server/socket";
+import { pollingService } from "./server/service/polling.service";
 
 async function startServer() {
   // Connect to database
   await connectDB();
+
+  // Initialize background polling for PiAPI
+  pollingService.init();
 
   const app = express();
   const server = createServer(app);

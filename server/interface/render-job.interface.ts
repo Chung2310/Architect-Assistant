@@ -19,6 +19,7 @@ export interface IRenderJob extends Omit<Document, "model"> {
   progress?: number;
   model?: string;
   resolution?: string;
+  piapiTaskId?: string;
   createdAt: Date;
   updatedAt: Date;
 }

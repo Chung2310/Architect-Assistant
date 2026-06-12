@@ -4,6 +4,7 @@ import { authRouter } from "./auth.router";
 import { userRouter } from "./user.router";
 import { renderJobRouter } from "./render-job.router";
 import { mediaRouter } from "./media.router";
+import { piapiRouter } from "./piapi.router";
 
 const router = Router();
 
@@ -12,6 +13,7 @@ router.use("/auth", authRouter);
 router.use("/users", userRouter);
 router.use("/render-jobs", renderJobRouter);
 router.use("/media", mediaRouter);
+router.use("/piapi", piapiRouter);
 
 // Health check endpoint
 router.get("/health", (req, res) => {

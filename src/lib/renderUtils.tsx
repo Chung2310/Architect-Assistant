@@ -860,7 +860,7 @@ export const getImageBase64 = async (
         if (!response.ok) continue;
         const clonedResponse = response.clone();
         const blob = await clonedResponse.blob();
-        
+
         if (blob.type && !blob.type.startsWith("image/")) {
           continue;
         }
@@ -898,7 +898,7 @@ export const getImageBase64 = async (
             reader.readAsDataURL(blob);
           },
         );
-        
+
         if (res.mimeType && res.mimeType.startsWith("image/")) {
           finalMimeType = res.mimeType;
           finalBase64 = res.base64Data;

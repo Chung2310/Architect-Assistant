@@ -2,6 +2,7 @@ import { Response } from "express";
 import { AuthRequest } from "../middleware/auth.middleware";
 import { renderJobService } from "../service/render-job.service";
 import { userService } from "../service/user.service";
+import { piapiService } from "../service/piapi.service";
 import { emitToUser } from "../socket";
 import Joi from "joi";
 
@@ -103,10 +104,55 @@ export const renderJobController = {
         return;
       }
 
+      // Kiểm tra xem đây có phải là model của PiAPI không, tự động map model cũ/Gemini sang piapi-flux
+      const { model, prompt, inputImageUrls, aspectRatio } = req.body;
+      
+      let piapiModel = model || "piapi-flux";
+      if (!piapiModel.startsWith("piapi-") && piapiModel !== "nano-banana-pro" && piapiModel !== "nano-banana-2") {
+        piapiModel = "piapi-flux";
+      }
+
+      let piapiTaskId = "";
+      let status = "pending";
+      let progress = 0;
+
+      let parsedPrompt = prompt || "";
+      try {
+        const parsed = JSON.parse(prompt);
+        parsedPrompt = parsed.prompt_tieng_viet_toi_uu || parsed.optimized_english_prompt || prompt;
+      } catch {
+        // Không phải chuỗi JSON
+      }
+
+      // Tích hợp link ảnh gốc vào prompt đối với Midjourney
+      let finalPrompt = parsedPrompt;
+      if (inputImageUrls && inputImageUrls.length > 0) {
+        finalPrompt = inputImageUrls.join(" ") + " " + finalPrompt;
+      }
+
+      const aspect = aspectRatio || "1:1";
+
+      try {
+        console.log(`[renderJobController] Creating PiAPI task for model: ${piapiModel}`);
+        const taskResult = await piapiService.createImageTask(finalPrompt, piapiModel, { aspectRatio: aspect });
+        piapiTaskId = taskResult.taskId;
+        status = "processing";
+        progress = 10;
+      } catch (apiErr) {
+        console.error("[renderJobController] Failed to create PiAPI task:", apiErr);
+        res.status(500).json({ success: false, message: "Không thể khởi tạo tác vụ trên PiAPI: " + (apiErr as Error).message });
+        return;
+      }
+
       const job = await renderJobService.create({
         userId: req.user!.userId,
         ...req.body,
+        model: piapiModel,
+        status,
+        progress,
+        piapiTaskId,
       });
+
       emitToUser(req.user!.userId, "renderJobUpdated", job);
       res.status(201).json({ success: true, data: job });
     } catch (error) {

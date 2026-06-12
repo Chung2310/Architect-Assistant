@@ -39,6 +39,24 @@ const TABS = [
 
 const MODELS = [
   {
+    id: "piapi-midjourney",
+    name: "Midjourney v6 (PiAPI)",
+    isPro: true,
+  },
+  {
+    id: "piapi-flux",
+    name: "Flux Dev (PiAPI)",
+    isPro: true,
+  },
+  {
+    id: "nano-banana-pro",
+    name: "Nano Banana Pro (PiAPI)",
+    isPro: true,
+  },
+];
+
+const GEMINI_MODELS = [
+  {
     id: "gemini-3.1-flash-image-preview",
     name: "iGen 3.1 Flash Image Preview",
     isPro: true,
@@ -923,6 +941,14 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
     setSmoothRenderProgress(0);
     setResultImage(null);
 
+    // Kiểm tra nếu chọn PiAPI model cho trình chỉnh sửa canvas
+    const isPiapiModel = selectedModel && (selectedModel.startsWith("piapi-") || selectedModel === "nano-banana-pro" || selectedModel === "nano-banana-2");
+    if (isPiapiModel) {
+      toast.error("Trình chỉnh sửa ảnh vẽ đè/canvas hiện chưa hỗ trợ PiAPI. Vui lòng chọn Gemini.");
+      setIsRendering(false);
+      return;
+    }
+
     try {
       setSmoothRenderProgress(10); // Khởi tạo AI Client
 
@@ -1764,7 +1790,7 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
                       value={selectedModel}
                       onChange={(e) => setSelectedModel(e.target.value)}
                     >
-                      {MODELS.map((model) => (
+                      {GEMINI_MODELS.map((model) => (
                         <option key={model.id} value={model.id}>
                           {model.name} {model.isPro ? "(Pro)" : ""}
                         </option>
@@ -2673,7 +2699,7 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
                       value={selectedModel}
                       onChange={(e) => setSelectedModel(e.target.value)}
                     >
-                      {MODELS.map((model) => (
+                      {GEMINI_MODELS.map((model) => (
                         <option key={model.id} value={model.id}>
                           {model.name} {model.isPro ? "(Pro)" : ""}
                         </option>
@@ -3184,7 +3210,7 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
                       value={selectedModel}
                       onChange={(e) => setSelectedModel(e.target.value)}
                     >
-                      {MODELS.map((model) => (
+                      {GEMINI_MODELS.map((model) => (
                         <option key={model.id} value={model.id}>
                           {model.name} {model.isPro ? "(Pro)" : ""}
                         </option>
@@ -3665,7 +3691,7 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
                       value={selectedModel}
                       onChange={(e) => setSelectedModel(e.target.value)}
                     >
-                      {MODELS.map((model) => (
+                      {GEMINI_MODELS.map((model) => (
                         <option key={model.id} value={model.id}>
                           {model.name} {model.isPro ? "(Pro)" : ""}
                         </option>
@@ -3971,7 +3997,7 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
                       value={selectedModel}
                       onChange={(e) => setSelectedModel(e.target.value)}
                     >
-                      {MODELS.map((model) => (
+                      {GEMINI_MODELS.map((model) => (
                         <option key={model.id} value={model.id}>
                           {model.name} {model.isPro ? "(Pro)" : ""}
                         </option>
@@ -4839,7 +4865,7 @@ Nhiệm vụ của bạn là chuyển đổi hình ảnh tham khảo của tòa 
                   value={selectedModel}
                   onChange={(e) => setSelectedModel(e.target.value)}
                 >
-                  {MODELS.map((model) => (
+                  {GEMINI_MODELS.map((model) => (
                     <option key={model.id} value={model.id}>
                       {model.name} {model.isPro ? "(Pro)" : ""}
                     </option>
@@ -5830,7 +5856,7 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
                         value={utilityModel}
                         onChange={(e) => setUtilityModel(e.target.value)}
                       >
-                        {MODELS.map((model) => (
+                        {GEMINI_MODELS.map((model) => (
                           <option key={model.id} value={model.id}>
                             {model.name}
                           </option>
