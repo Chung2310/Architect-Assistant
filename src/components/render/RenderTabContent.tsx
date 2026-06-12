@@ -132,39 +132,6 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
     return jobTimeMs >= sessionStartTimeMs;
   };
 
-  const getImageDimensions = (
-    url: string,
-  ): Promise<{ width: number; height: number }> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => resolve({ width: img.width, height: img.height });
-      img.onerror = () => resolve({ width: 0, height: 0 });
-      img.src = url;
-    });
-  };
-
-  useEffect(() => {
-    const detect = async () => {
-      if (inputImages.length > 0) {
-        try {
-          const { width, height } = await getImageDimensions(inputImages[0]);
-          if (width && height) {
-            const ratio = width / height;
-            if (ratio > 1.8) setDetectedAspectRatio("21:9");
-            else if (ratio > 1.4) setDetectedAspectRatio("16:9");
-            else if (ratio > 1.1) setDetectedAspectRatio("4:3");
-            else if (ratio > 0.85) setDetectedAspectRatio("1:1");
-            else if (ratio > 0.6) setDetectedAspectRatio("3:4");
-            else setDetectedAspectRatio("9:16");
-          }
-        } catch (e) {
-          console.error("Error detecting aspect ratio:", e);
-        }
-      }
-    };
-    detect();
-  }, [inputImages]);
-
   useEffect(() => {
     // Reset states when switching sub-tabs
     setTimeout(() => {
@@ -916,20 +883,7 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
         const url = await uploadMedia(file, "uploads");
         cacheImage(url, file);
         
-        const reader = new FileReader();
-        await new Promise<void>((resolve) => {
-          reader.onloadend = () => {
-            const base64String = reader.result as string;
-            setImageCache((prev) => ({
-              ...prev,
-              [url]: base64String.split(",")[1],
-            }));
-            resolve();
-          };
-          reader.onerror = () => resolve();
-          reader.readAsDataURL(file);
-        });
-        
+
         downloadURLs.push(url);
         idx++;
       }
@@ -1011,20 +965,7 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
         const url = await uploadMedia(file, "uploads");
         cacheImage(url, file);
         
-        const reader = new FileReader();
-        await new Promise<void>((resolve) => {
-          reader.onloadend = () => {
-            const base64String = reader.result as string;
-            setImageCache((prev) => ({
-              ...prev,
-              [url]: base64String.split(",")[1],
-            }));
-            resolve();
-          };
-          reader.onerror = () => resolve();
-          reader.readAsDataURL(file);
-        });
-        
+
         downloadURLs.push(url);
         idx++;
       }
