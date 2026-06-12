@@ -1,38 +1,49 @@
-# ─── Stage 1: Build Frontend ─────────────────────────────────────────────────
+# Step 1: Build stage
 FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Copy manifests first for layer cache efficiency
+# Copy package management files (only yarn.lock to avoid npm conflicts)
 COPY package.json yarn.lock ./
 
-# Install dependencies using yarn
-RUN yarn install --frozen-lockfile
+# Install ALL dependencies (including devDependencies needed for build)
+# NODE_ENV must NOT be "production" here so devDeps are installed
+ENV NODE_ENV=development
+RUN --mount=type=cache,target=/root/.yarn-cache \
+    yarn install --frozen-lockfile --cache-folder /root/.yarn-cache
 
-# Copy source and build the frontend bundle
+# Copy the entire workspace (excluding files in .dockerignore)
 COPY . .
-RUN yarn run build
 
-# ─── Stage 2: Production Runner ──────────────────────────────────────────────
+# Remove package-lock.json if it exists (avoid conflicts with yarn.lock)
+RUN rm -f package-lock.json
+
+# Show Node.js and Yarn versions for debugging
+RUN node --version && yarn --version
+
+# Build the Vite frontend SPA and bundle the Express server using esbuild
+# Increase Node.js heap size to avoid OOM errors on large bundles
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+RUN yarn build
+
+# Step 2: Production runner stage (keeps the final image lightweight)
 FROM node:22-alpine AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
-# PORT is injected at runtime via env_file in docker-compose.
-# server.ts fallback is 3000.
+ENV PORT=3002
+
+# Copy only the compiled output directory from builder
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/package.json /app/yarn.lock ./
+
+# Install only production dependencies
+RUN --mount=type=cache,target=/root/.yarn-cache \
+    yarn install --production --frozen-lockfile --cache-folder /root/.yarn-cache
+
+# Expose Express server port
 EXPOSE 3002
 
-# Copy pre-built frontend assets from builder
-COPY --from=builder /app/dist ./dist
-
-# Copy server source (tsx compiles at startup)
-COPY --from=builder /app/server.ts ./
-COPY --from=builder /app/server ./server
-COPY --from=builder /app/tsconfig.json ./
-
-# Install dependencies (frozen-lockfile ensures deterministic, fast installation)
-COPY --from=builder /app/package.json /app/yarn.lock ./
-RUN yarn install --frozen-lockfile
-
-CMD ["yarn", "run", "start"]
+# Run the bundled production server
+CMD ["node", "dist/server.cjs"]

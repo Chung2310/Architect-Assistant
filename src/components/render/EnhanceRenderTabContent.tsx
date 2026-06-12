@@ -8,13 +8,18 @@ import { getAIClient, safeJsonParse, checkUserCredits, generateContentWithRetry,
 
 const MODELS = [
   {
-    id: "gemini-3.1-flash-image-preview",
-    name: "iGen 3.1 Flash Image Preview",
+    id: "piapi-midjourney",
+    name: "Midjourney v6 (PiAPI)",
     isPro: true,
   },
   {
-    id: "gemini-3-pro-image-preview",
-    name: "iGen 3 Pro Image Preview",
+    id: "piapi-flux",
+    name: "Flux Dev (PiAPI)",
+    isPro: true,
+  },
+  {
+    id: "nano-banana-pro",
+    name: "Nano Banana Pro (PiAPI)",
     isPro: true,
   },
 ];
@@ -415,126 +420,12 @@ export const EnhanceRenderTabContent: React.FC = () => {
       if (!jobRes.success || !jobRes.data) {
         throw new Error("Không thể khởi tạo render job trên server.");
       }
-      const createdJob = jobRes.data;
-      const jobId = createdJob._id || createdJob.id;
 
-      const ai = await getAIClient(selectedModel);
-
-      let apiAspectRatio = "1:1";
-      if (aspectRatio.includes("16:9")) apiAspectRatio = "16:9";
-      else if (aspectRatio.includes("9:16")) apiAspectRatio = "9:16";
-      else if (aspectRatio.includes("4:3")) apiAspectRatio = "4:3";
-      else if (aspectRatio.includes("3:4")) apiAspectRatio = "3:4";
-      else if (aspectRatio.includes("21:9")) apiAspectRatio = "21:9";
-
-      const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [];
-
-      const getImagePart = async (url: string) => {
-        const imageData = await getImageBase64(url, true);
-        if (!imageData || !imageData.base64Data) {
-          throw new Error(`Không thể tải hoặc xử lý hình ảnh: ${url}`);
-        }
-        return {
-          inlineData: {
-            data: imageData.base64Data,
-            mimeType: imageData.mimeType || "image/jpeg",
-          },
-        };
-      };
-
-      await apiClient.patch(`/api/v1/render-jobs/${jobId}`, {
-        progress: 20,
-        statusMessage: "Đang tải ảnh đầu vào...",
-      });
-
-      for (const url of inputImages) {
-        parts.push(await getImagePart(url));
-      }
-
-      parts.push({
-        text: prompt || `Cải thiện render ${activeSubTab.toLowerCase()}`,
-      });
-
-      await apiClient.patch(`/api/v1/render-jobs/${jobId}`, {
-        progress: 40,
-        statusMessage: "AI đang xử lý hình ảnh...",
-      });
-
-      const outputImageUrls: string[] = [];
-      let completedImages = 0;
-
-      for (let index = 0; index < numImages; index++) {
-        try {
-          const imageConfig: Record<string, unknown> = {
-            aspectRatio: apiAspectRatio,
-          };
-
-          if (
-            selectedModel === "gemini-3.1-flash-image-preview" ||
-            selectedModel === "gemini-3-pro-image-preview"
-          ) {
-            imageConfig.imageSize = selectedResolution;
-          }
-
-          const response = await generateContentWithRetry(ai, {
-            model: selectedModel,
-            contents: [{ role: "user", parts }],
-            config: {
-              imageConfig,
-            },
-          });
-
-          for (const part of response.candidates?.[0]?.content?.parts || []) {
-            if (part.inlineData) {
-              let base64EncodeString = part?.inlineData?.data;
-              let mimeType = part?.inlineData?.mimeType || "image/png";
-
-              if (selectedResolution === "2K" || selectedResolution === "4K") {
-                const scaled = await scaleToResolution(
-                  base64EncodeString,
-                  mimeType,
-                  selectedResolution,
-                );
-                base64EncodeString = scaled.base64Data;
-                mimeType = scaled.mimeType;
-              }
-
-              const blob = new Blob(
-                [Uint8Array.from(atob(base64EncodeString), c => c.charCodeAt(0))],
-                { type: mimeType }
-              );
-              const downloadURL = await uploadMedia(blob, "renders");
-
-              completedImages++;
-              await apiClient.patch(`/api/v1/render-jobs/${jobId}`, {
-                progress: Math.min(
-                  99,
-                  40 + Math.floor((completedImages / numImages) * 59),
-                ),
-                statusMessage: `Đã tạo xong ${completedImages}/${numImages} ảnh...`,
-              });
-
-              outputImageUrls.push(downloadURL);
-            }
-          }
-        } catch (err) {
-          console.error("Error generating image:", err);
-        }
-
-        if (index < numImages - 1)
-          await new Promise((r) => setTimeout(r, 2000));
-      }
-
-      await apiClient.patch(`/api/v1/render-jobs/${jobId}`, {
-        status: "completed",
-        progress: 100,
-        statusMessage: "Hoàn thành",
-        outputImageUrls: outputImageUrls,
-      });
+      setIsRendering(false);
+      toast.success("Đã gửi yêu cầu kết xuất lên hàng đợi PiAPI!");
     } catch (error) {
       console.error("Render error:", error);
       toast.error("Có lỗi xảy ra trong quá trình tạo ảnh. Vui lòng thử lại.");
-    } finally {
       setIsRendering(false);
     }
   };

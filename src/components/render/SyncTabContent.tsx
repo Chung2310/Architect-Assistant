@@ -47,6 +47,24 @@ interface RenderJob {
 
 const MODELS = [
   {
+    id: "piapi-midjourney",
+    name: "Midjourney v6 (PiAPI)",
+    isPro: true,
+  },
+  {
+    id: "piapi-flux",
+    name: "Flux Dev (PiAPI)",
+    isPro: true,
+  },
+  {
+    id: "nano-banana-pro",
+    name: "Nano Banana Pro (PiAPI)",
+    isPro: true,
+  },
+];
+
+const GEMINI_MODELS = [
+  {
     id: "gemini-3.1-flash-image-preview",
     name: "iGen 3.1 Flash Image Preview",
     isPro: true,
@@ -431,6 +449,14 @@ export const SyncTabContent: React.FC = () => {
     }, 100);
 
     try {
+      const isPiapiModel = characterModel && (characterModel.startsWith("piapi-") || characterModel === "nano-banana-pro" || characterModel === "nano-banana-2");
+      if (isPiapiModel) {
+        toast.error("Tính năng Đồng bộ nhân vật hiện chưa hỗ trợ PiAPI. Vui lòng chọn Gemini.");
+        setIsSyncingCharacter(false);
+        clearInterval(progressInterval);
+        return;
+      }
+
       const ai = await getAIClient(characterModel);
 
       const uploadImageIfBase64 = async (imageStr: string) => {
@@ -2247,7 +2273,7 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                           value={characterGenModel}
                           onChange={(e) => setCharacterGenModel(e.target.value)}
                         >
-                          {MODELS.map((model) => (
+                          {GEMINI_MODELS.map((model) => (
                             <option key={model.id} value={model.id}>
                               {model.name} {model.isPro ? "(Pro)" : ""}
                             </option>
@@ -2300,7 +2326,7 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                         value={characterModel}
                         onChange={(e) => setCharacterModel(e.target.value)}
                       >
-                        {MODELS.map((model) => (
+                        {GEMINI_MODELS.map((model) => (
                           <option key={model.id} value={model.id}>
                             {model.name} {model.isPro ? "(Pro)" : ""}
                           </option>

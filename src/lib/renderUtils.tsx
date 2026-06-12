@@ -179,7 +179,80 @@ interface AIResponse {
   text?: string | (() => string);
 }
 
+export const calculateModelCost = (params: Record<string, unknown>): number => {
+  const modelName = (params.model as string) || "";
+  let cost = 0;
+
+  const combinedConfig = {
+    ...((params.config as Record<string, unknown>) || {}),
+    ...((params.generationConfig as Record<string, unknown>) || {}),
+    ...(params || {}),
+  };
+
+  const imageConfig = (combinedConfig.imageConfig as { imageSize?: string }) || {};
+  const resolution = imageConfig.imageSize || (combinedConfig.resolution as string) || "1K";
+
+  if (modelName.includes("image")) {
+    if (modelName === "gemini-3.1-flash-image-preview") {
+      cost = resolution === "2K" ? 42 : 27.5;
+    } else if (modelName === "gemini-3-pro-image-preview") {
+      cost = 57;
+    } else if (modelName === "piapi-midjourney") {
+      cost = 35;
+    } else if (modelName === "nano-banana-2") {
+      cost = 13.75;
+    } else {
+      cost = 27.5;
+    }
+  } else if (modelName.includes("veo") || modelName.includes("kling") || modelName.includes("luma")) {
+    const duration = Number(combinedConfig.durationSeconds || combinedConfig.duration || 5);
+    const is1080P = resolution === "2K" || resolution === "1080P" || resolution === "1080p";
+
+    if (modelName.includes("lite")) {
+      if (is1080P) {
+        if (duration === 5) cost = 129.6;
+        else if (duration === 8) cost = 194.4;
+        else if (duration === 14) cost = 259.2;
+        else cost = duration * 25.92;
+      } else {
+        if (duration === 4) cost = 81.0;
+        else if (duration === 6) cost = 121.5;
+        else if (duration === 8) cost = 162.0;
+        else cost = duration * 20.25;
+      }
+    } else if (modelName.includes("fast")) {
+      if (is1080P) {
+        if (duration === 5) cost = 194.4;
+        else if (duration === 8) cost = 291.6;
+        else if (duration === 14) cost = 388.8;
+        else cost = duration * 38.88;
+      } else {
+        if (duration === 4) cost = 162.0;
+        else if (duration === 6) cost = 243.0;
+        else if (duration === 8) cost = 324.0;
+        else cost = duration * 40.5;
+      }
+    } else {
+      cost = duration * (is1080P ? 97.2 : 81.0);
+    }
+    cost = Math.round(cost * 10000) / 10000;
+  } else {
+    if (modelName === "gemini-3.1-pro-preview" || modelName.includes("pro")) {
+      cost = 10;
+    } else if (modelName === "gemini-3.1-flash-lite-preview" || modelName.includes("flash-lite")) {
+      cost = 1.5;
+    } else if (modelName === "gemini-3-flash-preview" || modelName.includes("flash")) {
+      cost = 2.5;
+    } else {
+      cost = 2.5;
+    }
+  }
+
+  return cost;
+};
+
 export const generateContentWithRetry = async (
+
   ai: GoogleGenAI,
   params: Record<string, unknown>,
   retries = 8,
@@ -385,43 +458,13 @@ export const generateContentWithRetry = async (
       clearTimeout(timeoutId!);
 
       try {
-        let cost = 0;
+        const cost = calculateModelCost(params);
         const modelName = (params.model as string) || "";
-
-        if (modelName.includes("image")) {
-          const resolution =
-            (params.generationConfig as { imageConfig?: { imageSize?: string } })?.imageConfig?.imageSize ||
-            (params.config as { imageConfig?: { imageSize?: string } })?.imageConfig?.imageSize ||
-            "1K";
-          if (modelName === "gemini-3.1-flash-image-preview") {
-            cost = resolution === "2K" ? 42 : 27.5;
-          } else if (modelName === "gemini-3-pro-image-preview") {
-            cost = 57;
-          } else {
-            cost = 27.5;
-          }
-        } else if (modelName.includes("veo")) {
-          cost = 0.5;
-        } else {
-          if (
-            modelName === "gemini-3.1-pro-preview" ||
-            modelName.includes("pro")
-          ) {
-            cost = 10;
-          } else if (
-            modelName === "gemini-3-flash-preview" ||
-            modelName.includes("flash")
-          ) {
-            cost = 2.5;
-          } else {
-            cost = 2.5;
-          }
-        }
 
         if (cost > 0) {
           let type = "text";
           if (modelName.includes("image")) type = "image";
-          else if (modelName.includes("veo")) type = "video";
+          else if (modelName.includes("veo") || modelName.includes("kling") || modelName.includes("luma")) type = "video";
           else if (modelName.includes("audio")) type = "audio";
 
           // Deduct credits via REST API
@@ -583,43 +626,13 @@ export const generateContentStreamWithRetry = async function* (
 
       if (lastChunk) {
         try {
-          let cost = 0;
+          const cost = calculateModelCost(params);
           const modelName = (params.model as string) || "";
-
-          if (modelName.includes("image")) {
-            const resolution =
-              (params.generationConfig as { imageConfig?: { imageSize?: string } })?.imageConfig?.imageSize ||
-              (params.config as { imageConfig?: { imageSize?: string } })?.imageConfig?.imageSize ||
-              "1K";
-            if (modelName === "gemini-3.1-flash-image-preview") {
-              cost = resolution === "2K" ? 42 : 27.5;
-            } else if (modelName === "gemini-3-pro-image-preview") {
-              cost = 57;
-            } else {
-              cost = 27.5;
-            }
-          } else if (modelName.includes("veo")) {
-            cost = 0.5;
-          } else {
-            if (
-              modelName === "gemini-3.1-pro-preview" ||
-              modelName.includes("pro")
-            ) {
-              cost = 10;
-            } else if (
-              modelName === "gemini-3-flash-preview" ||
-              modelName.includes("flash")
-            ) {
-              cost = 2.5;
-            } else {
-              cost = 2.5;
-            }
-          }
 
           if (cost > 0) {
             let type = "text";
             if (modelName.includes("image")) type = "image";
-            else if (modelName.includes("veo")) type = "video";
+            else if (modelName.includes("veo") || modelName.includes("kling") || modelName.includes("luma")) type = "video";
             else if (modelName.includes("audio")) type = "audio";
 
             await apiClient.post("/api/v1/render-jobs/deduct-credits", {

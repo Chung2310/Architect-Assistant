@@ -30,13 +30,18 @@ interface RenderJob {
 
 const MODELS = [
   {
-    id: "gemini-3.1-flash-image-preview",
-    name: "iGen 3.1 Flash Image Preview",
+    id: "piapi-midjourney",
+    name: "Midjourney v6 (PiAPI)",
     isPro: true,
   },
   {
-    id: "gemini-3-pro-image-preview",
-    name: "iGen 3 Pro Image Preview",
+    id: "piapi-flux",
+    name: "Flux Dev (PiAPI)",
+    isPro: true,
+  },
+  {
+    id: "nano-banana-pro",
+    name: "Nano Banana Pro (PiAPI)",
     isPro: true,
   },
 ];
@@ -856,210 +861,9 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
       if (!jobRes.success || !jobRes.data) {
         throw new Error("Không thể khởi tạo render job trên server.");
       }
-      const createdJob = jobRes.data;
-      const jobId = createdJob._id || createdJob.id;
 
-      const ai = await getAIClient(selectedModel);
-
-      let apiAspectRatio = "1:1";
-      if (aspectRatio === "Tự động") apiAspectRatio = detectedAspectRatio;
-      else if (aspectRatio.includes("16:9")) apiAspectRatio = "16:9";
-      else if (aspectRatio.includes("9:16")) apiAspectRatio = "9:16";
-      else if (aspectRatio.includes("4:3")) apiAspectRatio = "4:3";
-      else if (aspectRatio.includes("3:4")) apiAspectRatio = "3:4";
-      else if (aspectRatio.includes("21:9")) apiAspectRatio = "21:9";
-
-      if (activeSubTab === "Render VR 360") {
-        apiAspectRatio = "21:9";
-      }
-
-      let finalPrompt = prompt;
-      let negativePromptContent = "";
-      try {
-        const parsedPrompt = safeJsonParse(prompt) as Record<string, string> | null;
-        if (parsedPrompt) {
-          const finalPr = parsedPrompt.prompt_tieng_viet_toi_uu || parsedPrompt.optimized_english_prompt;
-          if (finalPr) {
-            finalPrompt = finalPr;
-          }
-          const negPr = parsedPrompt.prompt_phu_dinh || parsedPrompt.negative_prompt;
-          if (negPr) {
-            negativePromptContent = negPr;
-          }
-        }
-      } catch {
-        // Not JSON, use as is
-      }
-
-      if (activeSubTab === "Floorplan to 3D" || activeSubTab === "Floorplan to 3D Floorplan") {
-        const extraLayoutNegative = activeSubTab === "Floorplan to 3D"
-          ? "thay đổi vị trí đồ đạc, di dời nội thất, đổi vị trí giường, thay đổi vị trí tủ áo, chuyển cửa sổ, xoay bố cục, lệch khỏi mặt bằng, đồ đạc xuyên tường, đồ vật bay lơ lửng, tường bị méo"
-          : "nhầm lẫn bản vẽ 2D với ảnh nội thất, hiểu sai đường tường, thêm cửa không có trong bản vẽ, thay đổi vị trí tường, cầu thang, cửa sổ, dịch ký hiệu bản vẽ sai lệch, đồ đạc xuyên tường, bản vẽ bị hiểu sai, mở rộng phòng không đúng";
-        negativePromptContent = negativePromptContent
-          ? `${negativePromptContent}\n${extraLayoutNegative}`
-          : extraLayoutNegative;
-      }
-
-      const getImagePart = async (url: string) => {
-        if (imageCache[url]) {
-          let mimeType = "image/jpeg";
-          if (url.toLowerCase().includes(".png")) mimeType = "image/png";
-          else if (url.toLowerCase().includes(".webp")) mimeType = "image/webp";
-          return {
-            inlineData: {
-              data: imageCache[url],
-              mimeType: mimeType,
-            },
-          };
-        }
-
-        const imageData = await getImageBase64(url, true);
-        if (!imageData || !imageData.base64Data) {
-          throw new Error(`Không thể tải hoặc xử lý hình ảnh: ${url}`);
-        }
-        return {
-          inlineData: {
-            data: imageData.base64Data,
-            mimeType: imageData.mimeType || "image/jpeg",
-          },
-        };
-      };
-
-      await apiClient.patch(`/api/v1/render-jobs/${jobId}`, {
-        progress: 20,
-        statusMessage: "Đang tải ảnh đầu vào...",
-      });
-
-      const outputImageUrls: string[] = [];
-      let completedImages = 0;
-
-      const inputsToProcess = inputImages.length > 0 ? inputImages : [null];
-      const totalImagesToGenerate = inputsToProcess.length * numImages;
-
-      for (let imgIdx = 0; imgIdx < inputsToProcess.length; imgIdx++) {
-        const currentInputUrl = inputsToProcess[imgIdx];
-
-        const parts: (
-          | { text: string; inlineData?: undefined }
-          | { inlineData: { data: string; mimeType: string }; text?: undefined }
-        )[] = [];
-        if (currentInputUrl) {
-          parts.push({
-            text: `
-ẢNH MẶT BẰNG GỐC.
-ĐÂY LÀ NGUỒN DỮ LIỆU CẤU TRÚC DUY NHẤT.
-BẮT BUỘC GIỮ NGUYÊN tường, cửa sổ...
-`,
-          });
-          parts.push(await getImagePart(currentInputUrl));
-        }
-
-        if (referenceImages.length > 0) {
-          parts.push({
-            text: `
-ẢNH THAM KHẢO PHONG CÁCH.
-CHỈ ĐƯỢC HỌC vật liệu, màu sắc...
-`,
-          });
-          for (const url of referenceImages) {
-            parts.push(await getImagePart(url));
-          }
-        }
-
-        const reinforcedPrompt = `
-[RENDERING TASK]:
-Transform the provided structure into an architectural visualization.
-- LIGHTING & ATMOSPHERE: ${lighting || "Natural daylight"}
-- ARCHITECTURAL STYLE: ${style || "Professional photography"}
-- CAMERA ANGLE: ${activeSubTab === "Floorplan to 3D" ? (style === "Phối cảnh 3D" ? "Góc nhìn trục đo isometric / dollhouse" : style === "Mô hình thu nhỏ" ? "Góc nhìn sa bàn tilt-shift macro" : "Góc chụp ngang tầm mắt từ cửa phòng đi vào, như camera cầm tay") : cameraAngleStyle || "Standard"}
-${activeSubTab === "Render Nội Thất" ? `- INTERIOR TYPE: ${roomType || "Living Room"}\n- DESIGN STYLE: ${interiorStyle || "Modern"}` : `- ENVIRONMENT/CONTEXT: ${context || "High-end neighborhood"}`}
-- COLOR TONE: ${colorTone || "Neutral"}
-
-[OPTIMIZED PROMPT FROM ANALYSIS]:
-${finalPrompt}
-${negativePromptContent ? `\n[NEGATIVE PROMPT / STRICT EXCLUSIONS]:\n${negativePromptContent}\n` : ""}
-(Final Instruction: Ensure the lighting (${lighting}) and materials are the dominant visual theme...)
-`;
-        parts.push({ text: reinforcedPrompt });
-
-        for (let index = 0; index < numImages; index++) {
-          try {
-            const imageConfig: {
-              aspectRatio: string;
-              imageSize?: string;
-              negativePrompt?: string;
-            } = {
-              aspectRatio: apiAspectRatio,
-            };
-
-            if (
-              selectedModel === "gemini-3.1-flash-image-preview" ||
-              selectedModel === "gemini-3-pro-image-preview"
-            ) {
-              imageConfig.imageSize = selectedResolution;
-            }
-
-            const response = await generateContentWithRetry(ai, {
-              model: selectedModel,
-              contents: [{ role: "user", parts }],
-              config: { imageConfig },
-            });
-
-            for (const part of response.candidates?.[0]?.content?.parts || []) {
-              if (part.inlineData) {
-                let base64EncodeString = part?.inlineData?.data;
-                let mimeType = part?.inlineData?.mimeType || "image/png";
-
-                if (
-                  selectedResolution === "2K" ||
-                  selectedResolution === "4K"
-                ) {
-                  const scaled = await scaleToResolution(
-                    base64EncodeString,
-                    mimeType,
-                    selectedResolution,
-                  );
-                  base64EncodeString = scaled.base64Data;
-                  mimeType = scaled.mimeType;
-                }
-
-                const blob = new Blob(
-                  [Uint8Array.from(atob(base64EncodeString), c => c.charCodeAt(0))],
-                  { type: mimeType }
-                );
-                const downloadURL = await uploadMedia(blob, "renders");
-
-                completedImages++;
-                await apiClient.patch(`/api/v1/render-jobs/${jobId}`, {
-                  progress: Math.min(
-                    99,
-                    20 + Math.floor((completedImages / totalImagesToGenerate) * 79)
-                  ),
-                  statusMessage: `Đã tạo xong ${completedImages}/${totalImagesToGenerate} ảnh...`,
-                });
-
-                outputImageUrls.push(downloadURL);
-              }
-            }
-          } catch (err) {
-            console.error("Error generating image:", err);
-          }
-
-          if (index < numImages - 1)
-            await new Promise((r) => setTimeout(r, 2000));
-        }
-      }
-
-      if (outputImageUrls.length === 0) {
-        throw new Error("Không thể tạo ảnh từ AI. Vui lòng thử lại.");
-      }
-
-      await apiClient.patch(`/api/v1/render-jobs/${jobId}`, {
-        status: "completed",
-        outputImageUrls,
-        progress: 100,
-      });
       setIsRendering(false);
+      toast.success("Đã gửi yêu cầu kết xuất lên hàng đợi PiAPI!");
     } catch (error) {
       console.error("Error creating render job:", error);
       toast.error("Đã xảy ra lỗi khi tạo yêu cầu render.");

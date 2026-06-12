@@ -2,6 +2,7 @@ import { authSwagger } from "./auth.swagger";
 import { userSwagger } from "./user.swagger";
 import { renderJobSwagger } from "./render-job.swagger";
 import { mediaSwagger } from "./media.swagger";
+import { piapiSwagger } from "./piapi.swagger";
 
 export const swaggerDocument = {
   openapi: "3.0.0",
@@ -31,5 +32,6 @@ export const swaggerDocument = {
     ...userSwagger,
     ...renderJobSwagger,
     ...mediaSwagger,
+    ...piapiSwagger,
   },
 };
