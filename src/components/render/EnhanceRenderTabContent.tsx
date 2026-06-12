@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { useAuth } from "../../context/useAuth";
 import { apiClient, ApiResponse } from "../../services/apiClient";
 import { ImageLibraryModal } from "./ImageLibraryModal";
-import { getAIClient, safeJsonParse, checkUserCredits, generateContentWithRetry, getImageBase64, handleDownload, cacheImage, scaleToResolution, uploadMedia } from "../../lib/renderUtils";
+import { getAIClient, safeJsonParse, checkUserCredits, generateContentWithRetry, getImageBase64, handleDownload, cacheImage, uploadMedia } from "../../lib/renderUtils";
 
 const MODELS = [
   {

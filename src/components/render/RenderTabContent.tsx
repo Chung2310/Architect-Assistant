@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useAuth } from "../../context/useAuth";
 import { apiClient, ApiResponse } from "../../services/apiClient";
 import { ImageLibraryModal } from "./ImageLibraryModal";
-import { getAIClient, safeJsonParse, checkUserCredits, generateContentWithRetry, getImageBase64, handleDownload, cacheImage, scaleToResolution, uploadMedia } from "../../lib/renderUtils";
+import { getAIClient, safeJsonParse, checkUserCredits, generateContentWithRetry, getImageBase64, handleDownload, cacheImage, uploadMedia } from "../../lib/renderUtils";
 import { Type } from "@google/genai";
 import { convertPdfToImage } from "../../lib/pdfUtils";
 
@@ -69,7 +69,6 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
   const [numImages, setNumImages] = useState(1);
   const [pendingSubTab, setPendingSubTab] = useState<string | null>(null);
   const [inputImages, setInputImages] = useState<string[]>([]);
-  const [imageCache, setImageCache] = useState<Record<string, string>>({});
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isRendering, setIsRendering] = useState(false);
@@ -87,7 +86,6 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
     "Phối cảnh Trục đo (Isometric)",
   );
   const [aspectRatio, setAspectRatio] = useState("Tự động");
-  const [detectedAspectRatio, setDetectedAspectRatio] = useState("1:1");
   const [cameraAngle, setCameraAngle] = useState("");
   const [customCameraAngle, setCustomCameraAngle] = useState("");
 
