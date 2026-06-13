@@ -25,7 +25,7 @@ export const mediaController = {
       const { file, folder } = req.body;
       const folderPath = folder || `igen_architect/${req.user!.userId}`;
       const url = await cloudinaryService.uploadMedia(file, folderPath);
-      res.json({ success: true, data: { url } });
+      res.json({ success: true, data: { url, secure_url: url } });
     } catch (error) {
       console.error("[mediaController] Upload error:", error);
       const errMsg = error instanceof Error ? error.message : "Tải lên thất bại.";
@@ -40,7 +40,13 @@ export const mediaController = {
       return;
     }
     try {
-      const { publicId } = req.body;
+      let { publicId } = req.body;
+      if (publicId && (publicId.startsWith("http://") || publicId.startsWith("https://"))) {
+        const extracted = cloudinaryService.extractPublicId(publicId);
+        if (extracted) {
+          publicId = extracted;
+        }
+      }
       await cloudinaryService.deleteMedia(publicId);
       res.json({ success: true, message: "Đã xóa media thành công." });
     } catch (error) {
