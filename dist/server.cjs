@@ -2334,6 +2334,7 @@ async function startServer() {
     },
     on: {
       proxyReq: (proxyReq, req) => {
+        (0, import_http_proxy_middleware.fixRequestBody)(proxyReq, req);
         const userApiKey = req.headers["x-user-api-key"] || req.headers["X-User-Api-Key"];
         const apiKey = userApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
         if (apiKey && !proxyReq.path.includes("key=")) {
@@ -2385,7 +2386,7 @@ async function startServer() {
       res.sendFile(import_path2.default.join(distPath, "index.html"));
     });
   }
-  app.use((err, req, res, next) => {
+  app.use((err, req, res, _next) => {
     logger.error(`[UNHANDLED ERROR] ${req.method} ${req.originalUrl}: ${err}`);
     if (!res.headersSent) {
       res.status(500).json({ success: false, message: "\u0110\xE3 c\xF3 l\u1ED7i h\u1EC7 th\u1ED1ng x\u1EA3y ra." });

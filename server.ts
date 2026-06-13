@@ -1,7 +1,7 @@
 import express from "express";
 import path from "path";
 import { createServer } from "http";
-import { createProxyMiddleware } from "http-proxy-middleware";
+import { createProxyMiddleware, fixRequestBody } from "http-proxy-middleware";
 import cookieParser from "cookie-parser";
 import swaggerUi from "swagger-ui-express";
 import dotenv from "dotenv";
@@ -86,6 +86,9 @@ async function startServer() {
     },
     on: {
       proxyReq: (proxyReq, req) => {
+        // Fix for body parser hanging issue by re-streaming the parsed body
+        fixRequestBody(proxyReq, req);
+
         const userApiKey = req.headers['x-user-api-key'] || req.headers['X-User-Api-Key'];
         const apiKey = userApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
         
