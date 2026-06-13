@@ -86,9 +86,6 @@ async function startServer() {
     },
     on: {
       proxyReq: (proxyReq, req) => {
-        // Fix for body parser hanging issue by re-streaming the parsed body
-        fixRequestBody(proxyReq, req);
-
         const userApiKey = req.headers['x-user-api-key'] || req.headers['X-User-Api-Key'];
         const apiKey = userApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
         
@@ -98,6 +95,9 @@ async function startServer() {
         
         if (req.headers['x-user-api-key']) proxyReq.removeHeader('x-user-api-key');
         if (req.headers['X-User-Api-Key']) proxyReq.removeHeader('X-User-Api-Key');
+
+        // Fix for body parser hanging issue by re-streaming the parsed body
+        fixRequestBody(proxyReq, req);
       },
       error: (err, req, res) => {
         logger.error(`Gemini Proxy Error: ${err}`);
