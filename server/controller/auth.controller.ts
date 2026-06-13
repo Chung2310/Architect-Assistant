@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { authService } from "../service/auth.service";
 import { AuthRequest } from "../middleware/auth.middleware";
 import Joi from "joi";
+import { logger } from "../utils/logger";
 
 const loginSchema = Joi.object({
   email: Joi.string().email().required().messages({
@@ -37,6 +38,8 @@ export const authController = {
       const { email, password } = req.body;
       const { accessToken, refreshToken, user } = await authService.login(email, password);
 
+      logger.info(`[authController.login] User login success: ${user.email} (ID: ${user._id}, Role: ${user.role})`);
+
       // Gửi refresh token qua httpOnly cookie
       res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
@@ -61,6 +64,7 @@ export const authController = {
         },
       });
     } catch (error) {
+      logger.error(`[authController.login] Login error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "Đăng nhập thất bại.";
       res.status(401).json({ success: false, message: errMsg });
     }
@@ -75,6 +79,8 @@ export const authController = {
     try {
       const { email, password, displayName } = req.body;
       const { accessToken, refreshToken, user } = await authService.register(email, password, displayName || "");
+
+      logger.info(`[authController.register] User registration success: ${user.email} (ID: ${user._id})`);
 
       res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
@@ -99,6 +105,7 @@ export const authController = {
         },
       });
     } catch (error) {
+      logger.error(`[authController.register] Registration error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "Đăng ký thất bại.";
       res.status(400).json({ success: false, message: errMsg });
     }
@@ -112,6 +119,7 @@ export const authController = {
     }
     try {
       const { accessToken, refreshToken, user } = await authService.refreshToken(token);
+      logger.info(`[authController.refreshToken] Token refreshed successfully for user: ${user.email} (ID: ${user._id})`);
       res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -133,7 +141,8 @@ export const authController = {
           },
         },
       });
-    } catch {
+    } catch (error) {
+      logger.error(`[authController.refreshToken] Refresh token error: ${error}`);
       res.status(401).json({ success: false, message: "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại." });
     }
   },
@@ -151,6 +160,7 @@ export const authController = {
       }
       res.json({ success: true, data: user });
     } catch (error) {
+      logger.error(`[authController.getMe] Get user details error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "Lỗi máy chủ.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -158,6 +168,7 @@ export const authController = {
 
   async logout(req: Request, res: Response) {
     res.clearCookie("refreshToken");
+    logger.info("[authController.logout] User logged out successfully. Cookie cleared.");
     res.json({ success: true, message: "Đã đăng xuất thành công." });
   },
 };

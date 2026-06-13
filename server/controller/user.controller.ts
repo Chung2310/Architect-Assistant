@@ -4,6 +4,7 @@ import { userService } from "../service/user.service";
 import { transactionService } from "../service/transaction.service";
 import { renderJobService } from "../service/render-job.service";
 import Joi from "joi";
+import { logger } from "../utils/logger";
 
 const roleSchema = Joi.object({
   role: Joi.string().valid("user", "admin").required().messages({
@@ -61,8 +62,10 @@ export const userController = {
       const page = parseInt(String(req.query.page || "1"), 10);
       const limit = parseInt(String(req.query.limit || "50"), 10);
       const result = await userService.getList(page, limit);
+      logger.info(`[userController.getList] Admin listed users. Page: ${page}, Limit: ${limit}`);
       res.json({ success: true, data: result });
     } catch (error) {
+      logger.error(`[userController.getList] Error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -80,8 +83,10 @@ export const userController = {
         res.status(404).json({ success: false, message: "Không tìm thấy tài khoản." });
         return;
       }
+      logger.info(`[userController.getById] Retrieved user: ${req.params.id}`);
       res.json({ success: true, data: user });
     } catch (error) {
+      logger.error(`[userController.getById] Error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -100,8 +105,10 @@ export const userController = {
     }
     try {
       const user = await userService.updateRole(req.params.id, req.body.role);
+      logger.info(`[userController.updateRole] Updated role for user: ${req.params.id} to: ${req.body.role}`);
       res.json({ success: true, data: user });
     } catch (error) {
+      logger.error(`[userController.updateRole] Error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -127,8 +134,10 @@ export const userController = {
         return;
       }
       const user = await userService.updateApiKey(targetId, req.body.apiKey);
+      logger.info(`[userController.updateApiKey] Updated API key for user: ${targetId}`);
       res.json({ success: true, data: user });
     } catch (error) {
+      logger.error(`[userController.updateApiKey] Error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -152,8 +161,10 @@ export const userController = {
         "topup",
         "Admin Top-up"
       );
+      logger.info(`[userController.updateCredits] Updated credits for user: ${req.params.id} by: ${req.body.amount}`);
       res.json({ success: true, data: user });
     } catch (error) {
+      logger.error(`[userController.updateCredits] Error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -173,8 +184,10 @@ export const userController = {
       await transactionService.deleteAllByUser(userId);
       // Xóa user
       await userService.deleteUser(userId);
+      logger.info(`[userController.deleteUser] Deleted user: ${userId} and all related data.`);
       res.json({ success: true, message: "Đã xóa người dùng và toàn bộ dữ liệu liên quan thành công." });
     } catch (error) {
+      logger.error(`[userController.deleteUser] Error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -190,8 +203,10 @@ export const userController = {
       const page = parseInt(String(req.query.page || "1"), 10);
       const limit = parseInt(String(req.query.limit || "100"), 10);
       const result = await transactionService.getAll(page, limit);
+      logger.info(`[userController.getTransactions] Admin listed transactions. Page: ${page}, Limit: ${limit}`);
       res.json({ success: true, data: result });
     } catch (error) {
+      logger.error(`[userController.getTransactions] Error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -213,8 +228,10 @@ export const userController = {
     try {
       const limit = parseInt(String(req.query.limit || "100"), 10);
       const result = await transactionService.getListByUser(req.user!.userId, limit);
+      logger.info(`[userController.getMyTransactions] User ${req.user!.userId} retrieved transactions. Limit: ${limit}`);
       res.json({ success: true, data: result });
     } catch (error) {
+      logger.error(`[userController.getMyTransactions] Error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
       res.status(500).json({ success: false, message: errMsg });
     }

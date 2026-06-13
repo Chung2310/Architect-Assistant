@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import { UserModel } from "../model/user.model";
+import { logger } from "../utils/logger";
 
 async function seedSuperAdmin() {
   try {
@@ -10,7 +11,7 @@ async function seedSuperAdmin() {
 
     const existingSA = await UserModel.findOne({ role: { $in: ["superadmin", "admin"] } });
     if (existingSA) {
-      console.log("[Database] Admin đã tồn tại.");
+      logger.info("[Database] Admin đã tồn tại.");
       return;
     }
 
@@ -23,9 +24,9 @@ async function seedSuperAdmin() {
       credits: 9999,
       hasSetupApiKey: true,
     }).save();
-    console.log(`[Database] Khởi tạo Super Admin thành công: ${saEmail}`);
+    logger.info(`[Database] Khởi tạo Super Admin thành công: ${saEmail}`);
   } catch (error) {
-    console.error("[Database] Lỗi khi seed admin:", error);
+    logger.error(`[Database] Lỗi khi seed admin: ${error}`);
   }
 }
 
@@ -49,14 +50,31 @@ export async function connectDB() {
   }
 
   const redactedUri = connectionUri.replace(/:([^:@]+)@/, ":******@");
-  console.log(`[Database] Đang kết nối MongoDB: ${redactedUri}`);
+  logger.info(`[Database] Đang kết nối MongoDB: ${redactedUri}`);
+
+  // Set up connection event listeners for detailed logging
+  mongoose.connection.on("connected", () => {
+    logger.info(`[Database] Mongoose connection established successfully.`);
+  });
+
+  mongoose.connection.on("error", (err) => {
+    logger.error(`[Database] Mongoose connection error: ${err}`);
+  });
+
+  mongoose.connection.on("disconnected", () => {
+    logger.warn(`[Database] Mongoose connection disconnected.`);
+  });
+
+  mongoose.connection.on("reconnected", () => {
+    logger.info(`[Database] Mongoose connection reconnected.`);
+  });
 
   try {
     await mongoose.connect(connectionUri);
-    console.log("[Database] Kết nối MongoDB thành công.");
+    logger.info("[Database] Kết nối MongoDB thành công.");
     await seedSuperAdmin();
   } catch (error) {
-    console.error("[Database] Lỗi kết nối MongoDB:", error);
+    logger.error(`[Database] Lỗi kết nối MongoDB: ${error}`);
     process.exit(1);
   }
 }

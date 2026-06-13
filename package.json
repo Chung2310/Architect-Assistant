@@ -43,7 +43,8 @@
     "swagger-ui-express": "^5.0.1",
     "tailwindcss": "^4.2.2",
     "use-image": "^1.1.4",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "winston": "^3.19.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
