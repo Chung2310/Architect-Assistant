@@ -5,6 +5,7 @@ import { userService } from "../service/user.service";
 import { piapiService } from "../service/piapi.service";
 import { emitToUser } from "../socket";
 import Joi from "joi";
+import { logger } from "../utils/logger";
 
 const createJobSchema = Joi.object({
   type: Joi.string().required().messages({ "any.required": "Loại render là bắt buộc." }),
@@ -66,8 +67,10 @@ export const renderJobController = {
     try {
       const limit = parseInt(String(req.query.limit || "50"), 10);
       const jobs = await renderJobService.getListByUser(req.user!.userId, limit);
+      logger.info(`[renderJobController.getMyJobs] Retrieved ${jobs.length} jobs for user: ${req.user!.userId}`);
       res.json({ success: true, data: jobs });
     } catch (error) {
+      logger.error(`[renderJobController.getMyJobs] Error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -85,6 +88,7 @@ export const renderJobController = {
       const result = await renderJobService.getAll(page, limit);
       res.json({ success: true, data: result });
     } catch (error) {
+      logger.error(`[renderJobController.getAllJobs] Error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -133,13 +137,13 @@ export const renderJobController = {
       const aspect = aspectRatio || "1:1";
 
       try {
-        console.log(`[renderJobController] Creating PiAPI task for model: ${piapiModel}`);
+        logger.info(`[renderJobController] Creating PiAPI task for model: ${piapiModel}`);
         const taskResult = await piapiService.createImageTask(finalPrompt, piapiModel, { aspectRatio: aspect });
         piapiTaskId = taskResult.taskId;
         status = "processing";
         progress = 10;
       } catch (apiErr) {
-        console.error("[renderJobController] Failed to create PiAPI task:", apiErr);
+        logger.error(`[renderJobController] Failed to create PiAPI task: ${apiErr}`);
         res.status(500).json({ success: false, message: "Không thể khởi tạo tác vụ trên PiAPI: " + (apiErr as Error).message });
         return;
       }
@@ -153,9 +157,11 @@ export const renderJobController = {
         piapiTaskId,
       });
 
+      logger.info(`[renderJobController.createJob] Job created successfully: ${job._id} | Model: ${piapiModel} | User: ${req.user!.userId}`);
       emitToUser(req.user!.userId, "renderJobUpdated", job);
       res.status(201).json({ success: true, data: job });
     } catch (error) {
+      logger.error(`[renderJobController.createJob] Error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -179,9 +185,11 @@ export const renderJobController = {
         res.status(404).json({ success: false, message: "Không tìm thấy render job." });
         return;
       }
+      logger.info(`[renderJobController.updateJob] Job updated successfully: ${job._id} | Status: ${status} | Progress: ${progress}%`);
       emitToUser(job.userId.toString(), "renderJobUpdated", job);
       res.json({ success: true, data: job });
     } catch (error) {
+      logger.error(`[renderJobController.updateJob] Error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -199,8 +207,10 @@ export const renderJobController = {
         res.status(404).json({ success: false, message: "Không tìm thấy render job." });
         return;
       }
+      logger.info(`[renderJobController.deleteJob] Job deleted successfully: ${req.params.id}`);
       res.json({ success: true, message: "Đã xóa render job." });
     } catch (error) {
+      logger.error(`[renderJobController.deleteJob] Error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -219,8 +229,10 @@ export const renderJobController = {
         type || "text",
         model || "unknown"
       );
+      logger.log("info", `[renderJobController.deductCredits] Deducted ${cost} credits for user: ${req.user!.userId}. Remaining: ${remainingCredits}`);
       res.json({ success: true, data: { remainingCredits } });
     } catch (error) {
+      logger.error(`[renderJobController.deductCredits] Error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
       const statusCode = errMsg.includes("hết Credits") ? 402 : 500;
       res.status(statusCode).json({ success: false, message: errMsg });

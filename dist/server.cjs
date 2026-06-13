@@ -23,12 +23,88 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 
 // server.ts
 var import_express7 = __toESM(require("express"), 1);
-var import_path = __toESM(require("path"), 1);
+var import_path2 = __toESM(require("path"), 1);
 var import_http = require("http");
 var import_http_proxy_middleware = require("http-proxy-middleware");
 var import_cookie_parser = __toESM(require("cookie-parser"), 1);
 var import_swagger_ui_express = __toESM(require("swagger-ui-express"), 1);
 var import_dotenv2 = __toESM(require("dotenv"), 1);
+
+// server/utils/logger.ts
+var import_winston = __toESM(require("winston"), 1);
+var import_path = __toESM(require("path"), 1);
+var levels = {
+  error: 0,
+  warn: 1,
+  info: 2,
+  http: 3,
+  debug: 4
+};
+var colors = {
+  error: "red",
+  warn: "yellow",
+  info: "green",
+  http: "magenta",
+  debug: "white"
+};
+import_winston.default.addColors(colors);
+var logFormat = import_winston.default.format.combine(
+  import_winston.default.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss:ms" }),
+  import_winston.default.format.colorize({ all: true }),
+  import_winston.default.format.printf(
+    (info) => `[${info.timestamp}] [${info.level}]: ${info.message}`
+  )
+);
+var fileFormat = import_winston.default.format.combine(
+  import_winston.default.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss:ms" }),
+  import_winston.default.format.printf(
+    (info) => `[${info.timestamp}] [${info.level.toUpperCase()}]: ${info.message}`
+  )
+);
+var logsDir = import_path.default.join(process.cwd(), "logs");
+var transports = [
+  new import_winston.default.transports.Console({
+    format: logFormat
+  }),
+  new import_winston.default.transports.File({
+    filename: import_path.default.join(logsDir, "error.log"),
+    level: "error",
+    format: fileFormat
+  }),
+  new import_winston.default.transports.File({
+    filename: import_path.default.join(logsDir, "all.log"),
+    format: fileFormat
+  })
+];
+var logger = import_winston.default.createLogger({
+  level: process.env.NODE_ENV === "development" ? "debug" : "info",
+  levels,
+  transports
+});
+
+// server/middleware/logger.middleware.ts
+function loggerMiddleware(req, res, next) {
+  const start = Date.now();
+  const { method, originalUrl, ip } = req;
+  const bodyCopy = req.body ? { ...req.body } : {};
+  if (bodyCopy.password) {
+    bodyCopy.password = "[HIDDEN]";
+  }
+  if (bodyCopy.file && typeof bodyCopy.file === "string") {
+    bodyCopy.file = `[BASE64 DATA: ${bodyCopy.file.length} chars]`;
+  }
+  logger.info(`[REQUEST] ${method} ${originalUrl} - IP: ${ip}`);
+  if (Object.keys(bodyCopy).length > 0) {
+    logger.info(`[REQUEST-BODY] ${JSON.stringify(bodyCopy)}`);
+  }
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    const statusCode = res.statusCode;
+    const userId = req.user?.userId || "Guest";
+    logger.info(`[RESPONSE] ${method} ${originalUrl} - Status: ${statusCode} - User: ${userId} - Duration: ${duration}ms`);
+  });
+  next();
+}
 
 // server/config/database.ts
 var import_mongoose2 = __toESM(require("mongoose"), 1);
@@ -92,7 +168,7 @@ async function seedSuperAdmin() {
     const saName = process.env.SUPERADMIN_NAME || "Super Admin";
     const existingSA = await UserModel.findOne({ role: { $in: ["superadmin", "admin"] } });
     if (existingSA) {
-      console.log("[Database] Admin \u0111\xE3 t\u1ED3n t\u1EA1i.");
+      logger.info("[Database] Admin \u0111\xE3 t\u1ED3n t\u1EA1i.");
       return;
     }
     const hashedPassword = await import_bcryptjs.default.hash(saPassword, 10);
@@ -104,9 +180,9 @@ async function seedSuperAdmin() {
       credits: 9999,
       hasSetupApiKey: true
     }).save();
-    console.log(`[Database] Kh\u1EDFi t\u1EA1o Super Admin th\xE0nh c\xF4ng: ${saEmail}`);
+    logger.info(`[Database] Kh\u1EDFi t\u1EA1o Super Admin th\xE0nh c\xF4ng: ${saEmail}`);
   } catch (error) {
-    console.error("[Database] L\u1ED7i khi seed admin:", error);
+    logger.error(`[Database] L\u1ED7i khi seed admin: ${error}`);
   }
 }
 async function connectDB() {
@@ -127,13 +203,25 @@ async function connectDB() {
     }
   }
   const redactedUri = connectionUri.replace(/:([^:@]+)@/, ":******@");
-  console.log(`[Database] \u0110ang k\u1EBFt n\u1ED1i MongoDB: ${redactedUri}`);
+  logger.info(`[Database] \u0110ang k\u1EBFt n\u1ED1i MongoDB: ${redactedUri}`);
+  import_mongoose2.default.connection.on("connected", () => {
+    logger.info(`[Database] Mongoose connection established successfully.`);
+  });
+  import_mongoose2.default.connection.on("error", (err) => {
+    logger.error(`[Database] Mongoose connection error: ${err}`);
+  });
+  import_mongoose2.default.connection.on("disconnected", () => {
+    logger.warn(`[Database] Mongoose connection disconnected.`);
+  });
+  import_mongoose2.default.connection.on("reconnected", () => {
+    logger.info(`[Database] Mongoose connection reconnected.`);
+  });
   try {
     await import_mongoose2.default.connect(connectionUri);
-    console.log("[Database] K\u1EBFt n\u1ED1i MongoDB th\xE0nh c\xF4ng.");
+    logger.info("[Database] K\u1EBFt n\u1ED1i MongoDB th\xE0nh c\xF4ng.");
     await seedSuperAdmin();
   } catch (error) {
-    console.error("[Database] L\u1ED7i k\u1EBFt n\u1ED1i MongoDB:", error);
+    logger.error(`[Database] L\u1ED7i k\u1EBFt n\u1ED1i MongoDB: ${error}`);
     process.exit(1);
   }
 }
@@ -244,6 +332,7 @@ var authController = {
     try {
       const { email, password } = req.body;
       const { accessToken, refreshToken, user } = await authService.login(email, password);
+      logger.info(`[authController.login] User login success: ${user.email} (ID: ${user._id}, Role: ${user.role})`);
       res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -267,6 +356,7 @@ var authController = {
         }
       });
     } catch (error2) {
+      logger.error(`[authController.login] Login error: ${error2}`);
       const errMsg = error2 instanceof Error ? error2.message : "\u0110\u0103ng nh\u1EADp th\u1EA5t b\u1EA1i.";
       res.status(401).json({ success: false, message: errMsg });
     }
@@ -280,6 +370,7 @@ var authController = {
     try {
       const { email, password, displayName } = req.body;
       const { accessToken, refreshToken, user } = await authService.register(email, password, displayName || "");
+      logger.info(`[authController.register] User registration success: ${user.email} (ID: ${user._id})`);
       res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -302,6 +393,7 @@ var authController = {
         }
       });
     } catch (error2) {
+      logger.error(`[authController.register] Registration error: ${error2}`);
       const errMsg = error2 instanceof Error ? error2.message : "\u0110\u0103ng k\xFD th\u1EA5t b\u1EA1i.";
       res.status(400).json({ success: false, message: errMsg });
     }
@@ -314,6 +406,7 @@ var authController = {
     }
     try {
       const { accessToken, refreshToken, user } = await authService.refreshToken(token);
+      logger.info(`[authController.refreshToken] Token refreshed successfully for user: ${user.email} (ID: ${user._id})`);
       res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -335,7 +428,8 @@ var authController = {
           }
         }
       });
-    } catch {
+    } catch (error) {
+      logger.error(`[authController.refreshToken] Refresh token error: ${error}`);
       res.status(401).json({ success: false, message: "Phi\xEAn l\xE0m vi\u1EC7c \u0111\xE3 h\u1EBFt h\u1EA1n. Vui l\xF2ng \u0111\u0103ng nh\u1EADp l\u1EA1i." });
     }
   },
@@ -352,12 +446,14 @@ var authController = {
       }
       res.json({ success: true, data: user });
     } catch (error) {
+      logger.error(`[authController.getMe] Get user details error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "L\u1ED7i m\xE1y ch\u1EE7.";
       res.status(500).json({ success: false, message: errMsg });
     }
   },
   async logout(req, res) {
     res.clearCookie("refreshToken");
+    logger.info("[authController.logout] User logged out successfully. Cookie cleared.");
     res.json({ success: true, message: "\u0110\xE3 \u0111\u0103ng xu\u1EA5t th\xE0nh c\xF4ng." });
   }
 };
@@ -713,8 +809,10 @@ var userController = {
       const page = parseInt(String(req.query.page || "1"), 10);
       const limit = parseInt(String(req.query.limit || "50"), 10);
       const result = await userService.getList(page, limit);
+      logger.info(`[userController.getList] Admin listed users. Page: ${page}, Limit: ${limit}`);
       res.json({ success: true, data: result });
     } catch (error2) {
+      logger.error(`[userController.getList] Error: ${error2}`);
       const errMsg = error2 instanceof Error ? error2.message : "\u0110\xE3 c\xF3 l\u1ED7i x\u1EA3y ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -731,8 +829,10 @@ var userController = {
         res.status(404).json({ success: false, message: "Kh\xF4ng t\xECm th\u1EA5y t\xE0i kho\u1EA3n." });
         return;
       }
+      logger.info(`[userController.getById] Retrieved user: ${req.params.id}`);
       res.json({ success: true, data: user });
     } catch (error2) {
+      logger.error(`[userController.getById] Error: ${error2}`);
       const errMsg = error2 instanceof Error ? error2.message : "\u0110\xE3 c\xF3 l\u1ED7i x\u1EA3y ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -750,8 +850,10 @@ var userController = {
     }
     try {
       const user = await userService.updateRole(req.params.id, req.body.role);
+      logger.info(`[userController.updateRole] Updated role for user: ${req.params.id} to: ${req.body.role}`);
       res.json({ success: true, data: user });
     } catch (error2) {
+      logger.error(`[userController.updateRole] Error: ${error2}`);
       const errMsg = error2 instanceof Error ? error2.message : "\u0110\xE3 c\xF3 l\u1ED7i x\u1EA3y ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -775,8 +877,10 @@ var userController = {
         return;
       }
       const user = await userService.updateApiKey(targetId, req.body.apiKey);
+      logger.info(`[userController.updateApiKey] Updated API key for user: ${targetId}`);
       res.json({ success: true, data: user });
     } catch (error2) {
+      logger.error(`[userController.updateApiKey] Error: ${error2}`);
       const errMsg = error2 instanceof Error ? error2.message : "\u0110\xE3 c\xF3 l\u1ED7i x\u1EA3y ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -799,8 +903,10 @@ var userController = {
         "topup",
         "Admin Top-up"
       );
+      logger.info(`[userController.updateCredits] Updated credits for user: ${req.params.id} by: ${req.body.amount}`);
       res.json({ success: true, data: user });
     } catch (error2) {
+      logger.error(`[userController.updateCredits] Error: ${error2}`);
       const errMsg = error2 instanceof Error ? error2.message : "\u0110\xE3 c\xF3 l\u1ED7i x\u1EA3y ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -816,8 +922,10 @@ var userController = {
       await renderJobService.deleteAllByUser(userId);
       await transactionService.deleteAllByUser(userId);
       await userService.deleteUser(userId);
+      logger.info(`[userController.deleteUser] Deleted user: ${userId} and all related data.`);
       res.json({ success: true, message: "\u0110\xE3 x\xF3a ng\u01B0\u1EDDi d\xF9ng v\xE0 to\xE0n b\u1ED9 d\u1EEF li\u1EC7u li\xEAn quan th\xE0nh c\xF4ng." });
     } catch (error2) {
+      logger.error(`[userController.deleteUser] Error: ${error2}`);
       const errMsg = error2 instanceof Error ? error2.message : "\u0110\xE3 c\xF3 l\u1ED7i x\u1EA3y ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -832,8 +940,10 @@ var userController = {
       const page = parseInt(String(req.query.page || "1"), 10);
       const limit = parseInt(String(req.query.limit || "100"), 10);
       const result = await transactionService.getAll(page, limit);
+      logger.info(`[userController.getTransactions] Admin listed transactions. Page: ${page}, Limit: ${limit}`);
       res.json({ success: true, data: result });
     } catch (error2) {
+      logger.error(`[userController.getTransactions] Error: ${error2}`);
       const errMsg = error2 instanceof Error ? error2.message : "\u0110\xE3 c\xF3 l\u1ED7i x\u1EA3y ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -854,8 +964,10 @@ var userController = {
     try {
       const limit = parseInt(String(req.query.limit || "100"), 10);
       const result = await transactionService.getListByUser(req.user.userId, limit);
+      logger.info(`[userController.getMyTransactions] User ${req.user.userId} retrieved transactions. Limit: ${limit}`);
       res.json({ success: true, data: result });
     } catch (error2) {
+      logger.error(`[userController.getMyTransactions] Error: ${error2}`);
       const errMsg = error2 instanceof Error ? error2.message : "\u0110\xE3 c\xF3 l\u1ED7i x\u1EA3y ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -1286,8 +1398,10 @@ var renderJobController = {
     try {
       const limit = parseInt(String(req.query.limit || "50"), 10);
       const jobs = await renderJobService.getListByUser(req.user.userId, limit);
+      logger.info(`[renderJobController.getMyJobs] Retrieved ${jobs.length} jobs for user: ${req.user.userId}`);
       res.json({ success: true, data: jobs });
     } catch (error2) {
+      logger.error(`[renderJobController.getMyJobs] Error: ${error2}`);
       const errMsg = error2 instanceof Error ? error2.message : "\u0110\xE3 c\xF3 l\u1ED7i x\u1EA3y ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -1304,6 +1418,7 @@ var renderJobController = {
       const result = await renderJobService.getAll(page, limit);
       res.json({ success: true, data: result });
     } catch (error2) {
+      logger.error(`[renderJobController.getAllJobs] Error: ${error2}`);
       const errMsg = error2 instanceof Error ? error2.message : "\u0110\xE3 c\xF3 l\u1ED7i x\u1EA3y ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -1340,13 +1455,13 @@ var renderJobController = {
       }
       const aspect = aspectRatio || "1:1";
       try {
-        console.log(`[renderJobController] Creating PiAPI task for model: ${piapiModel}`);
+        logger.info(`[renderJobController] Creating PiAPI task for model: ${piapiModel}`);
         const taskResult = await piapiService.createImageTask(finalPrompt, piapiModel, { aspectRatio: aspect });
         piapiTaskId = taskResult.taskId;
         status = "processing";
         progress = 10;
       } catch (apiErr) {
-        console.error("[renderJobController] Failed to create PiAPI task:", apiErr);
+        logger.error(`[renderJobController] Failed to create PiAPI task: ${apiErr}`);
         res.status(500).json({ success: false, message: "Kh\xF4ng th\u1EC3 kh\u1EDFi t\u1EA1o t\xE1c v\u1EE5 tr\xEAn PiAPI: " + apiErr.message });
         return;
       }
@@ -1358,9 +1473,11 @@ var renderJobController = {
         progress,
         piapiTaskId
       });
+      logger.info(`[renderJobController.createJob] Job created successfully: ${job._id} | Model: ${piapiModel} | User: ${req.user.userId}`);
       emitToUser(req.user.userId, "renderJobUpdated", job);
       res.status(201).json({ success: true, data: job });
     } catch (error2) {
+      logger.error(`[renderJobController.createJob] Error: ${error2}`);
       const errMsg = error2 instanceof Error ? error2.message : "\u0110\xE3 c\xF3 l\u1ED7i x\u1EA3y ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -1383,9 +1500,11 @@ var renderJobController = {
         res.status(404).json({ success: false, message: "Kh\xF4ng t\xECm th\u1EA5y render job." });
         return;
       }
+      logger.info(`[renderJobController.updateJob] Job updated successfully: ${job._id} | Status: ${status} | Progress: ${progress}%`);
       emitToUser(job.userId.toString(), "renderJobUpdated", job);
       res.json({ success: true, data: job });
     } catch (error2) {
+      logger.error(`[renderJobController.updateJob] Error: ${error2}`);
       const errMsg = error2 instanceof Error ? error2.message : "\u0110\xE3 c\xF3 l\u1ED7i x\u1EA3y ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -1402,8 +1521,10 @@ var renderJobController = {
         res.status(404).json({ success: false, message: "Kh\xF4ng t\xECm th\u1EA5y render job." });
         return;
       }
+      logger.info(`[renderJobController.deleteJob] Job deleted successfully: ${req.params.id}`);
       res.json({ success: true, message: "\u0110\xE3 x\xF3a render job." });
     } catch (error2) {
+      logger.error(`[renderJobController.deleteJob] Error: ${error2}`);
       const errMsg = error2 instanceof Error ? error2.message : "\u0110\xE3 c\xF3 l\u1ED7i x\u1EA3y ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -1421,8 +1542,10 @@ var renderJobController = {
         type || "text",
         model || "unknown"
       );
+      logger.log("info", `[renderJobController.deductCredits] Deducted ${cost} credits for user: ${req.user.userId}. Remaining: ${remainingCredits}`);
       res.json({ success: true, data: { remainingCredits } });
     } catch (error) {
+      logger.error(`[renderJobController.deductCredits] Error: ${error}`);
       const errMsg = error instanceof Error ? error.message : "\u0110\xE3 c\xF3 l\u1ED7i x\u1EA3y ra.";
       const statusCode = errMsg.includes("h\u1EBFt Credits") ? 402 : 500;
       res.status(statusCode).json({ success: false, message: errMsg });
@@ -1464,9 +1587,10 @@ var mediaController = {
       const { file, folder } = req.body;
       const folderPath = folder || `igen_architect/${req.user.userId}`;
       const url = await cloudinaryService.uploadMedia(file, folderPath);
-      res.json({ success: true, data: { url } });
+      logger.info(`[mediaController.upload] Uploaded media successfully. Folder: ${folderPath} | User: ${req.user.userId}`);
+      res.json({ success: true, data: { url, secure_url: url } });
     } catch (error2) {
-      console.error("[mediaController] Upload error:", error2);
+      logger.error(`[mediaController] Upload error: ${error2}`);
       const errMsg = error2 instanceof Error ? error2.message : "T\u1EA3i l\xEAn th\u1EA5t b\u1EA1i.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -1478,10 +1602,18 @@ var mediaController = {
       return;
     }
     try {
-      const { publicId } = req.body;
+      let { publicId } = req.body;
+      if (publicId && (publicId.startsWith("http://") || publicId.startsWith("https://"))) {
+        const extracted = cloudinaryService.extractPublicId(publicId);
+        if (extracted) {
+          publicId = extracted;
+        }
+      }
       await cloudinaryService.deleteMedia(publicId);
+      logger.info(`[mediaController.deleteMedia] Deleted media successfully. PublicId: ${publicId} | User: ${req.user.userId}`);
       res.json({ success: true, message: "\u0110\xE3 x\xF3a media th\xE0nh c\xF4ng." });
     } catch (error2) {
+      logger.error(`[mediaController.deleteMedia] Delete media error: ${error2}`);
       const errMsg = error2 instanceof Error ? error2.message : "\u0110\xE3 c\xF3 l\u1ED7i x\u1EA3y ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
@@ -2158,6 +2290,7 @@ async function startServer() {
   await connectDB();
   pollingService.init();
   const app = (0, import_express7.default)();
+  app.use(loggerMiddleware);
   const server = (0, import_http.createServer)(app);
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3e3;
   initSocket(server);
@@ -2210,7 +2343,7 @@ async function startServer() {
         if (req.headers["X-User-Api-Key"]) proxyReq.removeHeader("X-User-Api-Key");
       },
       error: (err, req, res) => {
-        console.error("Gemini Proxy Error:", err);
+        logger.error(`Gemini Proxy Error: ${err}`);
         const expressRes = res;
         if (expressRes && !expressRes.headersSent) {
           expressRes.status(500).json({ error: "Proxy error", details: err.message });
@@ -2246,15 +2379,21 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = import_path.default.join(process.cwd(), "dist");
+    const distPath = import_path2.default.join(process.cwd(), "dist");
     app.use(import_express7.default.static(distPath));
     app.get("*", (req, res) => {
-      res.sendFile(import_path.default.join(distPath, "index.html"));
+      res.sendFile(import_path2.default.join(distPath, "index.html"));
     });
   }
+  app.use((err, req, res, next) => {
+    logger.error(`[UNHANDLED ERROR] ${req.method} ${req.originalUrl}: ${err}`);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: "\u0110\xE3 c\xF3 l\u1ED7i h\u1EC7 th\u1ED1ng x\u1EA3y ra." });
+    }
+  });
   server.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`Swagger documentation available at http://localhost:${PORT}/api-docs`);
+    logger.info(`Server running on http://localhost:${PORT}`);
+    logger.info(`Swagger documentation available at http://localhost:${PORT}/api-docs`);
   });
 }
 startServer();

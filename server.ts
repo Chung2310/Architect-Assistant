@@ -5,6 +5,8 @@ import { createProxyMiddleware } from "http-proxy-middleware";
 import cookieParser from "cookie-parser";
 import swaggerUi from "swagger-ui-express";
 import dotenv from "dotenv";
+import { loggerMiddleware } from "./server/middleware/logger.middleware";
+import { logger } from "./server/utils/logger";
 
 // Load environment variables
 dotenv.config();
@@ -23,6 +25,8 @@ async function startServer() {
   pollingService.init();
 
   const app = express();
+  app.use(loggerMiddleware);
+
   const server = createServer(app);
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
@@ -93,7 +97,7 @@ async function startServer() {
         if (req.headers['X-User-Api-Key']) proxyReq.removeHeader('X-User-Api-Key');
       },
       error: (err, req, res) => {
-        console.error("Gemini Proxy Error:", err);
+        logger.error(`Gemini Proxy Error: ${err}`);
         const expressRes = res as express.Response;
         if (expressRes && !expressRes.headersSent) {
           expressRes.status(500).json({ error: "Proxy error", details: err.message });
@@ -142,9 +146,17 @@ async function startServer() {
     });
   }
 
+  // Global unhandled error handler middleware
+  app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    logger.error(`[UNHANDLED ERROR] ${req.method} ${req.originalUrl}: ${err}`);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: "Đã có lỗi hệ thống xảy ra." });
+    }
+  });
+
   server.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`Swagger documentation available at http://localhost:${PORT}/api-docs`);
+    logger.info(`Server running on http://localhost:${PORT}`);
+    logger.info(`Swagger documentation available at http://localhost:${PORT}/api-docs`);
   });
 }
 
