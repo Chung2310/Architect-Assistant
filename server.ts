@@ -147,7 +147,7 @@ async function startServer() {
   }
 
   // Global unhandled error handler middleware
-  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
     logger.error(`[UNHANDLED ERROR] ${req.method} ${req.originalUrl}: ${err}`);
     if (!res.headersSent) {
       res.status(500).json({ success: false, message: "Đã có lỗi hệ thống xảy ra." });
