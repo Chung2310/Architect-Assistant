@@ -29,8 +29,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     initAuth();
+  }, []);
 
-    // Listen to global logout events from apiClient
+  // Listen to global logout events from apiClient
+  useEffect(() => {
     const handleGlobalLogout = () => {
       setUser(null);
       if (socket) {
