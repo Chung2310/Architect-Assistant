@@ -414,7 +414,12 @@ export const AdminPanel: React.FC = () => {
                 </thead>
                 <tbody>
                   {users.map((user, index) => {
-                    const userTxs = transactions.filter(tx => tx.userId === user._id || tx.userId?._id === user._id);
+                    const userTxs = transactions.filter(tx => {
+                      if (typeof tx.userId === 'string') {
+                        return tx.userId === user._id;
+                      }
+                      return tx.userId && tx.userId._id === user._id;
+                    });
                     const userTotal = userTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
                     const userVideo = userTxs.filter(tx => tx.type === 'video').reduce((sum, tx) => sum + (tx.amount || 0), 0);
                     const userAudio = userTxs.filter(tx => tx.type === 'audio').reduce((sum, tx) => sum + (tx.amount || 0), 0);

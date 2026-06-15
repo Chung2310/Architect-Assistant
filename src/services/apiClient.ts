@@ -9,14 +9,19 @@ export interface ApiResponse<T = unknown> {
 }
 
 let isRefreshing = false;
-let refreshSubscribers: ((token: string) => void)[] = [];
+let refreshSubscribers: { resolve: (token: string) => void; reject: (err: Error) => void }[] = [];
 
-function subscribeTokenRefresh(cb: (token: string) => void) {
-  refreshSubscribers.push(cb);
+function subscribeTokenRefresh(resolve: (token: string) => void, reject: (err: Error) => void) {
+  refreshSubscribers.push({ resolve, reject });
 }
 
 function onRefreshed(token: string) {
-  refreshSubscribers.forEach((cb) => cb(token));
+  refreshSubscribers.forEach(({ resolve }) => resolve(token));
+  refreshSubscribers = [];
+}
+
+function onRefreshFailed(err: Error) {
+  refreshSubscribers.forEach(({ reject }) => reject(err));
   refreshSubscribers = [];
 }
 
@@ -75,12 +80,16 @@ export const apiClient = {
           } else {
             isRefreshing = false;
             this.clearAccessToken();
+            const err = new Error("Session expired");
+            onRefreshFailed(err);
             window.dispatchEvent(new Event("auth-logout"));
-            throw new Error("Session expired");
+            throw err;
           }
         } catch (refreshError) {
           isRefreshing = false;
           this.clearAccessToken();
+          const err = refreshError instanceof Error ? refreshError : new Error(String(refreshError));
+          onRefreshFailed(err);
           window.dispatchEvent(new Event("auth-logout"));
           throw refreshError;
         }
@@ -88,22 +97,27 @@ export const apiClient = {
 
       // Queue requests while refreshing
       return new Promise<T>((resolve, reject) => {
-        subscribeTokenRefresh((newToken) => {
-          const newHeaders = new Headers(options.headers);
-          newHeaders.set("Authorization", `Bearer ${newToken}`);
-          options.headers = newHeaders;
-          fetch(url, options as RequestInit)
-            .then(async (res) => {
-              if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                reject(new Error(err.message || "Request failed"));
-                return;
-              }
-              const json = await res.json();
-              resolve(json as T);
-            })
-            .catch(reject);
-        });
+        subscribeTokenRefresh(
+          (newToken) => {
+            const newHeaders = new Headers(options.headers);
+            newHeaders.set("Authorization", `Bearer ${newToken}`);
+            options.headers = newHeaders;
+            fetch(url, options as RequestInit)
+              .then(async (res) => {
+                if (!res.ok) {
+                  const err = await res.json().catch(() => ({}));
+                  reject(new Error(err.message || "Request failed"));
+                  return;
+                }
+                const json = await res.json();
+                resolve(json as T);
+              })
+              .catch(reject);
+          },
+          (err) => {
+            reject(err);
+          }
+        );
       });
     }
 

@@ -179,8 +179,8 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
     if (prompt && !prompt.includes("Biến bản vẽ mặt bằng tổng thể")) {
       setTimeout(() => setPrompt(""), 0);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    prompt,
     style,
     context,
     lighting,
@@ -197,7 +197,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
         const next = { ...prev };
         let changed = false;
         renderJobs.forEach((job) => {
-          if (job.status === "pending") {
+          if (job.status === "pending" || job.status === "processing") {
             const target = job.progress || 10;
             const current = prev[job.id] || 0;
             if (current < target) {
@@ -983,7 +983,7 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
     .filter((job) => job.type === activeSubTab)
     .flatMap((job) => {
       const jobId = job._id || job.id;
-      if (job.status === "pending") {
+      if (job.status === "pending" || job.status === "processing") {
         return [
           {
             id: `pending-${jobId}`,
