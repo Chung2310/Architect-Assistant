@@ -181,7 +181,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentScreen: _curren
             onClick={() => setShowDropdown(!showDropdown)}
           >
             <img 
-              src={user?.photoURL || "https://lh3.googleusercontent.com/aida-public/AB6AXuBoioX1HntdUy2M9iOwpmOON9HMNMVxAspmQbu4CIOS-pPzU41MeSxY0zZ3JRyPNJ2LYwz6WyLTN31b1nsjbguPJrTfZHYSjq0u5WEGLRE7eKQocsx587gmZAMFnZh0pqkPcANCNUaLzDamkllNv5JjFZP7-HuLPHFetlGPe_ppgH5Uz64cjPVhuD9fBc08FrblwaCSIb_tfoxFnV93P_MTPbFAZF9mXY5KsXirSq8Dw_xo1P880rnkBogLhaqcx0KmIZ_Z3iPx4heC"} 
+              src={(user as any)?.photoURL || "https://lh3.googleusercontent.com/aida-public/AB6AXuBoioX1HntdUy2M9iOwpmOON9HMNMVxAspmQbu4CIOS-pPzU41MeSxY0zZ3JRyPNJ2LYwz6WyLTN31b1nsjbguPJrTfZHYSjq0u5WEGLRE7eKQocsx587gmZAMFnZh0pqkPcANCNUaLzDamkllNv5JjFZP7-HuLPHFetlGPe_ppgH5Uz64cjPVhuD9fBc08FrblwaCSIb_tfoxFnV93P_MTPbFAZF9mXY5KsXirSq8Dw_xo1P880rnkBogLhaqcx0KmIZ_Z3iPx4heC"} 
               alt="Profile" 
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"

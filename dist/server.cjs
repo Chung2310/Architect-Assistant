@@ -191,9 +191,16 @@ async function connectDB() {
   const pass = process.env.MONGODB_PASSWORD;
   const authSource = process.env.MONGODB_AUTH_SOURCE || "admin";
   let connectionUri = uri;
+  if (connectionUri.includes("://mongodb/")) {
+    connectionUri = connectionUri.replace("://mongodb/", "://localhost/");
+  } else if (connectionUri.includes("://mongodb:")) {
+    connectionUri = connectionUri.replace("://mongodb:", "://localhost:");
+  } else if (connectionUri === "mongodb://mongodb") {
+    connectionUri = "mongodb://localhost";
+  }
   if (user && pass) {
-    const protocol = uri.startsWith("mongodb+srv://") ? "mongodb+srv://" : "mongodb://";
-    const uriWithoutProtocol = uri.replace(protocol, "");
+    const protocol = connectionUri.startsWith("mongodb+srv://") ? "mongodb+srv://" : "mongodb://";
+    const uriWithoutProtocol = connectionUri.replace(protocol, "");
     if (!uriWithoutProtocol.includes("@")) {
       connectionUri = `${protocol}${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${uriWithoutProtocol}`;
     }
@@ -1078,7 +1085,8 @@ var piapiService = {
           prompt,
           output_format: "png",
           aspect_ratio: aspect,
-          resolution: "1K"
+          resolution: "1K",
+          ...options?.image ? { image: options.image } : {}
         }
       };
     } else {
@@ -1088,10 +1096,11 @@ var piapiService = {
       }
       reqBody = {
         model: piapiModel,
-        task_type: piapiModel === "midjourney" ? "imagine" : "text2img",
+        task_type: piapiModel === "midjourney" ? "imagine" : "txt2img",
         input: {
           prompt,
-          aspect_ratio: aspect
+          aspect_ratio: aspect,
+          ...options?.image ? { image: options.image } : {}
         }
       };
     }
@@ -1171,9 +1180,10 @@ var piapiService = {
     const taskId = taskResult.taskId;
     console.log(`[PiAPI Image Generation] Task created: ${taskId}. Polling for completion...`);
     let attempts = 0;
-    const maxAttempts = 30;
+    const maxAttempts = 54;
     while (attempts < maxAttempts) {
-      await new Promise((resolve) => setTimeout(resolve, 1e4));
+      const pollInterval = attempts < 10 ? 3e3 : 5e3;
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
       const taskStatus = await this.getTaskStatus(taskId);
       if (taskStatus.status === "completed") {
         if (!taskStatus.outputUrl) {
@@ -1350,8 +1360,20 @@ var createJobSchema = import_joi3.default.object({
   referenceImageUrls: import_joi3.default.array().items(import_joi3.default.string().uri()).optional(),
   prompt: import_joi3.default.string().allow("").optional(),
   model: import_joi3.default.string().allow("").optional(),
-  resolution: import_joi3.default.string().valid("1K", "2K", "4K").optional()
-});
+  resolution: import_joi3.default.string().valid("1K", "2K", "4K").optional(),
+  settings: import_joi3.default.object({
+    description: import_joi3.default.string().allow("").optional(),
+    style: import_joi3.default.string().allow("").optional(),
+    context: import_joi3.default.string().allow("").optional(),
+    lighting: import_joi3.default.string().allow("").optional(),
+    colorTone: import_joi3.default.string().allow("").optional(),
+    prompt: import_joi3.default.string().allow("").optional(),
+    numImages: import_joi3.default.number().optional(),
+    aspectRatio: import_joi3.default.string().allow("").optional(),
+    model: import_joi3.default.string().allow("").optional(),
+    resolution: import_joi3.default.string().valid("1K", "2K", "4K").optional()
+  }).optional()
+}).unknown();
 var idParamSchema2 = import_joi3.default.object({
   id: import_joi3.default.string().regex(/^[0-9a-fA-F]{24}$/).required().messages({
     "string.pattern.base": "ID kh\xF4ng \u0111\xFAng \u0111\u1ECBnh d\u1EA1ng MongoDB ObjectId.",
@@ -1435,7 +1457,13 @@ var renderJobController = {
         res.status(402).json({ success: false, message: "B\u1EA1n \u0111\xE3 h\u1EBFt Credits. Vui l\xF2ng n\u1EA1p th\xEAm \u0111\u1EC3 ti\u1EBFp t\u1EE5c." });
         return;
       }
-      const { model, prompt, inputImageUrls, aspectRatio } = req.body;
+      const settings = req.body.settings || {};
+      const model = req.body.model || settings.model;
+      const prompt = req.body.prompt || settings.prompt;
+      const inputImageUrls = req.body.inputImageUrls || [];
+      const referenceImageUrls = req.body.referenceImageUrls || [];
+      const aspectRatio = req.body.aspectRatio || settings.aspectRatio;
+      const resolution = req.body.resolution || settings.resolution || "1K";
       let piapiModel = model || "piapi-flux";
       if (!piapiModel.startsWith("piapi-") && piapiModel !== "nano-banana-pro" && piapiModel !== "nano-banana-2") {
         piapiModel = "piapi-flux";
@@ -1467,8 +1495,13 @@ var renderJobController = {
       }
       const job = await renderJobService.create({
         userId: req.user.userId,
-        ...req.body,
+        type: req.body.type,
+        subType: req.body.subType,
+        inputImageUrls,
+        referenceImageUrls,
+        prompt: finalPrompt,
         model: piapiModel,
+        resolution,
         status,
         progress,
         piapiTaskId
@@ -2316,7 +2349,7 @@ async function startServer() {
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });
-  app.use("/api/gemini-proxy", (0, import_http_proxy_middleware.createProxyMiddleware)({
+  const geminiProxy = (0, import_http_proxy_middleware.createProxyMiddleware)({
     target: "https://generativelanguage.googleapis.com",
     changeOrigin: true,
     proxyTimeout: 6e5,
@@ -2351,7 +2384,207 @@ async function startServer() {
         }
       }
     }
-  }));
+  });
+  app.use("/api/gemini-proxy", async (req, res, next) => {
+    const piapiKey = process.env.PIAPI_API_KEY;
+    if (piapiKey && req.method === "POST") {
+      try {
+        const pathStr = req.path;
+        const isImageModel = pathStr.includes("image-preview") || pathStr.includes("imagen") || pathStr.includes("generateImages");
+        const { contents, systemInstruction, generationConfig, config: reqConfig } = req.body;
+        if (isImageModel) {
+          let targetModel2 = "nano-banana-2";
+          if (pathStr.includes("gemini-3-pro-image-preview")) {
+            targetModel2 = "nano-banana-pro";
+          } else if (pathStr.includes("gemini-3.1-flash-image-preview")) {
+            targetModel2 = "nano-banana-2";
+          }
+          let promptText = "";
+          let inputImageBase64 = "";
+          let inputImageMimeType = "";
+          const contentsArray = Array.isArray(contents) ? contents : contents && contents.parts ? [{ parts: contents.parts }] : [];
+          for (const content of contentsArray) {
+            if (content.parts && Array.isArray(content.parts)) {
+              for (const part of content.parts) {
+                if (part.text) {
+                  promptText += part.text + "\n";
+                } else if (part.inlineData && part.inlineData.data) {
+                  inputImageBase64 = part.inlineData.data;
+                  inputImageMimeType = part.inlineData.mimeType || "image/jpeg";
+                }
+              }
+            }
+          }
+          promptText = promptText.trim();
+          let aspectRatio = "1:1";
+          const mergedConfig = { ...generationConfig || {}, ...reqConfig || {} };
+          const imageConfig = mergedConfig?.imageConfig || {};
+          if (imageConfig.aspectRatio) {
+            aspectRatio = imageConfig.aspectRatio;
+          }
+          let uploadedImageUrl = "";
+          if (inputImageBase64) {
+            const fileStr = `data:${inputImageMimeType};base64,${inputImageBase64}`;
+            logger.info(`[PiAPI Adapter] Uploading input image to Cloudinary for Image Generation...`);
+            uploadedImageUrl = await cloudinaryService.uploadMedia(fileStr, "temp_staging");
+            logger.info(`[PiAPI Adapter] Uploaded image: ${uploadedImageUrl}`);
+          }
+          logger.info(`[PiAPI Adapter] Generating image via PiAPI. Model: ${targetModel2}, Aspect: ${aspectRatio}`);
+          const piapiRes = await piapiService.generateImage(promptText, targetModel2, {
+            aspectRatio,
+            image: uploadedImageUrl || void 0
+          });
+          logger.info(`[PiAPI Adapter] Image generated: ${piapiRes.url}`);
+          const imgFetchRes = await fetch(piapiRes.url);
+          if (!imgFetchRes.ok) {
+            throw new Error(`Failed to download generated image: ${imgFetchRes.status}`);
+          }
+          const arrayBuffer = await imgFetchRes.arrayBuffer();
+          const base64 = Buffer.from(arrayBuffer).toString("base64");
+          const mimeType = imgFetchRes.headers.get("content-type") || "image/png";
+          const geminiResponse2 = {
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      inlineData: {
+                        data: base64,
+                        mimeType
+                      }
+                    }
+                  ],
+                  role: "model"
+                },
+                finishReason: "STOP"
+              }
+            ]
+          };
+          res.json(geminiResponse2);
+          return;
+        }
+        const messages = [];
+        let systemText = "";
+        if (systemInstruction) {
+          if (typeof systemInstruction === "string") {
+            systemText = systemInstruction;
+          } else if (systemInstruction.parts && Array.isArray(systemInstruction.parts)) {
+            systemText = systemInstruction.parts.map((p) => p.text).filter(Boolean).join("\n");
+          } else if (systemInstruction.text) {
+            systemText = systemInstruction.text;
+          }
+        }
+        if (generationConfig?.responseMimeType === "application/json") {
+          const schema = generationConfig?.responseSchema;
+          let schemaPrompt = "Respond only in valid JSON format.";
+          if (schema) {
+            const processSchema = (s) => {
+              if (s.type === "OBJECT" || s.type === "object") {
+                const props = s.properties || {};
+                const required = s.required || [];
+                const propLines = Object.entries(props).map(([k, v]) => {
+                  const reqStr = required.includes(k) ? " (required)" : "";
+                  return `  "${k}": ${v.type || "string"}${reqStr}`;
+                });
+                return `{
+${propLines.join(",\n")}
+}`;
+              }
+              return `a JSON ${s.type || "object"}`;
+            };
+            schemaPrompt = `You MUST respond only in valid JSON format matching this schema:
+${processSchema(schema)}
+Do not include any markdown wrappers (like \`\`\`json) or additional text outside the JSON.`;
+          }
+          systemText = systemText ? `${systemText}
+
+${schemaPrompt}` : schemaPrompt;
+        }
+        if (systemText) {
+          messages.push({
+            role: "system",
+            content: systemText
+          });
+        }
+        if (contents && Array.isArray(contents)) {
+          for (const content of contents) {
+            const role = content.role === "model" ? "assistant" : "user";
+            const openAiParts = [];
+            if (content.parts && Array.isArray(content.parts)) {
+              for (const part of content.parts) {
+                if (part.text) {
+                  openAiParts.push({
+                    type: "text",
+                    text: part.text
+                  });
+                } else if (part.inlineData) {
+                  openAiParts.push({
+                    type: "image_url",
+                    image_url: {
+                      url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
+                    }
+                  });
+                }
+              }
+            }
+            messages.push({
+              role,
+              content: openAiParts.length === 1 && openAiParts[0].type === "text" ? openAiParts[0].text : openAiParts
+            });
+          }
+        }
+        const hasImage = messages.some(
+          (msg) => Array.isArray(msg.content) && msg.content.some((part) => part.type === "image_url")
+        );
+        const targetModel = hasImage ? "gpt-4o" : "gpt-4o-mini";
+        const piapiBody = {
+          model: targetModel,
+          messages,
+          temperature: generationConfig?.temperature ?? 1
+        };
+        if (generationConfig?.responseMimeType === "application/json") {
+          piapiBody.response_format = { type: "json_object" };
+        }
+        logger.info(`[PiAPI Adapter] Translating Gemini request to PiAPI Chat Completion (model: ${targetModel})`);
+        const piapiResponse = await fetch("https://api.piapi.ai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${piapiKey}`
+          },
+          body: JSON.stringify(piapiBody)
+        });
+        if (!piapiResponse.ok) {
+          const errText = await piapiResponse.text();
+          throw new Error(`PiAPI Chat Completion failed: ${piapiResponse.status} - ${errText}`);
+        }
+        const data = await piapiResponse.json();
+        logger.info(`[PiAPI Adapter] Raw response from PiAPI: ${JSON.stringify(data)}`);
+        const textResult = data.choices?.[0]?.message?.content || "";
+        const geminiResponse = {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: textResult
+                  }
+                ],
+                role: "model"
+              },
+              finishReason: "STOP"
+            }
+          ]
+        };
+        res.json(geminiResponse);
+      } catch (err) {
+        logger.error(`[PiAPI Adapter] Error: ${err.message}`);
+        res.status(500).json({ error: "PiAPI Adapter error", details: err.message });
+      }
+    } else {
+      geminiProxy(req, res, next);
+    }
+  });
   app.get("/api/proxy-image", async (req, res) => {
     const url = req.query.url;
     if (!url) {

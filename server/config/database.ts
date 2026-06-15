@@ -37,9 +37,19 @@ export async function connectDB() {
   const authSource = process.env.MONGODB_AUTH_SOURCE || "admin";
 
   let connectionUri = uri;
+  
+  // Rewrite Docker host 'mongodb' to 'localhost' for local execution
+  if (connectionUri.includes("://mongodb/")) {
+    connectionUri = connectionUri.replace("://mongodb/", "://localhost/");
+  } else if (connectionUri.includes("://mongodb:")) {
+    connectionUri = connectionUri.replace("://mongodb:", "://localhost:");
+  } else if (connectionUri === "mongodb://mongodb") {
+    connectionUri = "mongodb://localhost";
+  }
+
   if (user && pass) {
-    const protocol = uri.startsWith("mongodb+srv://") ? "mongodb+srv://" : "mongodb://";
-    const uriWithoutProtocol = uri.replace(protocol, "");
+    const protocol = connectionUri.startsWith("mongodb+srv://") ? "mongodb+srv://" : "mongodb://";
+    const uriWithoutProtocol = connectionUri.replace(protocol, "");
     if (!uriWithoutProtocol.includes("@")) {
       connectionUri = `${protocol}${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${uriWithoutProtocol}`;
     }

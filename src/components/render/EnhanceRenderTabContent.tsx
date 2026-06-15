@@ -209,7 +209,7 @@ export const EnhanceRenderTabContent: React.FC = () => {
         const next = { ...prev };
         let changed = false;
         renderJobs.forEach((job) => {
-          if (job.status === "pending") {
+          if (job.status === "pending" || job.status === "processing") {
             const target = job.progress || 10;
             const jobId = job._id || job.id;
             const current = prev[jobId] || 0;
@@ -558,7 +558,7 @@ Trả về một đối tượng JSON có định dạng sau:
 
   const allResultItems = renderJobs.flatMap((job) => {
     const jobId = job._id || job.id;
-    if (job.status === "pending") {
+    if (job.status === "pending" || job.status === "processing") {
       return [
         {
           id: `pending-${jobId}`,

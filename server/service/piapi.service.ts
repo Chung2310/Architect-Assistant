@@ -15,7 +15,7 @@ export const piapiService = {
   async createImageTask(
     prompt: string,
     model: string,
-    options?: { aspectRatio?: string }
+    options?: { aspectRatio?: string; image?: string }
   ): Promise<{ taskId: string; isMock: boolean; mockUrl?: string }> {
     if (!PIAPI_API_KEY) {
       console.log(`[PiAPI Image Task] Running in MOCK mode (No PIAPI_API_KEY). Model: ${model}`);
@@ -39,6 +39,7 @@ export const piapiService = {
           output_format: "png",
           aspect_ratio: aspect,
           resolution: "1K",
+          ...(options?.image ? { image: options.image } : {}),
         },
       };
     } else {
@@ -48,10 +49,11 @@ export const piapiService = {
       }
       reqBody = {
         model: piapiModel,
-        task_type: piapiModel === "midjourney" ? "imagine" : "text2img",
+        task_type: piapiModel === "midjourney" ? "imagine" : "txt2img",
         input: {
           prompt,
           aspect_ratio: aspect,
+          ...(options?.image ? { image: options.image } : {}),
         },
       };
     }
@@ -151,7 +153,7 @@ export const piapiService = {
   async generateImage(
     prompt: string,
     model: string,
-    options?: { aspectRatio?: string }
+    options?: { aspectRatio?: string; image?: string }
   ): Promise<{ url: string; isMock: boolean }> {
     const taskResult = await this.createImageTask(prompt, model, options);
     if (taskResult.isMock) {
@@ -162,9 +164,11 @@ export const piapiService = {
     console.log(`[PiAPI Image Generation] Task created: ${taskId}. Polling for completion...`);
 
     let attempts = 0;
-    const maxAttempts = 30; // 5 minutes
+    const maxAttempts = 54; // ~4.5 minutes total
     while (attempts < maxAttempts) {
-      await new Promise((resolve) => setTimeout(resolve, 10000));
+      // Poll faster in first 10 attempts (30s), then every 5s
+      const pollInterval = attempts < 10 ? 3000 : 5000;
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
       const taskStatus = await this.getTaskStatus(taskId);
 
       if (taskStatus.status === "completed") {

@@ -5,3 +5,10 @@ coverage/
 .env*
 !.env.example
 .agent
+scripts/*.ts
+firebase-service-account.json
+firebase-applet-config.json
+.agent
+.gemini
+.claude
+.cursor 

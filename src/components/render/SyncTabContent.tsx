@@ -2607,7 +2607,14 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                     </p>
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-[10px] text-white/70">
-                        {new Date(job.createdAt).toLocaleDateString()}
+                        {(() => {
+                          if (!job.createdAt) return "";
+                          if (typeof job.createdAt === 'string') return new Date(job.createdAt).toLocaleDateString();
+                          if (typeof job.createdAt === 'object' && typeof job.createdAt.toMillis === 'function') {
+                            return new Date(job.createdAt.toMillis()).toLocaleDateString();
+                          }
+                          return "";
+                        })()}
                       </span>
                       <div className="flex items-center gap-1.5">
                         <button

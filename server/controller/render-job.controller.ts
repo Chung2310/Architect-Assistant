@@ -15,7 +15,19 @@ const createJobSchema = Joi.object({
   prompt: Joi.string().allow("").optional(),
   model: Joi.string().allow("").optional(),
   resolution: Joi.string().valid("1K", "2K", "4K").optional(),
-});
+  settings: Joi.object({
+    description: Joi.string().allow("").optional(),
+    style: Joi.string().allow("").optional(),
+    context: Joi.string().allow("").optional(),
+    lighting: Joi.string().allow("").optional(),
+    colorTone: Joi.string().allow("").optional(),
+    prompt: Joi.string().allow("").optional(),
+    numImages: Joi.number().optional(),
+    aspectRatio: Joi.string().allow("").optional(),
+    model: Joi.string().allow("").optional(),
+    resolution: Joi.string().valid("1K", "2K", "4K").optional(),
+  }).optional(),
+}).unknown();
 
 const idParamSchema = Joi.object({
   id: Joi.string().regex(/^[0-9a-fA-F]{24}$/).required().messages({
@@ -108,8 +120,14 @@ export const renderJobController = {
         return;
       }
 
-      // Kiểm tra xem đây có phải là model của PiAPI không, tự động map model cũ/Gemini sang piapi-flux
-      const { model, prompt, inputImageUrls, aspectRatio } = req.body;
+      // Kiểm tra xem đây có phải là model của PiAPI không, hỗ trợ cấu trúc settings từ client
+      const settings = req.body.settings || {};
+      const model = req.body.model || settings.model;
+      const prompt = req.body.prompt || settings.prompt;
+      const inputImageUrls = req.body.inputImageUrls || [];
+      const referenceImageUrls = req.body.referenceImageUrls || [];
+      const aspectRatio = req.body.aspectRatio || settings.aspectRatio;
+      const resolution = req.body.resolution || settings.resolution || "1K";
       
       let piapiModel = model || "piapi-flux";
       if (!piapiModel.startsWith("piapi-") && piapiModel !== "nano-banana-pro" && piapiModel !== "nano-banana-2") {
@@ -150,8 +168,13 @@ export const renderJobController = {
 
       const job = await renderJobService.create({
         userId: req.user!.userId,
-        ...req.body,
+        type: req.body.type,
+        subType: req.body.subType,
+        inputImageUrls,
+        referenceImageUrls,
+        prompt: finalPrompt,
         model: piapiModel,
+        resolution,
         status,
         progress,
         piapiTaskId,

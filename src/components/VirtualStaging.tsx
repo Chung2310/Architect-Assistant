@@ -12,6 +12,7 @@ interface Shape {
   points: Point[];
   category?: string;
   type?: 'polygon' | 'rect';
+  label?: string;
 }
 
 
