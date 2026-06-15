@@ -109,6 +109,8 @@ function loggerMiddleware(req, res, next) {
 // server/config/database.ts
 var import_mongoose2 = __toESM(require("mongoose"), 1);
 var import_bcryptjs = __toESM(require("bcryptjs"), 1);
+var import_fs = __toESM(require("fs"), 1);
+var import_dns = __toESM(require("dns"), 1);
 
 // server/model/user.model.ts
 var import_mongoose = __toESM(require("mongoose"), 1);
@@ -191,12 +193,36 @@ async function connectDB() {
   const pass = process.env.MONGODB_PASSWORD;
   const authSource = process.env.MONGODB_AUTH_SOURCE || "admin";
   let connectionUri = uri;
-  if (connectionUri.includes("://mongodb/")) {
-    connectionUri = connectionUri.replace("://mongodb/", "://localhost/");
-  } else if (connectionUri.includes("://mongodb:")) {
-    connectionUri = connectionUri.replace("://mongodb:", "://localhost:");
-  } else if (connectionUri === "mongodb://mongodb") {
-    connectionUri = "mongodb://localhost";
+  let hostname;
+  try {
+    const parsed = new URL(connectionUri);
+    hostname = parsed.hostname;
+  } catch {
+    const match = connectionUri.match(/:\/\/([^:/]+)/);
+    hostname = match ? match[1] : null;
+  }
+  if (hostname === "mongodb") {
+    const isDocker = import_fs.default.existsSync("/.dockerenv") || import_fs.default.existsSync("/proc/1/cgroup") && import_fs.default.readFileSync("/proc/1/cgroup", "utf8").includes("docker");
+    let isResolvable;
+    if (isDocker) {
+      isResolvable = true;
+    } else {
+      isResolvable = await new Promise((resolve) => {
+        import_dns.default.lookup("mongodb", (err) => {
+          resolve(!err);
+        });
+      });
+    }
+    if (!isResolvable) {
+      logger.info("[Database] Host 'mongodb' kh\xF4ng th\u1EC3 ph\xE2n gi\u1EA3i v\xE0 kh\xF4ng \u1EDF trong Docker. T\u1EF1 \u0111\u1ED9ng chuy\u1EC3n \u0111\u1ED5i sang 'localhost'.");
+      if (connectionUri.includes("://mongodb/")) {
+        connectionUri = connectionUri.replace("://mongodb/", "://localhost/");
+      } else if (connectionUri.includes("://mongodb:")) {
+        connectionUri = connectionUri.replace("://mongodb:", "://localhost:");
+      } else if (connectionUri === "mongodb://mongodb") {
+        connectionUri = "mongodb://localhost";
+      }
+    }
   }
   if (user && pass) {
     const protocol = connectionUri.startsWith("mongodb+srv://") ? "mongodb+srv://" : "mongodb://";
@@ -228,6 +254,27 @@ async function connectDB() {
     logger.info("[Database] K\u1EBFt n\u1ED1i MongoDB th\xE0nh c\xF4ng.");
     await seedSuperAdmin();
   } catch (error) {
+    const isDocker = import_fs.default.existsSync("/.dockerenv") || import_fs.default.existsSync("/proc/1/cgroup") && import_fs.default.readFileSync("/proc/1/cgroup", "utf8").includes("docker");
+    if (!isDocker && user && pass && error instanceof Error && error.message.includes("Authentication failed")) {
+      logger.warn(`[Database] K\u1EBFt n\u1ED1i c\xF3 t\xE0i kho\u1EA3n/m\u1EADt kh\u1EA9u th\u1EA5t b\u1EA1i (${error.message}). \u0110ang th\u1EED k\u1EBFt n\u1ED1i l\u1EA1i kh\xF4ng d\xF9ng t\xE0i kho\u1EA3n m\u1EADt kh\u1EA9u...`);
+      try {
+        let fallbackUri = uri;
+        if (fallbackUri.includes("://mongodb/")) {
+          fallbackUri = fallbackUri.replace("://mongodb/", "://localhost/");
+        } else if (fallbackUri.includes("://mongodb:")) {
+          fallbackUri = fallbackUri.replace("://mongodb:", "://localhost:");
+        } else if (fallbackUri === "mongodb://mongodb") {
+          fallbackUri = "mongodb://localhost";
+        }
+        logger.info(`[Database] \u0110ang k\u1EBFt n\u1ED1i MongoDB (fallback): ${fallbackUri}`);
+        await import_mongoose2.default.connect(fallbackUri);
+        logger.info("[Database] K\u1EBFt n\u1ED1i MongoDB kh\xF4ng c\u1EA7n t\xE0i kho\u1EA3n m\u1EADt kh\u1EA9u th\xE0nh c\xF4ng.");
+        await seedSuperAdmin();
+        return;
+      } catch (fallbackError) {
+        logger.error(`[Database] K\u1EBFt n\u1ED1i MongoDB fallback th\u1EA5t b\u1EA1i: ${fallbackError}`);
+      }
+    }
     logger.error(`[Database] L\u1ED7i k\u1EBFt n\u1ED1i MongoDB: ${error}`);
     process.exit(1);
   }
