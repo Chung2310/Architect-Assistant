@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
+import fs from "fs";
+import dns from "dns";
 import { UserModel } from "../model/user.model";
 import { logger } from "../utils/logger";
 
@@ -38,13 +40,41 @@ export async function connectDB() {
 
   let connectionUri = uri;
   
-  // Rewrite Docker host 'mongodb' to 'localhost' for local execution
-  if (connectionUri.includes("://mongodb/")) {
-    connectionUri = connectionUri.replace("://mongodb/", "://localhost/");
-  } else if (connectionUri.includes("://mongodb:")) {
-    connectionUri = connectionUri.replace("://mongodb:", "://localhost:");
-  } else if (connectionUri === "mongodb://mongodb") {
-    connectionUri = "mongodb://localhost";
+  // Extract hostname to check if it's resolvable
+  let hostname: string | null;
+  try {
+    const parsed = new URL(connectionUri);
+    hostname = parsed.hostname;
+  } catch {
+    const match = connectionUri.match(/:\/\/([^:/]+)/);
+    hostname = match ? match[1] : null;
+  }
+
+  // Rewrite Docker host 'mongodb' to 'localhost' only for local execution (outside Docker network)
+  if (hostname === "mongodb") {
+    const isDocker = fs.existsSync("/.dockerenv") || (fs.existsSync("/proc/1/cgroup") && fs.readFileSync("/proc/1/cgroup", "utf8").includes("docker"));
+    
+    let isResolvable: boolean;
+    if (isDocker) {
+      isResolvable = true;
+    } else {
+      isResolvable = await new Promise<boolean>((resolve) => {
+        dns.lookup("mongodb", (err) => {
+          resolve(!err);
+        });
+      });
+    }
+
+    if (!isResolvable) {
+      logger.info("[Database] Host 'mongodb' không thể phân giải và không ở trong Docker. Tự động chuyển đổi sang 'localhost'.");
+      if (connectionUri.includes("://mongodb/")) {
+        connectionUri = connectionUri.replace("://mongodb/", "://localhost/");
+      } else if (connectionUri.includes("://mongodb:")) {
+        connectionUri = connectionUri.replace("://mongodb:", "://localhost:");
+      } else if (connectionUri === "mongodb://mongodb") {
+        connectionUri = "mongodb://localhost";
+      }
+    }
   }
 
   if (user && pass) {
@@ -84,6 +114,28 @@ export async function connectDB() {
     logger.info("[Database] Kết nối MongoDB thành công.");
     await seedSuperAdmin();
   } catch (error) {
+    const isDocker = fs.existsSync("/.dockerenv") || (fs.existsSync("/proc/1/cgroup") && fs.readFileSync("/proc/1/cgroup", "utf8").includes("docker"));
+    if (!isDocker && user && pass && error instanceof Error && error.message.includes("Authentication failed")) {
+      logger.warn(`[Database] Kết nối có tài khoản/mật khẩu thất bại (${error.message}). Đang thử kết nối lại không dùng tài khoản mật khẩu...`);
+      try {
+        let fallbackUri = uri;
+        if (fallbackUri.includes("://mongodb/")) {
+          fallbackUri = fallbackUri.replace("://mongodb/", "://localhost/");
+        } else if (fallbackUri.includes("://mongodb:")) {
+          fallbackUri = fallbackUri.replace("://mongodb:", "://localhost:");
+        } else if (fallbackUri === "mongodb://mongodb") {
+          fallbackUri = "mongodb://localhost";
+        }
+        
+        logger.info(`[Database] Đang kết nối MongoDB (fallback): ${fallbackUri}`);
+        await mongoose.connect(fallbackUri);
+        logger.info("[Database] Kết nối MongoDB không cần tài khoản mật khẩu thành công.");
+        await seedSuperAdmin();
+        return;
+      } catch (fallbackError) {
+        logger.error(`[Database] Kết nối MongoDB fallback thất bại: ${fallbackError}`);
+      }
+    }
     logger.error(`[Database] Lỗi kết nối MongoDB: ${error}`);
     process.exit(1);
   }
