@@ -15,15 +15,15 @@ import { TransactionModel } from "../server/model/transaction.model";
 import { cloudinaryService } from "../server/service/cloudinary.service";
 
 // Helper function to safely parse any date format (Timestamp, ISO string, milliseconds, etc.)
-function parseDateSafely(dateValue: any): Date {
+function parseDateSafely(dateValue: unknown): Date {
   if (!dateValue) return new Date();
   
   // If it's a Firestore Timestamp (has seconds property)
-  if (dateValue && typeof dateValue === "object" && typeof dateValue.seconds === "number") {
-    return new Date(dateValue.seconds * 1000);
+  if (dateValue && typeof dateValue === "object" && "seconds" in dateValue && typeof (dateValue as { seconds: unknown }).seconds === "number") {
+    return new Date((dateValue as { seconds: number }).seconds * 1000);
   }
   
-  const parsed = new Date(dateValue);
+  const parsed = new Date(dateValue as string | number | Date);
   if (isNaN(parsed.getTime())) {
     return new Date(); // Fallback to current date if parsing fails
   }
@@ -44,8 +44,16 @@ function getStoragePathFromUrl(url: string): string | null {
   }
 }
 
+interface FirebaseBucket {
+  file: (path: string) => {
+    exists: () => Promise<[boolean]>;
+    download: () => Promise<[Buffer]>;
+    metadata: { contentType?: string };
+  };
+}
+
 // Helper function to migrate an image URL from Firebase Storage to Cloudinary
-async function migrateImageUrl(url: string, bucket: any, folder: string): Promise<string> {
+async function migrateImageUrl(url: string, bucket: FirebaseBucket, folder: string): Promise<string> {
   if (!url || typeof url !== "string") return url;
   
   if (!url.includes("firebasestorage.googleapis.com")) {
@@ -159,8 +167,9 @@ async function run() {
   try {
     await mongoose.connect(connectionUri);
     console.log("[Migration] MongoDB connection successful.");
-  } catch (error: any) {
-    if (error.message?.includes("Authentication failed") && (user || pass)) {
+  } catch (error: unknown) {
+    const err = error as Error;
+    if (err.message?.includes("Authentication failed") && (user || pass)) {
       console.warn("[Migration] Authentication failed with credentials. Trying to connect without credentials...");
       await mongoose.connect(uri);
       console.log("[Migration] MongoDB connection successful (without credentials).");

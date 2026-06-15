@@ -2578,8 +2578,9 @@ ${schemaPrompt}` : schemaPrompt;
         };
         res.json(geminiResponse);
       } catch (err) {
-        logger.error(`[PiAPI Adapter] Error: ${err.message}`);
-        res.status(500).json({ error: "PiAPI Adapter error", details: err.message });
+        const error = err;
+        logger.error(`[PiAPI Adapter] Error: ${error.message}`);
+        res.status(500).json({ error: "PiAPI Adapter error", details: error.message });
       }
     } else {
       geminiProxy(req, res, next);

@@ -204,7 +204,11 @@ async function startServer() {
           res.json(geminiResponse);
           return;
         }
-        const messages: any[] = [];
+        interface OpenAIMessage {
+          role: string;
+          content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
+        }
+        const messages: OpenAIMessage[] = [];
         
         // Add system instruction if present
         let systemText = "";
@@ -212,7 +216,7 @@ async function startServer() {
           if (typeof systemInstruction === "string") {
             systemText = systemInstruction;
           } else if (systemInstruction.parts && Array.isArray(systemInstruction.parts)) {
-            systemText = systemInstruction.parts.map((p: any) => p.text).filter(Boolean).join("\n");
+            systemText = systemInstruction.parts.map((p: { text?: string }) => p.text).filter(Boolean).join("\n");
           } else if (systemInstruction.text) {
             systemText = systemInstruction.text;
           }
@@ -223,11 +227,11 @@ async function startServer() {
           const schema = generationConfig?.responseSchema;
           let schemaPrompt = "Respond only in valid JSON format.";
           if (schema) {
-            const processSchema = (s: any): string => {
+            const processSchema = (s: { type?: string; properties?: Record<string, { type?: string }>; required?: string[] }): string => {
               if (s.type === "OBJECT" || s.type === "object") {
                 const props = s.properties || {};
                 const required = s.required || [];
-                const propLines = Object.entries(props).map(([k, v]: [string, any]) => {
+                const propLines = Object.entries(props).map(([k, v]) => {
                   const reqStr = required.includes(k) ? " (required)" : "";
                   return `  "${k}": ${v.type || "string"}${reqStr}`;
                 });
@@ -251,7 +255,7 @@ async function startServer() {
         if (contents && Array.isArray(contents)) {
           for (const content of contents) {
             const role = content.role === "model" ? "assistant" : "user";
-            const openAiParts: any[] = [];
+            const openAiParts: Array<{ type: string; text?: string; image_url?: { url: string } }> = [];
             
             if (content.parts && Array.isArray(content.parts)) {
               for (const part of content.parts) {
@@ -279,12 +283,17 @@ async function startServer() {
         }
 
         // Determine the target model for text generation via PiAPI
-        const hasImage = messages.some((msg: any) => 
-          Array.isArray(msg.content) && msg.content.some((part: any) => part.type === "image_url")
+        const hasImage = messages.some((msg) => 
+          Array.isArray(msg.content) && msg.content.some((part) => part.type === "image_url")
         );
         const targetModel = hasImage ? "gpt-4o" : "gpt-4o-mini";
 
-        const piapiBody: any = {
+        const piapiBody: {
+          model: string;
+          messages: OpenAIMessage[];
+          temperature: number;
+          response_format?: { type: string };
+        } = {
           model: targetModel,
           messages,
           temperature: generationConfig?.temperature ?? 1.0,
@@ -310,7 +319,13 @@ async function startServer() {
           throw new Error(`PiAPI Chat Completion failed: ${piapiResponse.status} - ${errText}`);
         }
 
-        const data = await piapiResponse.json() as any;
+        const data = (await piapiResponse.json()) as {
+          choices?: Array<{
+            message?: {
+              content?: string;
+            };
+          }>;
+        };
         logger.info(`[PiAPI Adapter] Raw response from PiAPI: ${JSON.stringify(data)}`);
         const textResult = data.choices?.[0]?.message?.content || "";
 
@@ -332,9 +347,10 @@ async function startServer() {
         };
 
         res.json(geminiResponse);
-      } catch (err: any) {
-        logger.error(`[PiAPI Adapter] Error: ${err.message}`);
-        res.status(500).json({ error: "PiAPI Adapter error", details: err.message });
+      } catch (err: unknown) {
+        const error = err as Error;
+        logger.error(`[PiAPI Adapter] Error: ${error.message}`);
+        res.status(500).json({ error: "PiAPI Adapter error", details: error.message });
       }
     } else {
       geminiProxy(req, res, next);
