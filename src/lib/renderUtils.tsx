@@ -205,6 +205,7 @@ export const generateContentWithRetry = async (
   for (let i = 0; i < retries; i++) {
     let timeoutId: NodeJS.Timeout;
     try {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const timeoutPromise = new Promise((_, reject) => {
         timeoutId = setTimeout(() => reject(new Error("TIMEOUT")), timeoutMs);
       });
@@ -289,19 +290,23 @@ export const generateContentWithRetry = async (
 
         const imageConfig = (callParams.config as { imageConfig?: { aspectRatio?: string; imageSize?: string } })?.imageConfig || {};
 
-        const imageResponse = (await Promise.race([
-          ai.models.generateImages({
+        const backendRes = await apiClient.post<ApiResponse<AIResponse>>("/api/v1/gemini/generate", {
+          params: {
             model: modelName,
-            prompt: prompt,
+            contents: [{ parts: [{ text: prompt }] }],
             config: {
-              numberOfImages: 1,
-              aspectRatio: imageConfig.aspectRatio || "1:1",
-              imageSize: imageConfig.imageSize || "1K",
-              outputMimeType: "image/png",
-            },
-          }),
-          timeoutPromise,
-        ])) as AIResponse;
+              imageConfig: {
+                aspectRatio: imageConfig.aspectRatio || "1:1",
+                imageSize: imageConfig.imageSize || "1K"
+              }
+            }
+          }
+        });
+
+        if (!backendRes || !backendRes.success) {
+          throw new Error(backendRes?.message || "Lỗi sinh ảnh từ server.");
+        }
+        const imageResponse = backendRes.data;
 
         const base64Data =
           imageResponse.generatedImages?.[0]?.image?.imageBytes;
@@ -326,10 +331,14 @@ export const generateContentWithRetry = async (
           text: "",
         };
       } else {
-        const fullResult = (await Promise.race([
-          ai.models.generateContent(callParams as unknown as Parameters<typeof ai.models.generateContent>[0]),
-          timeoutPromise,
-        ])) as AIResponse;
+        const backendRes = await apiClient.post<ApiResponse<AIResponse>>("/api/v1/gemini/generate", {
+          params: callParams
+        });
+
+        if (!backendRes || !backendRes.success) {
+          throw new Error(backendRes?.message || "Lỗi kết nối API Gemini.");
+        }
+        const fullResult = backendRes.data;
 
         const rawResponse = fullResult?.response || fullResult;
         let candidates = rawResponse?.candidates || [];
@@ -356,10 +365,17 @@ export const generateContentWithRetry = async (
           promptFeedback: rawResponse?.promptFeedback,
         };
         try {
-          result.text =
-            typeof rawResponse?.text === "function"
-              ? rawResponse.text()
-              : (rawResponse?.text as string) || "";
+          if (typeof rawResponse?.text === "function") {
+            result.text = rawResponse.text();
+          } else if (typeof rawResponse?.text === "string") {
+            result.text = rawResponse.text;
+          } else if (candidates && candidates[0]?.content?.parts) {
+            result.text = candidates[0].content.parts
+              .map((part: { text?: string }) => part.text || "")
+              .join("");
+          } else {
+            result.text = "";
+          }
         } catch {
           result.text = "";
         }
