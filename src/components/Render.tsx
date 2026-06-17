@@ -228,7 +228,7 @@ const EditTabContent: React.FC = () => {
   const [selectedResolution, setSelectedResolution] = useState("1K");
   const [numImages, setNumImages] = useState(1);
   const [aspectRatio, setAspectRatio] = useState("Tự động");
-  const [promptModel, setPromptModel] = useState("gemini-3-flash-preview");
+  const [promptModel, setPromptModel] = useState("gemini-2.5-flash");
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
   const [promptStatus, setPromptStatus] = useState("");
   const [smoothPromptProgress, setSmoothPromptProgress] = useState(0);
@@ -1714,11 +1714,8 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
                     value={promptModel}
                     onChange={(e) => setPromptModel(e.target.value)}
                   >
-                    <option value="gemini-1.5-flash-latest">
-                      iGen 3 Flash Preview
-                    </option>
-                    <option value="gemini-1.5-pro-latest">
-                      iGen 3.1 Pro Preview
+                    <option value="gemini-2.5-flash">
+                      Gemini 2.5 Flash
                     </option>
                   </select>
                   <Icon
@@ -2126,17 +2123,12 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
                   <select
                     className="w-full bg-surface-container-low/50 border border-outline-variant/20 focus:border-primary rounded-lg p-2 text-xs font-medium text-on-surface appearance-none outline-none cursor-pointer pr-10 text-ellipsis overflow-hidden whitespace-nowrap"
                     value={
-                      promptModel === "gemini-3-flash-preview"
-                        ? "gemini-3.1-pro-preview"
-                        : promptModel
+                      promptModel
                     }
                     onChange={(e) => setPromptModel(e.target.value)}
                   >
-                    <option value="gemini-3-flash-preview" disabled>
-                      iGen 3 Flash Preview
-                    </option>
-                    <option value="gemini-3.1-pro-preview">
-                      iGen 3.1 Pro Preview
+                    <option value="gemini-2.5-flash">
+                      Gemini 2.5 Flash
                     </option>
                   </select>
                   <Icon
@@ -2623,11 +2615,8 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
                     value={promptModel}
                     onChange={(e) => setPromptModel(e.target.value)}
                   >
-                    <option value="gemini-1.5-flash-latest">
-                      iGen 3 Flash Preview
-                    </option>
-                    <option value="gemini-1.5-pro-latest">
-                      iGen 3.1 Pro Preview
+                    <option value="gemini-2.5-flash">
+                      Gemini 2.5 Flash
                     </option>
                   </select>
                   <Icon
@@ -3134,11 +3123,8 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
                     value={promptModel}
                     onChange={(e) => setPromptModel(e.target.value)}
                   >
-                    <option value="gemini-1.5-flash-latest">
-                      iGen 3 Flash Preview
-                    </option>
-                    <option value="gemini-1.5-pro-latest">
-                      iGen 3.1 Pro Preview
+                    <option value="gemini-2.5-flash">
+                      Gemini 2.5 Flash
                     </option>
                   </select>
                   <Icon
@@ -3615,11 +3601,8 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
                     value={promptModel}
                     onChange={(e) => setPromptModel(e.target.value)}
                   >
-                    <option value="gemini-3.1-flash-image-preview">
-                      iGen 3.1 Flash Image Preview
-                    </option>
-                    <option value="gemini-3-pro-image-preview">
-                      iGen 3 Pro Image Preview
+                    <option value="gemini-2.5-flash">
+                      Gemini 2.5 Flash
                     </option>
                   </select>
                   <Icon

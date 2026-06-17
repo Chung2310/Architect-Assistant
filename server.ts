@@ -113,10 +113,10 @@ async function startServer() {
 
   app.use("/api/gemini-proxy", async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const piapiKey = process.env.PIAPI_API_KEY;
-    if (piapiKey && req.method === "POST") {
+    const pathStr = req.path;
+    const isImageModel = pathStr.includes("image-preview") || pathStr.includes("imagen") || pathStr.includes("generateImages");
+    if (piapiKey && req.method === "POST" && isImageModel) {
       try {
-        const pathStr = req.path;
-        const isImageModel = pathStr.includes("image-preview") || pathStr.includes("imagen") || pathStr.includes("generateImages");
         const { contents, systemInstruction, generationConfig, config: reqConfig } = req.body;
 
         if (isImageModel) {

@@ -90,7 +90,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
   const [customCameraAngle, setCustomCameraAngle] = useState("");
 
   const [prompt, setPrompt] = useState("");
-  const [promptModel, setPromptModel] = useState("gemini-3.1-pro-preview");
+  const [promptModel, setPromptModel] = useState("gemini-2.5-flash");
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
   const [promptProgress, setPromptProgress] = useState(0);
   const [promptStatus, setPromptStatus] = useState("");
@@ -1759,11 +1759,8 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
                   value={promptModel}
                   onChange={(e) => setPromptModel(e.target.value)}
                 >
-                  <option value="gemini-3-flash-preview">
-                    iGen 3 Flash Preview
-                  </option>
-                  <option value="gemini-3.1-pro-preview">
-                    iGen 3.1 Pro Preview
+                  <option value="gemini-2.5-flash">
+                    Gemini 2.5 Flash
                   </option>
                 </select>
                 <Icon
