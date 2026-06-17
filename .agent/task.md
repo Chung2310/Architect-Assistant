@@ -1,11 +1,11 @@
-# 📋 Tasks
+# 📋 Danh sách Nhiệm vụ (Tasks)
 
-- [x] Diagnose root cause of hanging build at runner `yarn install` (C++ source compilation of `canvas`).
-- [x] Audit backend and frontend to check if `canvas` npm package is imported (not imported anywhere).
-- [x] Remove `"canvas"` from `package.json` dependencies.
-- [x] Update `yarn.lock` by running `yarn install` locally.
-- [x] Optimize `Dockerfile` to copy `yarn.lock` instead of `package-lock.json` and remove build toolchain installs.
-- [x] Verify code correctness with `yarn lint` and `yarn typecheck`.
+- [x] Chẩn đoán nguyên nhân gốc rễ của việc build bị treo khi chạy lệnh `yarn install` (biên dịch mã nguồn C++ của thư viện `canvas`).
+- [x] Kiểm tra toàn bộ backend và frontend để xác nhận xem gói npm `canvas` có được import ở đâu không (không được import ở bất kỳ đâu).
+- [x] Xóa bỏ `"canvas"` khỏi danh sách dependencies trong `package.json`.
+- [x] Cập nhật `yarn.lock` bằng cách chạy `yarn install` ở máy local.
+- [x] Tối ưu hóa `Dockerfile` để sao chép `yarn.lock` thay vì `package-lock.json` và loại bỏ việc cài đặt các công cụ biên dịch (toolchain).
+- [x] Xác minh tính đúng đắn của mã nguồn bằng cách chạy `yarn lint` và `yarn typecheck`.
 - [x] Tích hợp dịch vụ PiAPI ở backend hỗ trợ cả polling ngầm và webhook callback.
 - [x] Cập nhật model RenderJob lưu trữ `piapiTaskId`.
 - [x] Bổ sung tài liệu Swagger đầy đủ cho endpoint Webhook của PiAPI.

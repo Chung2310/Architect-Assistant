@@ -22,7 +22,7 @@ export const getAIClient = async (modelName: string) => {
     if (
       modelName === "gemini-3.1-flash-image-preview" ||
       modelName === "gemini-3-pro-image-preview" ||
-      modelName === "gemini-3.1-pro-preview" ||
+      modelName === "gemini-2.5-flash" ||
       modelName === "veo-3.1-generate-preview" ||
       modelName === "veo-3.1-lite-generate-preview"
     ) {
@@ -485,9 +485,10 @@ export const generateContentWithRetry = async (
             i === 1 &&
             params.model &&
             ((params.model as string) === "gemini-3.1-pro-preview" ||
-              (params.model as string).includes("pro"))
+              (params.model as string).includes("pro") ||
+              (params.model as string) === "gemini-2.5-flash")
           ) {
-            params.model = "gemini-3-flash-preview";
+            params.model = "gemini-2.5-flash";
           }
           await new Promise((res) => setTimeout(res, delay));
           delay = Math.min(delay * 1.5, 10000);
@@ -670,9 +671,10 @@ export const generateContentStreamWithRetry = async function* (
             i === 1 &&
             params.model &&
             ((params.model as string) === "gemini-3.1-pro-preview" ||
-              (params.model as string).includes("pro"))
+              (params.model as string).includes("pro") ||
+              (params.model as string) === "gemini-2.5-flash")
           ) {
-            params.model = "gemini-3-flash-preview";
+            params.model = "gemini-2.5-flash";
           }
           await new Promise((res) => setTimeout(res, delay));
           delay = Math.min(delay * 1.5, 10000);

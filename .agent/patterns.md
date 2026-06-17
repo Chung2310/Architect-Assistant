@@ -1,27 +1,27 @@
-# 🌌 Patterns
+# 🌌 Các Mẫu Thiết Kế (Patterns)
 
-## 📦 Native Modules in Docker (Alpine)
-- **Problem**: Compiling native modules (like `canvas`) from source in Alpine images using `node-gyp` requires intensive compiler resources (g++, make, Python) and frequently hangs or runs out of memory in CI/CD or resource-constrained environments.
-- **Solution**: 
-  1. Audit the codebase to check if the package is actually imported on the server side. If it is only used on the client-side (relying on browser's native `<canvas>`), remove it from `package.json`.
-  2. If the package is required on the backend, switch to a Debian-based slim image (e.g., `node:22-slim`) which can download prebuilt glibc binaries instead of compiling from source.
+## 📦 Các Mô-đun Bản Địa Trong Docker (Alpine)
+- **Vấn đề**: Việc biên dịch các mô-đun bản địa (native modules - như `canvas`) từ mã nguồn trong các image Alpine bằng `node-gyp` yêu cầu tài nguyên biên dịch rất lớn (g++, make, Python) và thường xuyên bị treo hoặc hết bộ nhớ trong môi trường CI/CD hoặc các môi trường bị giới hạn tài nguyên.
+- **Giải pháp**: 
+  1. Kiểm tra toàn bộ mã nguồn để xem liệu gói (package) đó có thực sự được import ở phía máy chủ (backend) hay không. Nếu nó chỉ được sử dụng ở phía client (dựa trên thẻ `<canvas>` bản địa của trình duyệt), hãy xóa nó khỏi `package.json`.
+  2. Nếu gói đó là bắt buộc ở backend, hãy chuyển sang một image dạng slim dựa trên Debian (ví dụ: `node:22-slim`) để có thể tải xuống các tệp nhị phân glibc đã được xây dựng sẵn thay vì phải biên dịch từ mã nguồn.
 
-## 🔑 Yarn Lockfile Consistency in Docker
-- **Problem**: Running `yarn install` in Docker without copying the correct lockfile (`yarn.lock`) causes Yarn to perform a slow over-the-network version resolution, which is non-deterministic and prone to hanging.
-- **Solution**: Always copy `yarn.lock` instead of `package-lock.json` when running `yarn` commands inside Docker, and use the `--frozen-lockfile` flag to enforce speed and consistency.
+## 🔑 Sự Nhất Quán Của Yarn Lockfile Trong Docker
+- **Vấn đề**: Việc chạy `yarn install` trong Docker mà không sao chép đúng tệp khóa (`yarn.lock`) sẽ khiến Yarn thực hiện việc phân giải phiên bản qua mạng một cách chậm chạp, không nhất quán và dễ bị treo.
+- **Giải pháp**: Luôn luôn sao chép `yarn.lock` thay vì `package-lock.json` khi chạy các lệnh `yarn` bên trong Docker, và sử dụng cờ `--frozen-lockfile` để đảm bảo tốc độ cũng như sự nhất quán.
 
-## 📞 PiAPI Asynchronous Integration with Webhook & Polling
-- **Problem**: Third-party generation APIs (PiAPI, Midjourney, Flux) are slow and take 15s to several minutes. Polling synchronously during an HTTP request causes gateway timeouts.
-- **Solution**:
-  1. Trigger the generation task on PiAPI asynchronously and store the task ID (`piapiTaskId`) in the database.
-  2. Expose a public webhook endpoint (`/api/v1/piapi/webhook`) for production environments to receive task updates.
-  3. Run a lightweight polling worker (`polling.service.ts`) using `setInterval` to check status for active tasks, which acts as a fallback for production and makes local development work without NAT tunnels.
-  4. Stream real-time status and output image URLs back to the client using WebSockets (Socket.io).
+## 📞 Tích Hợp Bất Đồng Bộ PiAPI Với Webhook & Polling
+- **Vấn đề**: Các API tạo ảnh/video từ bên thứ ba (PiAPI, Midjourney, Flux) xử lý rất chậm và mất từ 15 giây đến vài phút. Việc thực hiện polling đồng bộ trong một yêu cầu HTTP sẽ gây ra lỗi quá thời gian phản hồi của gateway (gateway timeout).
+- **Giải pháp**:
+  1. Kích hoạt tác vụ tạo (generation task) trên PiAPI một cách bất đồng bộ và lưu trữ ID tác vụ (`piapiTaskId`) vào cơ sở dữ liệu.
+  2. Cung cấp một endpoint webhook công khai (`/api/v1/piapi/webhook`) cho môi trường production để tiếp nhận các cập nhật trạng thái tác vụ.
+  3. Chạy một worker polling nhẹ nhàng (`polling.service.ts`) sử dụng `setInterval` để kiểm tra trạng thái của các tác vụ đang hoạt động, đóng vai trò dự phòng cho production và giúp việc phát triển ở môi trường local hoạt động mà không cần đến NAT tunnel.
+  4. Truyền phát trực tiếp trạng thái thực tế và URL ảnh kết quả về cho client bằng WebSockets (Socket.io).
 
-## 🐳 Two-Stage Production Docker with esbuild Backend Bundling
-- **Problem**: Running Typescript directly in production containers via tsx or ts-node consumes high RAM, delays container startup due to on-the-fly compilation, and requires full source code inside the production runner.
-- **Solution**:
-  1. Implement a 2-stage Docker build.
-  2. Stage 1 (Builder): Use `esbuild` to bundle `server.ts` into a single module `dist/server.cjs` with `--platform=node --format=cjs --packages=external`.
-  3. Stage 2 (Runner): Copy only the `dist` bundle and package manifests, then install production-only dependencies using yarn cache mounts.
-  4. Execute with raw node: `CMD ["node", "dist/server.cjs"]`.
+## 🐳 Docker Production Hai Giai Đoạn Với esbuild Bundling Cho Backend
+- **Vấn đề**: Việc chạy trực tiếp TypeScript trong container production thông qua tsx hoặc ts-node tiêu tốn nhiều RAM, làm chậm quá trình khởi động container do phải biên dịch trực tiếp (on-the-fly), và yêu cầu phải có toàn bộ mã nguồn bên trong container chạy production.
+- **Giải pháp**:
+  1. Triển khai quy trình build Docker 2 giai đoạn (multi-stage build).
+  2. Giai đoạn 1 (Builder): Sử dụng `esbuild` để đóng gói `server.ts` thành một mô-đun duy nhất `dist/server.cjs` với tham số `--platform=node --format=cjs --packages=external`.
+  3. Giai đoạn 2 (Runner): Chỉ sao chép thư mục `dist` đã đóng gói và các file manifest của package, sau đó cài đặt các dependency chỉ dành cho production bằng cách sử dụng cơ chế yarn cache mount.
+  4. Thực thi bằng node gốc: `CMD ["node", "dist/server.cjs"]`.

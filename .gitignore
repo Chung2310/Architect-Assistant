@@ -8,7 +8,7 @@ coverage/
 scripts/*.ts
 firebase-service-account.json
 firebase-applet-config.json
-.agent
+.agent/
 .gemini
 .claude
 .cursor 

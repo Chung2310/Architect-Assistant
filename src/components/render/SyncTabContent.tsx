@@ -91,7 +91,7 @@ export const SyncTabContent: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeProgress, setAnalyzeProgress] = useState(0);
   const [analyzeStatus, setAnalyzeStatus] = useState("");
-  const [promptModel, setPromptModel] = useState("gemini-3-flash-preview");
+  const [promptModel, setPromptModel] = useState("gemini-2.5-flash");
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [analysisCategories, setAnalysisCategories] = useState<
     AngleCategory[] | null
@@ -857,7 +857,7 @@ User Request: ${userAction}`;
 
       (async () => {
         try {
-          const ai = await getAIClient("gemini-3.1-pro-preview");
+          const ai = await getAIClient("gemini-2.5-flash");
           let parsedText: { hidden_api_prompt_en?: string; display_title_vi?: string } = {};
           try {
             parsedText = JSON.parse(suggestion.text);
@@ -873,7 +873,7 @@ Please generate a new, highly detailed English prompt for an image generation mo
 Output strictly JSON: { "hidden_api_prompt_en": "new english prompt here" }`;
 
           const result = await generateContentWithRetry(ai, {
-            model: "gemini-3.1-pro-preview",
+            model: "gemini-2.5-flash",
             contents: [{ role: "user", parts: [{ text: promptText }] }],
             config: {
               responseMimeType: "application/json",
@@ -1262,9 +1262,9 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
           },
         };
 
-        if (promptModel === "gemini-3.1-pro-preview") {
+        if (promptModel === "gemini-2.5-flash") {
           generationConfig.thinking_config = {
-            thinking_level: "high",
+            thinking_level: "medium",
           };
         }
       } else {
@@ -1522,11 +1522,8 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                       value={promptModel}
                       onChange={(e) => setPromptModel(e.target.value)}
                     >
-                      <option value="gemini-3-flash-preview">
-                        iGen 3 Flash Preview
-                      </option>
-                      <option value="gemini-3.1-pro-preview">
-                        iGen 3.1 Pro Preview
+                      <option value="gemini-2.5-flash">
+                        Gemini 2.5 Flash
                       </option>
                     </select>
                     <Icon

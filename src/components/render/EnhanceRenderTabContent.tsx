@@ -121,7 +121,7 @@ export const EnhanceRenderTabContent: React.FC = () => {
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [promptModel, setPromptModel] = useState("gemini-3-flash-preview");
+  const [promptModel, setPromptModel] = useState("gemini-2.5-flash");
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
   const [promptStatus, setPromptStatus] = useState("");
   const [promptProgress, setPromptProgress] = useState(0);
@@ -991,11 +991,8 @@ Trả về một đối tượng JSON có định dạng sau:
                   value={promptModel}
                   onChange={(e) => setPromptModel(e.target.value)}
                 >
-                  <option value="gemini-1.5-flash-latest">
-                    iGen 3 Flash Preview
-                  </option>
-                  <option value="gemini-1.5-pro-latest">
-                    iGen 3.1 Pro Preview
+                  <option value="gemini-2.5-flash">
+                    Gemini 2.5 Flash
                   </option>
                 </select>
                 <Icon

@@ -247,7 +247,7 @@ export const UpscaleTabContent: React.FC = () => {
         });
       }
 
-      const promptAi = await getAIClient("gemini-3.1-pro-preview");
+      const promptAi = await getAIClient("gemini-2.5-flash");
 
       const generationConfigText = {
         temperature: 1.0,
@@ -307,7 +307,7 @@ If the image is too blurry to identify specific details, describe the general sh
 
       console.log("Analyzing image to generate upscale prompt...");
       const textResponse = await generateContentWithRetry(promptAi, {
-        model: "gemini-3.1-pro-preview",
+        model: "gemini-2.5-flash",
         contents: [
           {
             role: "user",
