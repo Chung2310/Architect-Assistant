@@ -5,6 +5,7 @@ import { userRouter } from "./user.router";
 import { renderJobRouter } from "./render-job.router";
 import { mediaRouter } from "./media.router";
 import { piapiRouter } from "./piapi.router";
+import { geminiRouter } from "./gemini.router";
 
 const router = Router();
 
@@ -14,6 +15,7 @@ router.use("/users", userRouter);
 router.use("/render-jobs", renderJobRouter);
 router.use("/media", mediaRouter);
 router.use("/piapi", piapiRouter);
+router.use("/gemini", geminiRouter);
 
 // Health check endpoint
 router.get("/health", (req, res) => {

@@ -39,16 +39,6 @@ const TABS = [
 
 const MODELS = [
   {
-    id: "piapi-midjourney",
-    name: "Midjourney v6 (PiAPI)",
-    isPro: true,
-  },
-  {
-    id: "piapi-flux",
-    name: "Flux Dev (PiAPI)",
-    isPro: true,
-  },
-  {
     id: "nano-banana-pro",
     name: "Nano Banana Pro (PiAPI)",
     isPro: true,
