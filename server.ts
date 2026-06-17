@@ -115,10 +115,13 @@ async function startServer() {
     const piapiKey = process.env.PIAPI_API_KEY;
     const pathStr = req.path;
     const isImageModel = pathStr.includes("image-preview") || pathStr.includes("imagen") || pathStr.includes("generateImages");
-    if (piapiKey && req.method === "POST" && isImageModel) {
-      try {
-        const { contents, systemInstruction, generationConfig, config: reqConfig } = req.body;
+    const isVideoModel = pathStr.includes("veo");
 
+    if (piapiKey && req.method === "POST" && (isImageModel || isVideoModel)) {
+      try {
+        const { contents, generationConfig, config: reqConfig } = req.body;
+
+        // ─── Xử lý sinh ảnh (Image) ───────────────────────────────────────────────
         if (isImageModel) {
           let targetModel = "nano-banana-2";
           if (pathStr.includes("gemini-3-pro-image-preview")) {
@@ -126,16 +129,16 @@ async function startServer() {
           } else if (pathStr.includes("gemini-3.1-flash-image-preview")) {
             targetModel = "nano-banana-2";
           }
-          
+
           let promptText = "";
           let inputImageBase64 = "";
           let inputImageMimeType = "";
-          
+
           // Handle contents as either array or plain object with parts
-          const contentsArray = Array.isArray(contents) 
-            ? contents 
+          const contentsArray = Array.isArray(contents)
+            ? contents
             : (contents && contents.parts ? [{ parts: contents.parts }] : []);
-            
+
           for (const content of contentsArray) {
             if (content.parts && Array.isArray(content.parts)) {
               for (const part of content.parts) {
@@ -182,7 +185,7 @@ async function startServer() {
           const base64 = Buffer.from(arrayBuffer).toString("base64");
           const mimeType = imgFetchRes.headers.get("content-type") || "image/png";
 
-          const geminiResponse = {
+          const geminiImageResponse = {
             candidates: [
               {
                 content: {
@@ -201,158 +204,93 @@ async function startServer() {
             ]
           };
 
-          res.json(geminiResponse);
+          res.json(geminiImageResponse);
           return;
         }
-        interface OpenAIMessage {
-          role: string;
-          content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
-        }
-        const messages: OpenAIMessage[] = [];
-        
-        // Add system instruction if present
-        let systemText = "";
-        if (systemInstruction) {
-          if (typeof systemInstruction === "string") {
-            systemText = systemInstruction;
-          } else if (systemInstruction.parts && Array.isArray(systemInstruction.parts)) {
-            systemText = systemInstruction.parts.map((p: { text?: string }) => p.text).filter(Boolean).join("\n");
-          } else if (systemInstruction.text) {
-            systemText = systemInstruction.text;
-          }
-        }
 
-        // If JSON output is requested, append the schema instruction to system instruction
-        if (generationConfig?.responseMimeType === "application/json") {
-          const schema = generationConfig?.responseSchema;
-          let schemaPrompt = "Respond only in valid JSON format.";
-          if (schema) {
-            const processSchema = (s: { type?: string; properties?: Record<string, { type?: string }>; required?: string[] }): string => {
-              if (s.type === "OBJECT" || s.type === "object") {
-                const props = s.properties || {};
-                const required = s.required || [];
-                const propLines = Object.entries(props).map(([k, v]) => {
-                  const reqStr = required.includes(k) ? " (required)" : "";
-                  return `  "${k}": ${v.type || "string"}${reqStr}`;
-                });
-                return `{\n${propLines.join(",\n")}\n}`;
-              }
-              return `a JSON ${s.type || "object"}`;
-            };
-            schemaPrompt = `You MUST respond only in valid JSON format matching this schema:\n${processSchema(schema)}\nDo not include any markdown wrappers (like \`\`\`json) or additional text outside the JSON.`;
+        // ─── Xử lý sinh video (Veo qua PiAPI) ────────────────────────────────────
+        if (isVideoModel) {
+          // Map Gemini model name → PiAPI Veo task type
+          // veo-3.1-generate-preview (Full) → veo31-video-audio (chất lượng cao hơn)
+          // veo-3.1-lite-generate-preview (Lite) → veo31-video-fast-audio (nhanh hơn, rẻ hơn)
+          let piapiVideoModel = "veo31-video-fast-audio"; // mặc định
+          if (pathStr.includes("veo-3.1-generate-preview") && !pathStr.includes("lite")) {
+            piapiVideoModel = "veo31-video-audio";
           }
-          systemText = systemText ? `${systemText}\n\n${schemaPrompt}` : schemaPrompt;
-        }
 
-        if (systemText) {
-          messages.push({
-            role: "system",
-            content: systemText
-          });
-        }
-        
-        // Add conversation messages
-        if (contents && Array.isArray(contents)) {
-          for (const content of contents) {
-            const role = content.role === "model" ? "assistant" : "user";
-            const openAiParts: Array<{ type: string; text?: string; image_url?: { url: string } }> = [];
-            
+          // Extract prompt và ảnh tham chiếu từ contents
+          let promptText = "";
+          const referenceImageUris: string[] = [];
+          const contentsArray = Array.isArray(contents)
+            ? contents
+            : (contents && contents.parts ? [{ parts: contents.parts }] : []);
+
+          for (const content of contentsArray) {
             if (content.parts && Array.isArray(content.parts)) {
               for (const part of content.parts) {
                 if (part.text) {
-                  openAiParts.push({
-                    type: "text",
-                    text: part.text
-                  });
-                } else if (part.inlineData) {
-                  openAiParts.push({
-                    type: "image_url",
-                    image_url: {
-                      url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
-                    }
-                  });
+                  promptText += part.text + "\n";
+                } else if (part.inlineData && part.inlineData.data) {
+                  referenceImageUris.push(`data:${part.inlineData.mimeType || "image/jpeg"};base64,${part.inlineData.data}`);
+                } else if (part.fileData && part.fileData.fileUri) {
+                  referenceImageUris.push(part.fileData.fileUri);
                 }
               }
             }
-            
-            messages.push({
-              role,
-              content: openAiParts.length === 1 && openAiParts[0].type === "text" ? openAiParts[0].text : openAiParts
-            });
           }
-        }
+          promptText = promptText.trim();
 
-        // Determine the target model for text generation via PiAPI
-        const hasImage = messages.some((msg) => 
-          Array.isArray(msg.content) && msg.content.some((part) => part.type === "image_url")
-        );
-        const targetModel = hasImage ? "gpt-4o" : "gpt-4o-mini";
+          // Đọc cấu hình video: aspectRatio và durationSeconds
+          const mergedConfig = { ...(generationConfig || {}), ...(reqConfig || {}) };
+          const videoConfig = (mergedConfig?.videoConfig as Record<string, unknown>) || (mergedConfig?.imageConfig as Record<string, unknown>) || {};
+          const aspectRatio = (videoConfig.aspectRatio as string) || (mergedConfig.aspectRatio as string) || "16:9";
+          const durationSeconds = (videoConfig.durationSeconds as number) || (mergedConfig.durationSeconds as number) || 5;
 
-        const piapiBody: {
-          model: string;
-          messages: OpenAIMessage[];
-          temperature: number;
-          response_format?: { type: string };
-        } = {
-          model: targetModel,
-          messages,
-          temperature: generationConfig?.temperature ?? 1.0,
-        };
+          logger.info(`[PiAPI Video Adapter] Generating video via PiAPI. Model: ${piapiVideoModel}, Aspect: ${aspectRatio}, Duration: ${durationSeconds}s`);
 
-        if (generationConfig?.responseMimeType === "application/json") {
-          piapiBody.response_format = { type: "json_object" };
-        }
-
-        logger.info(`[PiAPI Adapter] Translating Gemini request to PiAPI Chat Completion (model: ${targetModel})`);
-        
-        const piapiResponse = await fetch("https://api.piapi.ai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${piapiKey}`
-          },
-          body: JSON.stringify(piapiBody)
-        });
-
-        if (!piapiResponse.ok) {
-          const errText = await piapiResponse.text();
-          throw new Error(`PiAPI Chat Completion failed: ${piapiResponse.status} - ${errText}`);
-        }
-
-        const data = (await piapiResponse.json()) as {
-          choices?: Array<{
-            message?: {
-              content?: string;
-            };
-          }>;
-        };
-        logger.info(`[PiAPI Adapter] Raw response from PiAPI: ${JSON.stringify(data)}`);
-        const textResult = data.choices?.[0]?.message?.content || "";
-
-        // Map response back to Gemini SDK format
-        const geminiResponse = {
-          candidates: [
+          const piapiVideoRes = await piapiService.generateVideo(
+            promptText,
+            piapiVideoModel,
+            durationSeconds,
             {
-              content: {
-                parts: [
-                  {
-                    text: textResult
-                  }
-                ],
-                role: "model"
-              },
-              finishReason: "STOP"
+              aspectRatio,
+              referenceImageUris: referenceImageUris.length > 0 ? referenceImageUris : undefined,
             }
-          ]
-        };
+          );
 
-        res.json(geminiResponse);
+          logger.info(`[PiAPI Video Adapter] Video generated: ${piapiVideoRes.url}`);
+
+          // Trả về response dạng Gemini SDK với fileData.videoUri
+          const geminiVideoResponse = {
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      fileData: {
+                        mimeType: "video/mp4",
+                        fileUri: piapiVideoRes.url
+                      }
+                    }
+                  ],
+                  role: "model"
+                },
+                finishReason: "STOP"
+              }
+            ]
+          };
+
+          res.json(geminiVideoResponse);
+          return;
+        }
+
       } catch (err: unknown) {
         const error = err as Error;
         logger.error(`[PiAPI Adapter] Error: ${error.message}`);
         res.status(500).json({ error: "PiAPI Adapter error", details: error.message });
       }
     } else {
+      // Không phải image/video model (ví dụ: gemini-2.5-flash cho LLM text) → forward thẳng tới Google Gemini API
       geminiProxy(req, res, next);
     }
   });
