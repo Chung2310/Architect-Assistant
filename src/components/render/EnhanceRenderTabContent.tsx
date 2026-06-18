@@ -8,16 +8,6 @@ import { getAIClient, safeJsonParse, checkUserCredits, generateContentWithRetry,
 
 const MODELS = [
   {
-    id: "piapi-midjourney",
-    name: "Midjourney v6 (PiAPI)",
-    isPro: true,
-  },
-  {
-    id: "piapi-flux",
-    name: "Flux Dev (PiAPI)",
-    isPro: true,
-  },
-  {
     id: "nano-banana-pro",
     name: "Nano Banana Pro (PiAPI)",
     isPro: true,
@@ -127,7 +117,7 @@ export const EnhanceRenderTabContent: React.FC = () => {
   const [promptProgress, setPromptProgress] = useState(0);
   const [smoothPromptProgress, setSmoothPromptProgress] = useState(0);
   const [selectedModel, setSelectedModel] = useState(
-    "gemini-3-pro-image-preview",
+    "nano-banana-pro",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
   const [numImages, setNumImages] = useState(1);

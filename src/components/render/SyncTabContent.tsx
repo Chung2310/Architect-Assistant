@@ -47,16 +47,6 @@ interface RenderJob {
 
 const MODELS = [
   {
-    id: "piapi-midjourney",
-    name: "Midjourney v6 (PiAPI)",
-    isPro: true,
-  },
-  {
-    id: "piapi-flux",
-    name: "Flux Dev (PiAPI)",
-    isPro: true,
-  },
-  {
     id: "nano-banana-pro",
     name: "Nano Banana Pro (PiAPI)",
     isPro: true,
@@ -1017,7 +1007,7 @@ Output strictly JSON: { "hidden_api_prompt_en": "new english prompt here" }`;
       const promptText = `Edit this image to apply the following camera angle and staging: "${promptInstruction}". 
 Keep the core subject (building/character) exactly the same as in the original image. Only change the camera perspective, lighting, and background/staging. Output must be photorealistic, 8k resolution, highly detailed.`;
       const selectedModel =
-        suggestion.selectedModel || "gemini-3.1-flash-image-preview";
+        suggestion.selectedModel || "nano-banana-pro";
 
       const generatedImageUrls: string[] = [];
 
@@ -1351,7 +1341,7 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                         null,
                         2,
                       ),
-                      selectedModel: "gemini-3.1-flash-image-preview",
+                      selectedModel: "nano-banana-pro",
                     };
                   }
                 ),
@@ -1742,7 +1732,7 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                                           className="w-full bg-surface-container-lowest border border-outline-variant/20 focus:border-primary rounded-lg p-2 text-xs font-medium text-on-surface appearance-none outline-none cursor-pointer pr-10 text-ellipsis overflow-hidden whitespace-nowrap"
                                           value={
                                             suggestion.selectedModel ||
-                                            "gemini-3.1-flash-image-preview"
+                                            "nano-banana-pro"
                                           }
                                           onChange={(e) => {
                                             const newCats = [

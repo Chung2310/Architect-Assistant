@@ -30,16 +30,6 @@ interface RenderJob {
 
 const MODELS = [
   {
-    id: "piapi-midjourney",
-    name: "Midjourney v6 (PiAPI)",
-    isPro: true,
-  },
-  {
-    id: "piapi-flux",
-    name: "Flux Dev (PiAPI)",
-    isPro: true,
-  },
-  {
     id: "nano-banana-pro",
     name: "Nano Banana Pro (PiAPI)",
     isPro: true,
@@ -98,7 +88,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
   const [isDraggingRef, setIsDraggingRef] = useState(false);
 
   const [selectedModel, setSelectedModel] = useState(
-    "gemini-3-pro-image-preview",
+    "nano-banana-pro",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
 

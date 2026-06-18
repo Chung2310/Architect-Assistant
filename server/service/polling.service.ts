@@ -27,42 +27,80 @@ export const pollingService = {
     if (activeJobs.length === 0) return;
 
     for (const job of activeJobs) {
-      const taskId = job.piapiTaskId;
-      if (!taskId) continue;
+      const taskIdStr = job.piapiTaskId;
+      if (!taskIdStr) continue;
 
+      const taskIds = taskIdStr.split(",");
       try {
-        const taskStatus = await piapiService.getTaskStatus(taskId);
-        console.log(`[Polling Service] Polled Job ${job._id} (PiAPI Task: ${taskId}) -> Status: ${taskStatus.status}`);
+        const results = await Promise.all(
+          taskIds.map(async (tid) => {
+            try {
+              return await piapiService.getTaskStatus(tid);
+            } catch (err) {
+              console.error(`[Polling Service] Error querying status for task ${tid}:`, err);
+              return { status: "failed" as const, progress: 0, error: String(err) };
+            }
+          })
+        );
 
-        if (taskStatus.status === "completed" && taskStatus.outputUrl) {
-          console.log(`[Polling Service] Task ${taskId} completed. Uploading image to Cloudinary...`);
-          
-          let finalUrl = taskStatus.outputUrl;
-          try {
-            finalUrl = await cloudinaryService.uploadMedia(taskStatus.outputUrl, "renders");
-            console.log(`[Polling Service] Uploaded to Cloudinary: ${finalUrl}`);
-          } catch (uploadErr) {
-            console.error(`[Polling Service] Cloudinary upload failed for task ${taskId}:`, uploadErr);
+        const completedResults = results.filter(r => r.status === "completed");
+        const failedResults = results.filter(r => r.status === "failed");
+        const processingResults = results.filter(r => r.status === "processing" || r.status === "pending");
+
+        console.log(`[Polling Service] Polled Job ${job._id} (${taskIds.length} tasks) -> Completed: ${completedResults.length}, Failed: ${failedResults.length}, Processing: ${processingResults.length}`);
+
+        if (completedResults.length + failedResults.length === taskIds.length) {
+          // All tasks are finished
+          if (completedResults.length > 0) {
+            console.log(`[Polling Service] Tasks completed. Uploading ${completedResults.length} images to Cloudinary...`);
+            
+            const uploadedUrls: string[] = [];
+            for (const res of completedResults) {
+              if (res.outputUrls && res.outputUrls.length > 0) {
+                for (const url of res.outputUrls) {
+                  try {
+                    const finalUrl = await cloudinaryService.uploadMedia(url, "renders");
+                    uploadedUrls.push(finalUrl);
+                    console.log(`[Polling Service] Uploaded to Cloudinary: ${finalUrl}`);
+                  } catch (uploadErr) {
+                    console.error(`[Polling Service] Cloudinary upload failed:`, uploadErr);
+                    uploadedUrls.push(url);
+                  }
+                }
+              } else if (res.outputUrl) {
+                try {
+                  const finalUrl = await cloudinaryService.uploadMedia(res.outputUrl, "renders");
+                  uploadedUrls.push(finalUrl);
+                  console.log(`[Polling Service] Uploaded to Cloudinary: ${finalUrl}`);
+                } catch (uploadErr) {
+                  console.error(`[Polling Service] Cloudinary upload failed:`, uploadErr);
+                  uploadedUrls.push(res.outputUrl);
+                }
+              }
+            }
+
+            job.status = "completed";
+            job.progress = 100;
+            job.outputImageUrls = uploadedUrls;
+            await job.save();
+
+            emitToUser(job.userId.toString(), "renderJobUpdated", job);
+            console.log(`[Polling Service] Job ${job._id} marked as completed with ${uploadedUrls.length} images.`);
+          } else {
+            // All tasks failed
+            job.status = "failed";
+            job.progress = 100;
+            await job.save();
+
+            emitToUser(job.userId.toString(), "renderJobUpdated", job);
+            console.log(`[Polling Service] Job ${job._id} marked as failed.`);
           }
-
-          job.status = "completed";
-          job.progress = 100;
-          job.outputImageUrls = [finalUrl];
-          await job.save();
-
-          emitToUser(job.userId.toString(), "renderJobUpdated", job);
-          console.log(`[Polling Service] Job ${job._id} marked as completed.`);
-        } else if (taskStatus.status === "failed") {
-          console.error(`[Polling Service] Task ${taskId} failed:`, taskStatus.error);
+        } else {
+          // Still processing
+          const totalProgress = results.reduce((acc, curr) => acc + (curr.progress || (curr.status === "completed" ? 100 : 0)), 0);
+          const averageProgress = Math.min(99, Math.round(totalProgress / taskIds.length));
           
-          job.status = "failed";
-          job.progress = 100;
-          await job.save();
-
-          emitToUser(job.userId.toString(), "renderJobUpdated", job);
-          console.log(`[Polling Service] Job ${job._id} marked as failed.`);
-        } else if (taskStatus.status === "processing" && taskStatus.progress !== undefined) {
-          const newProgress = Math.max(job.progress || 0, taskStatus.progress);
+          const newProgress = Math.max(job.progress || 0, averageProgress);
           if (newProgress !== job.progress) {
             job.progress = newProgress;
             await job.save();

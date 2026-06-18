@@ -128,6 +128,7 @@ export const renderJobController = {
       const referenceImageUrls = req.body.referenceImageUrls || [];
       const aspectRatio = req.body.aspectRatio || settings.aspectRatio;
       const resolution = req.body.resolution || settings.resolution || "1K";
+      const numImages = req.body.numImages || settings.numImages || 1;
       
       let piapiModel = model || "piapi-flux";
       if (!piapiModel.startsWith("piapi-") && piapiModel !== "nano-banana-pro" && piapiModel !== "nano-banana-2") {
@@ -155,13 +156,20 @@ export const renderJobController = {
       const aspect = aspectRatio || "1:1";
 
       try {
-        logger.info(`[renderJobController] Creating PiAPI task for model: ${piapiModel}`);
-        const taskResult = await piapiService.createImageTask(finalPrompt, piapiModel, { aspectRatio: aspect });
-        piapiTaskId = taskResult.taskId;
+        logger.info(`[renderJobController] Creating ${numImages} PiAPI tasks for model: ${piapiModel}`);
+        const taskIds: string[] = [];
+        for (let i = 0; i < numImages; i++) {
+          const taskResult = await piapiService.createImageTask(finalPrompt, piapiModel, { 
+            aspectRatio: aspect,
+            numImages: 1 // Generate 1 image per call
+          });
+          taskIds.push(taskResult.taskId);
+        }
+        piapiTaskId = taskIds.join(",");
         status = "processing";
         progress = 10;
       } catch (apiErr) {
-        logger.error(`[renderJobController] Failed to create PiAPI task: ${apiErr}`);
+        logger.error(`[renderJobController] Failed to create PiAPI tasks: ${apiErr}`);
         res.status(500).json({ success: false, message: "Không thể khởi tạo tác vụ trên PiAPI: " + (apiErr as Error).message });
         return;
       }
