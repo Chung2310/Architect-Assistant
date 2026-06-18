@@ -22,10 +22,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 
 // server.ts
-var import_express7 = __toESM(require("express"), 1);
+var import_express8 = __toESM(require("express"), 1);
 var import_path2 = __toESM(require("path"), 1);
 var import_http = require("http");
-var import_http_proxy_middleware = require("http-proxy-middleware");
 var import_cookie_parser = __toESM(require("cookie-parser"), 1);
 var import_swagger_ui_express = __toESM(require("swagger-ui-express"), 1);
 var import_dotenv2 = __toESM(require("dotenv"), 1);
@@ -281,7 +280,7 @@ async function connectDB() {
 }
 
 // server/router/index.ts
-var import_express6 = require("express");
+var import_express7 = require("express");
 var import_mongoose8 = __toESM(require("mongoose"), 1);
 
 // server/router/auth.router.ts
@@ -1133,6 +1132,7 @@ var piapiService = {
           output_format: "png",
           aspect_ratio: aspect,
           resolution: "1K",
+          number_of_images: options?.numImages || 1,
           ...options?.image ? { image: options.image } : {}
         }
       };
@@ -1147,6 +1147,7 @@ var piapiService = {
         input: {
           prompt,
           aspect_ratio: aspect,
+          number_of_images: options?.numImages || 1,
           ...options?.image ? { image: options.image } : {}
         }
       };
@@ -1182,10 +1183,12 @@ var piapiService = {
    */
   async getTaskStatus(taskId) {
     if (taskId.startsWith("mock-")) {
+      const mockUrl = `https://picsum.photos/seed/${taskId.replace("mock-", "")}/1024/1024`;
       return {
         status: "completed",
         progress: 100,
-        outputUrl: `https://picsum.photos/seed/${taskId.replace("mock-", "")}/1024/1024`
+        outputUrl: mockUrl,
+        outputUrls: [mockUrl]
       };
     }
     try {
@@ -1202,13 +1205,23 @@ var piapiService = {
       const status = task?.status;
       const progress = task?.progress || (status === "completed" ? 100 : 0);
       let outputUrl = "";
+      let outputUrls = [];
       if (status === "completed") {
-        outputUrl = task.output?.image_urls && task.output.image_urls[0] || task.output?.image_url || task.output?.url;
+        if (task.output?.image_urls && task.output.image_urls.length > 0) {
+          outputUrls = task.output.image_urls;
+        } else {
+          const singleUrl = task.output?.image_url || task.output?.url;
+          if (singleUrl) {
+            outputUrls = [singleUrl];
+          }
+        }
+        outputUrl = outputUrls[0] || "";
       }
       return {
         status: status || "failed",
         progress,
         outputUrl,
+        outputUrls,
         error: task?.error || void 0
       };
     } catch (error) {
@@ -1511,6 +1524,7 @@ var renderJobController = {
       const referenceImageUrls = req.body.referenceImageUrls || [];
       const aspectRatio = req.body.aspectRatio || settings.aspectRatio;
       const resolution = req.body.resolution || settings.resolution || "1K";
+      const numImages = req.body.numImages || settings.numImages || 1;
       let piapiModel = model || "piapi-flux";
       if (!piapiModel.startsWith("piapi-") && piapiModel !== "nano-banana-pro" && piapiModel !== "nano-banana-2") {
         piapiModel = "piapi-flux";
@@ -1530,13 +1544,21 @@ var renderJobController = {
       }
       const aspect = aspectRatio || "1:1";
       try {
-        logger.info(`[renderJobController] Creating PiAPI task for model: ${piapiModel}`);
-        const taskResult = await piapiService.createImageTask(finalPrompt, piapiModel, { aspectRatio: aspect });
-        piapiTaskId = taskResult.taskId;
+        logger.info(`[renderJobController] Creating ${numImages} PiAPI tasks for model: ${piapiModel}`);
+        const taskIds = [];
+        for (let i = 0; i < numImages; i++) {
+          const taskResult = await piapiService.createImageTask(finalPrompt, piapiModel, {
+            aspectRatio: aspect,
+            numImages: 1
+            // Generate 1 image per call
+          });
+          taskIds.push(taskResult.taskId);
+        }
+        piapiTaskId = taskIds.join(",");
         status = "processing";
         progress = 10;
       } catch (apiErr) {
-        logger.error(`[renderJobController] Failed to create PiAPI task: ${apiErr}`);
+        logger.error(`[renderJobController] Failed to create PiAPI tasks: ${apiErr}`);
         res.status(500).json({ success: false, message: "Kh\xF4ng th\u1EC3 kh\u1EDFi t\u1EA1o t\xE1c v\u1EE5 tr\xEAn PiAPI: " + apiErr.message });
         return;
       }
@@ -1804,14 +1826,248 @@ var piapiController = {
 var router5 = (0, import_express5.Router)();
 router5.post("/webhook", piapiController.handleWebhook);
 
-// server/router/index.ts
+// server/router/gemini.router.ts
+var import_express6 = require("express");
+
+// server/service/gemini.service.ts
+var import_genai = require("@google/genai");
+var geminiService = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async generate(params, userApiKey) {
+    const modelName = params.model || "";
+    const isImageModel = modelName.includes("image-preview") || modelName.includes("imagen") || modelName.includes("generateImages") || modelName.includes("banana");
+    const isVideoModel = modelName.includes("veo");
+    const apiKey = userApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
+    const piapiKey = process.env.PIAPI_API_KEY;
+    if (piapiKey && (isImageModel || isVideoModel)) {
+      const { contents, generationConfig, config: reqConfig } = params;
+      if (isImageModel) {
+        let targetModel = "nano-banana-pro";
+        if (modelName === "gemini-3-pro-image-preview" || modelName === "nano-banana-pro" || modelName === "igen-image-pro") {
+          targetModel = "nano-banana-pro";
+        } else if (modelName === "gemini-3.1-flash-image-preview" || modelName === "nano-banana-2" || modelName === "igen-image-flash") {
+          targetModel = "nano-banana-2";
+        } else if (modelName.includes("image-preview")) {
+          targetModel = "nano-banana-pro";
+        }
+        let promptText = "";
+        let inputImageBase64 = "";
+        let inputImageMimeType = "";
+        const contentsArray = Array.isArray(contents) ? contents : contents && contents.parts ? [{ parts: contents.parts }] : [];
+        for (const content of contentsArray) {
+          if (content.parts && Array.isArray(content.parts)) {
+            for (const part of content.parts) {
+              if (part.text) {
+                promptText += part.text + "\n";
+              } else if (part.inlineData && part.inlineData.data) {
+                inputImageBase64 = part.inlineData.data;
+                inputImageMimeType = part.inlineData.mimeType || "image/jpeg";
+              }
+            }
+          }
+        }
+        promptText = promptText.trim();
+        let aspectRatio = "1:1";
+        const mergedConfig = { ...generationConfig || {}, ...reqConfig || {} };
+        const imageConfig = mergedConfig?.imageConfig || {};
+        if (imageConfig.aspectRatio) {
+          aspectRatio = imageConfig.aspectRatio;
+        }
+        let uploadedImageUrl = "";
+        if (inputImageBase64) {
+          const fileStr = `data:${inputImageMimeType};base64,${inputImageBase64}`;
+          logger.info(`[Gemini Service] Uploading input image to Cloudinary...`);
+          uploadedImageUrl = await cloudinaryService.uploadMedia(fileStr, "temp_staging");
+        }
+        logger.info(`[Gemini Service] Generating image via PiAPI. Model: ${targetModel}, Aspect: ${aspectRatio}`);
+        const piapiRes = await piapiService.generateImage(promptText, targetModel, {
+          aspectRatio,
+          image: uploadedImageUrl || void 0
+        });
+        const imgFetchRes = await fetch(piapiRes.url);
+        if (!imgFetchRes.ok) {
+          throw new Error(`Failed to download generated image: ${imgFetchRes.status}`);
+        }
+        const arrayBuffer = await imgFetchRes.arrayBuffer();
+        const base64 = Buffer.from(arrayBuffer).toString("base64");
+        const mimeType = imgFetchRes.headers.get("content-type") || "image/png";
+        return {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    inlineData: {
+                      data: base64,
+                      mimeType
+                    }
+                  }
+                ],
+                role: "model"
+              },
+              finishReason: "STOP"
+            }
+          ]
+        };
+      }
+      if (isVideoModel) {
+        const normalizedModel = modelName.toLowerCase();
+        let piapiVideoModel = "veo31-video-fast-audio";
+        if (normalizedModel === "veo-3.1-generate-preview" || normalizedModel === "veo31-video-audio" || normalizedModel === "piapi-veo31-video-audio" || normalizedModel === "veo") {
+          piapiVideoModel = "veo31-video-audio";
+        } else if (normalizedModel === "veo-3.1-fast-generate-preview" || normalizedModel === "veo31-video-fast-audio" || normalizedModel === "piapi-veo31-video-fast-audio") {
+          piapiVideoModel = "veo31-video-fast-audio";
+        } else if (normalizedModel === "veo-3.1-lite-generate-preview" || normalizedModel === "veo31-video-fast-no-audio" || normalizedModel === "piapi-veo31-video-fast-no-audio") {
+          piapiVideoModel = "veo31-video-fast-no-audio";
+        } else if (normalizedModel.includes("veo-3.1") || normalizedModel.includes("veo31") || normalizedModel.startsWith("veo3")) {
+          piapiVideoModel = "veo31-video-audio";
+        }
+        let promptText = "";
+        const referenceImageUris = [];
+        const contentsArray = Array.isArray(contents) ? contents : contents && contents.parts ? [{ parts: contents.parts }] : [];
+        for (const content of contentsArray) {
+          if (content.parts && Array.isArray(content.parts)) {
+            for (const part of content.parts) {
+              if (part.text) {
+                promptText += part.text + "\n";
+              } else if (part.inlineData && part.inlineData.data) {
+                referenceImageUris.push(`data:${part.inlineData.mimeType || "image/jpeg"};base64,${part.inlineData.data}`);
+              } else if (part.fileData && part.fileData.fileUri) {
+                referenceImageUris.push(part.fileData.fileUri);
+              }
+            }
+          }
+        }
+        promptText = promptText.trim();
+        const mergedConfig = { ...generationConfig || {}, ...reqConfig || {} };
+        const videoConfig = mergedConfig?.videoConfig || mergedConfig?.imageConfig || {};
+        const aspectRatio = videoConfig.aspectRatio || mergedConfig.aspectRatio || "16:9";
+        const durationSeconds = videoConfig.durationSeconds || mergedConfig.durationSeconds || 5;
+        logger.info(`[Gemini Service] Generating video via PiAPI. Model: ${piapiVideoModel}, Aspect: ${aspectRatio}, Duration: ${durationSeconds}s`);
+        const piapiVideoRes = await piapiService.generateVideo(
+          promptText,
+          piapiVideoModel,
+          durationSeconds,
+          {
+            aspectRatio,
+            referenceImageUris: referenceImageUris.length > 0 ? referenceImageUris : void 0
+          }
+        );
+        return {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    fileData: {
+                      mimeType: "video/mp4",
+                      fileUri: piapiVideoRes.url
+                    }
+                  }
+                ],
+                role: "model"
+              },
+              finishReason: "STOP"
+            }
+          ]
+        };
+      }
+    }
+    if (!apiKey) {
+      throw new Error("API Key kh\xF4ng h\u1EE3p l\u1EC7 ho\u1EB7c kh\xF4ng c\xF3 quy\u1EC1n truy c\u1EADp.");
+    }
+    const ai = new import_genai.GoogleGenAI({ apiKey });
+    logger.info(`[Gemini Service] Calling Google SDK for text model: ${modelName}`);
+    const rawConfig = params.config || params.generationConfig || {};
+    const sanitizedConfig = { ...rawConfig };
+    const isThinkingModel = modelName.toLowerCase().includes("thinking");
+    if (!isThinkingModel) {
+      if ("thinkingConfig" in sanitizedConfig) {
+        delete sanitizedConfig.thinkingConfig;
+      }
+      if ("thinking_config" in sanitizedConfig) {
+        delete sanitizedConfig.thinking_config;
+      }
+    }
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: params.contents,
+      config: sanitizedConfig
+    });
+    return response;
+  }
+};
+
+// server/controller/gemini.controller.ts
+var import_joi6 = __toESM(require("joi"), 1);
+var generateSchema = import_joi6.default.object({
+  params: import_joi6.default.object({
+    model: import_joi6.default.string().required().messages({
+      "any.required": "T\xEAn model l\xE0 b\u1EAFt bu\u1ED9c.",
+      "string.base": "T\xEAn model ph\u1EA3i l\xE0 chu\u1ED7i k\xFD t\u1EF1."
+    }),
+    contents: import_joi6.default.any().required().messages({
+      "any.required": "D\u1EEF li\u1EC7u contents l\xE0 b\u1EAFt bu\u1ED9c."
+    }),
+    config: import_joi6.default.object().optional(),
+    generationConfig: import_joi6.default.object().optional(),
+    systemInstruction: import_joi6.default.any().optional()
+  }).required().messages({
+    "any.required": "Tham s\u1ED1 params l\xE0 b\u1EAFt bu\u1ED9c."
+  })
+});
+var geminiController = {
+  async generate(req, res) {
+    const { error } = generateSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ success: false, message: error.details[0].message });
+      return;
+    }
+    try {
+      const { params } = req.body;
+      const userApiKey = req.headers["x-user-api-key"] || req.headers["X-User-Api-Key"];
+      logger.info(`[Gemini Controller] Handling generate request for model: ${params?.model}`);
+      const response = await geminiService.generate(params, userApiKey);
+      return res.status(200).json({
+        success: true,
+        data: response
+      });
+    } catch (err) {
+      const error2 = err;
+      logger.error(`[Gemini Controller] Error: ${error2.message}`);
+      const statusCode = error2.status || 500;
+      let errMsg = error2.message || "L\u1ED7i x\u1EED l\xFD y\xEAu c\u1EA7u AI.";
+      if (statusCode === 403) {
+        errMsg = "D\u1EF1 \xE1n Google Cloud c\u1EE7a b\u1EA1n b\u1ECB t\u1EEB ch\u1ED1i truy c\u1EADp API Gemini. Vui l\xF2ng ki\u1EC3m tra l\u1EA1i API Key ho\u1EB7c li\xEAn h\u1EC7 h\u1ED7 tr\u1EE3.";
+      } else if (statusCode === 400) {
+        errMsg = "Tham s\u1ED1 y\xEAu c\u1EA7u kh\xF4ng h\u1EE3p l\u1EC7 ho\u1EB7c b\u1ECB t\u1EEB ch\u1ED1i b\u1EDFi quy t\u1EAFc an to\xE0n c\u1EE7a Google AI.";
+      } else if (statusCode === 429) {
+        errMsg = "Y\xEAu c\u1EA7u v\u01B0\u1EE3t qu\xE1 gi\u1EDBi h\u1EA1n t\u1EA7n su\u1EA5t (Rate Limit) c\u1EE7a API Key. Vui l\xF2ng th\u1EED l\u1EA1i sau.";
+      } else if (statusCode === 503) {
+        errMsg = "D\u1ECBch v\u1EE5 AI c\u1EE7a Gemini hi\u1EC7n \u0111ang qu\xE1 t\u1EA3i ho\u1EB7c t\u1EA1m th\u1EDDi kh\xF4ng kh\u1EA3 d\u1EE5ng. Vui l\xF2ng th\u1EED l\u1EA1i sau.";
+      }
+      return res.status(statusCode).json({
+        success: false,
+        message: errMsg,
+        details: error2.message
+      });
+    }
+  }
+};
+
+// server/router/gemini.router.ts
 var router6 = (0, import_express6.Router)();
-router6.use("/auth", router);
-router6.use("/users", router2);
-router6.use("/render-jobs", router3);
-router6.use("/media", router4);
-router6.use("/piapi", router5);
-router6.get("/health", (req, res) => {
+router6.post("/generate", authMiddleware, geminiController.generate);
+
+// server/router/index.ts
+var router7 = (0, import_express7.Router)();
+router7.use("/auth", router);
+router7.use("/users", router2);
+router7.use("/render-jobs", router3);
+router7.use("/media", router4);
+router7.use("/piapi", router5);
+router7.use("/gemini", router6);
+router7.get("/health", (req, res) => {
   const dbStatus = import_mongoose8.default.connection.readyState === 1 ? "connected" : "disconnected";
   const status = dbStatus === "connected" ? "ok" : "error";
   res.status(status === "ok" ? 200 : 500).json({
@@ -2322,35 +2578,68 @@ var pollingService = {
     });
     if (activeJobs.length === 0) return;
     for (const job of activeJobs) {
-      const taskId = job.piapiTaskId;
-      if (!taskId) continue;
+      const taskIdStr = job.piapiTaskId;
+      if (!taskIdStr) continue;
+      const taskIds = taskIdStr.split(",");
       try {
-        const taskStatus = await piapiService.getTaskStatus(taskId);
-        console.log(`[Polling Service] Polled Job ${job._id} (PiAPI Task: ${taskId}) -> Status: ${taskStatus.status}`);
-        if (taskStatus.status === "completed" && taskStatus.outputUrl) {
-          console.log(`[Polling Service] Task ${taskId} completed. Uploading image to Cloudinary...`);
-          let finalUrl = taskStatus.outputUrl;
-          try {
-            finalUrl = await cloudinaryService.uploadMedia(taskStatus.outputUrl, "renders");
-            console.log(`[Polling Service] Uploaded to Cloudinary: ${finalUrl}`);
-          } catch (uploadErr) {
-            console.error(`[Polling Service] Cloudinary upload failed for task ${taskId}:`, uploadErr);
+        const results = await Promise.all(
+          taskIds.map(async (tid) => {
+            try {
+              return await piapiService.getTaskStatus(tid);
+            } catch (err) {
+              console.error(`[Polling Service] Error querying status for task ${tid}:`, err);
+              return { status: "failed", progress: 0, error: String(err) };
+            }
+          })
+        );
+        const completedResults = results.filter((r) => r.status === "completed");
+        const failedResults = results.filter((r) => r.status === "failed");
+        const processingResults = results.filter((r) => r.status === "processing" || r.status === "pending");
+        console.log(`[Polling Service] Polled Job ${job._id} (${taskIds.length} tasks) -> Completed: ${completedResults.length}, Failed: ${failedResults.length}, Processing: ${processingResults.length}`);
+        if (completedResults.length + failedResults.length === taskIds.length) {
+          if (completedResults.length > 0) {
+            console.log(`[Polling Service] Tasks completed. Uploading ${completedResults.length} images to Cloudinary...`);
+            const uploadedUrls = [];
+            for (const res of completedResults) {
+              if (res.outputUrls && res.outputUrls.length > 0) {
+                for (const url of res.outputUrls) {
+                  try {
+                    const finalUrl = await cloudinaryService.uploadMedia(url, "renders");
+                    uploadedUrls.push(finalUrl);
+                    console.log(`[Polling Service] Uploaded to Cloudinary: ${finalUrl}`);
+                  } catch (uploadErr) {
+                    console.error(`[Polling Service] Cloudinary upload failed:`, uploadErr);
+                    uploadedUrls.push(url);
+                  }
+                }
+              } else if (res.outputUrl) {
+                try {
+                  const finalUrl = await cloudinaryService.uploadMedia(res.outputUrl, "renders");
+                  uploadedUrls.push(finalUrl);
+                  console.log(`[Polling Service] Uploaded to Cloudinary: ${finalUrl}`);
+                } catch (uploadErr) {
+                  console.error(`[Polling Service] Cloudinary upload failed:`, uploadErr);
+                  uploadedUrls.push(res.outputUrl);
+                }
+              }
+            }
+            job.status = "completed";
+            job.progress = 100;
+            job.outputImageUrls = uploadedUrls;
+            await job.save();
+            emitToUser(job.userId.toString(), "renderJobUpdated", job);
+            console.log(`[Polling Service] Job ${job._id} marked as completed with ${uploadedUrls.length} images.`);
+          } else {
+            job.status = "failed";
+            job.progress = 100;
+            await job.save();
+            emitToUser(job.userId.toString(), "renderJobUpdated", job);
+            console.log(`[Polling Service] Job ${job._id} marked as failed.`);
           }
-          job.status = "completed";
-          job.progress = 100;
-          job.outputImageUrls = [finalUrl];
-          await job.save();
-          emitToUser(job.userId.toString(), "renderJobUpdated", job);
-          console.log(`[Polling Service] Job ${job._id} marked as completed.`);
-        } else if (taskStatus.status === "failed") {
-          console.error(`[Polling Service] Task ${taskId} failed:`, taskStatus.error);
-          job.status = "failed";
-          job.progress = 100;
-          await job.save();
-          emitToUser(job.userId.toString(), "renderJobUpdated", job);
-          console.log(`[Polling Service] Job ${job._id} marked as failed.`);
-        } else if (taskStatus.status === "processing" && taskStatus.progress !== void 0) {
-          const newProgress = Math.max(job.progress || 0, taskStatus.progress);
+        } else {
+          const totalProgress = results.reduce((acc, curr) => acc + (curr.progress || (curr.status === "completed" ? 100 : 0)), 0);
+          const averageProgress = Math.min(99, Math.round(totalProgress / taskIds.length));
+          const newProgress = Math.max(job.progress || 0, averageProgress);
           if (newProgress !== job.progress) {
             job.progress = newProgress;
             await job.save();
@@ -2369,7 +2658,7 @@ import_dotenv2.default.config();
 async function startServer() {
   await connectDB();
   pollingService.init();
-  const app = (0, import_express7.default)();
+  const app = (0, import_express8.default)();
   app.use(loggerMiddleware);
   const server = (0, import_http.createServer)(app);
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3e3;
@@ -2390,248 +2679,11 @@ async function startServer() {
     }
     next();
   });
-  app.use(import_express7.default.json({ limit: "50mb" }));
+  app.use(import_express8.default.json({ limit: "50mb" }));
   app.use("/api-docs", import_swagger_ui_express.default.serve, import_swagger_ui_express.default.setup(swaggerDocument));
-  app.use("/api/v1", router6);
+  app.use("/api/v1", router7);
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
-  });
-  const geminiProxy = (0, import_http_proxy_middleware.createProxyMiddleware)({
-    target: "https://generativelanguage.googleapis.com",
-    changeOrigin: true,
-    proxyTimeout: 6e5,
-    // 10 minutes
-    timeout: 6e5,
-    // 10 minutes
-    pathRewrite: async (pathStr, req) => {
-      let newPath = pathStr.replace(/^\/api\/gemini-proxy/, "");
-      const userApiKey = req.headers["x-user-api-key"] || req.headers["X-User-Api-Key"];
-      const apiKey = userApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
-      if (apiKey && newPath.includes("key=")) {
-        newPath = newPath.replace(/key=[^&]*/, `key=${apiKey}`);
-      }
-      return newPath;
-    },
-    on: {
-      proxyReq: (proxyReq, req) => {
-        const userApiKey = req.headers["x-user-api-key"] || req.headers["X-User-Api-Key"];
-        const apiKey = userApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
-        if (apiKey && !proxyReq.path.includes("key=")) {
-          proxyReq.setHeader("x-goog-api-key", apiKey);
-        }
-        if (req.headers["x-user-api-key"]) proxyReq.removeHeader("x-user-api-key");
-        if (req.headers["X-User-Api-Key"]) proxyReq.removeHeader("X-User-Api-Key");
-        (0, import_http_proxy_middleware.fixRequestBody)(proxyReq, req);
-      },
-      error: (err, req, res) => {
-        logger.error(`Gemini Proxy Error: ${err}`);
-        const expressRes = res;
-        if (expressRes && !expressRes.headersSent) {
-          expressRes.status(500).json({ error: "Proxy error", details: err.message });
-        }
-      }
-    }
-  });
-  app.use("/api/gemini-proxy", async (req, res, next) => {
-    const piapiKey = process.env.PIAPI_API_KEY;
-    if (piapiKey && req.method === "POST") {
-      try {
-        const pathStr = req.path;
-        const isImageModel = pathStr.includes("image-preview") || pathStr.includes("imagen") || pathStr.includes("generateImages");
-        const { contents, systemInstruction, generationConfig, config: reqConfig } = req.body;
-        if (isImageModel) {
-          let targetModel2 = "nano-banana-2";
-          if (pathStr.includes("gemini-3-pro-image-preview")) {
-            targetModel2 = "nano-banana-pro";
-          } else if (pathStr.includes("gemini-3.1-flash-image-preview")) {
-            targetModel2 = "nano-banana-2";
-          }
-          let promptText = "";
-          let inputImageBase64 = "";
-          let inputImageMimeType = "";
-          const contentsArray = Array.isArray(contents) ? contents : contents && contents.parts ? [{ parts: contents.parts }] : [];
-          for (const content of contentsArray) {
-            if (content.parts && Array.isArray(content.parts)) {
-              for (const part of content.parts) {
-                if (part.text) {
-                  promptText += part.text + "\n";
-                } else if (part.inlineData && part.inlineData.data) {
-                  inputImageBase64 = part.inlineData.data;
-                  inputImageMimeType = part.inlineData.mimeType || "image/jpeg";
-                }
-              }
-            }
-          }
-          promptText = promptText.trim();
-          let aspectRatio = "1:1";
-          const mergedConfig = { ...generationConfig || {}, ...reqConfig || {} };
-          const imageConfig = mergedConfig?.imageConfig || {};
-          if (imageConfig.aspectRatio) {
-            aspectRatio = imageConfig.aspectRatio;
-          }
-          let uploadedImageUrl = "";
-          if (inputImageBase64) {
-            const fileStr = `data:${inputImageMimeType};base64,${inputImageBase64}`;
-            logger.info(`[PiAPI Adapter] Uploading input image to Cloudinary for Image Generation...`);
-            uploadedImageUrl = await cloudinaryService.uploadMedia(fileStr, "temp_staging");
-            logger.info(`[PiAPI Adapter] Uploaded image: ${uploadedImageUrl}`);
-          }
-          logger.info(`[PiAPI Adapter] Generating image via PiAPI. Model: ${targetModel2}, Aspect: ${aspectRatio}`);
-          const piapiRes = await piapiService.generateImage(promptText, targetModel2, {
-            aspectRatio,
-            image: uploadedImageUrl || void 0
-          });
-          logger.info(`[PiAPI Adapter] Image generated: ${piapiRes.url}`);
-          const imgFetchRes = await fetch(piapiRes.url);
-          if (!imgFetchRes.ok) {
-            throw new Error(`Failed to download generated image: ${imgFetchRes.status}`);
-          }
-          const arrayBuffer = await imgFetchRes.arrayBuffer();
-          const base64 = Buffer.from(arrayBuffer).toString("base64");
-          const mimeType = imgFetchRes.headers.get("content-type") || "image/png";
-          const geminiResponse2 = {
-            candidates: [
-              {
-                content: {
-                  parts: [
-                    {
-                      inlineData: {
-                        data: base64,
-                        mimeType
-                      }
-                    }
-                  ],
-                  role: "model"
-                },
-                finishReason: "STOP"
-              }
-            ]
-          };
-          res.json(geminiResponse2);
-          return;
-        }
-        const messages = [];
-        let systemText = "";
-        if (systemInstruction) {
-          if (typeof systemInstruction === "string") {
-            systemText = systemInstruction;
-          } else if (systemInstruction.parts && Array.isArray(systemInstruction.parts)) {
-            systemText = systemInstruction.parts.map((p) => p.text).filter(Boolean).join("\n");
-          } else if (systemInstruction.text) {
-            systemText = systemInstruction.text;
-          }
-        }
-        if (generationConfig?.responseMimeType === "application/json") {
-          const schema = generationConfig?.responseSchema;
-          let schemaPrompt = "Respond only in valid JSON format.";
-          if (schema) {
-            const processSchema = (s) => {
-              if (s.type === "OBJECT" || s.type === "object") {
-                const props = s.properties || {};
-                const required = s.required || [];
-                const propLines = Object.entries(props).map(([k, v]) => {
-                  const reqStr = required.includes(k) ? " (required)" : "";
-                  return `  "${k}": ${v.type || "string"}${reqStr}`;
-                });
-                return `{
-${propLines.join(",\n")}
-}`;
-              }
-              return `a JSON ${s.type || "object"}`;
-            };
-            schemaPrompt = `You MUST respond only in valid JSON format matching this schema:
-${processSchema(schema)}
-Do not include any markdown wrappers (like \`\`\`json) or additional text outside the JSON.`;
-          }
-          systemText = systemText ? `${systemText}
-
-${schemaPrompt}` : schemaPrompt;
-        }
-        if (systemText) {
-          messages.push({
-            role: "system",
-            content: systemText
-          });
-        }
-        if (contents && Array.isArray(contents)) {
-          for (const content of contents) {
-            const role = content.role === "model" ? "assistant" : "user";
-            const openAiParts = [];
-            if (content.parts && Array.isArray(content.parts)) {
-              for (const part of content.parts) {
-                if (part.text) {
-                  openAiParts.push({
-                    type: "text",
-                    text: part.text
-                  });
-                } else if (part.inlineData) {
-                  openAiParts.push({
-                    type: "image_url",
-                    image_url: {
-                      url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
-                    }
-                  });
-                }
-              }
-            }
-            messages.push({
-              role,
-              content: openAiParts.length === 1 && openAiParts[0].type === "text" ? openAiParts[0].text : openAiParts
-            });
-          }
-        }
-        const hasImage = messages.some(
-          (msg) => Array.isArray(msg.content) && msg.content.some((part) => part.type === "image_url")
-        );
-        const targetModel = hasImage ? "gpt-4o" : "gpt-4o-mini";
-        const piapiBody = {
-          model: targetModel,
-          messages,
-          temperature: generationConfig?.temperature ?? 1
-        };
-        if (generationConfig?.responseMimeType === "application/json") {
-          piapiBody.response_format = { type: "json_object" };
-        }
-        logger.info(`[PiAPI Adapter] Translating Gemini request to PiAPI Chat Completion (model: ${targetModel})`);
-        const piapiResponse = await fetch("https://api.piapi.ai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${piapiKey}`
-          },
-          body: JSON.stringify(piapiBody)
-        });
-        if (!piapiResponse.ok) {
-          const errText = await piapiResponse.text();
-          throw new Error(`PiAPI Chat Completion failed: ${piapiResponse.status} - ${errText}`);
-        }
-        const data = await piapiResponse.json();
-        logger.info(`[PiAPI Adapter] Raw response from PiAPI: ${JSON.stringify(data)}`);
-        const textResult = data.choices?.[0]?.message?.content || "";
-        const geminiResponse = {
-          candidates: [
-            {
-              content: {
-                parts: [
-                  {
-                    text: textResult
-                  }
-                ],
-                role: "model"
-              },
-              finishReason: "STOP"
-            }
-          ]
-        };
-        res.json(geminiResponse);
-      } catch (err) {
-        const error = err;
-        logger.error(`[PiAPI Adapter] Error: ${error.message}`);
-        res.status(500).json({ error: "PiAPI Adapter error", details: error.message });
-      }
-    } else {
-      geminiProxy(req, res, next);
-    }
   });
   app.get("/api/proxy-image", async (req, res) => {
     const url = req.query.url;
@@ -2662,7 +2714,7 @@ ${schemaPrompt}` : schemaPrompt;
     app.use(vite.middlewares);
   } else {
     const distPath = import_path2.default.join(process.cwd(), "dist");
-    app.use(import_express7.default.static(distPath));
+    app.use(import_express8.default.static(distPath));
     app.get("*", (req, res) => {
       res.sendFile(import_path2.default.join(distPath, "index.html"));
     });

@@ -15,7 +15,7 @@ export const piapiService = {
   async createImageTask(
     prompt: string,
     model: string,
-    options?: { aspectRatio?: string; image?: string }
+    options?: { aspectRatio?: string; image?: string; numImages?: number }
   ): Promise<{ taskId: string; isMock: boolean; mockUrl?: string }> {
     if (!PIAPI_API_KEY) {
       console.log(`[PiAPI Image Task] Running in MOCK mode (No PIAPI_API_KEY). Model: ${model}`);
@@ -39,6 +39,7 @@ export const piapiService = {
           output_format: "png",
           aspect_ratio: aspect,
           resolution: "1K",
+          number_of_images: options?.numImages || 1,
           ...(options?.image ? { image: options.image } : {}),
         },
       };
@@ -53,6 +54,7 @@ export const piapiService = {
         input: {
           prompt,
           aspect_ratio: aspect,
+          number_of_images: options?.numImages || 1,
           ...(options?.image ? { image: options.image } : {}),
         },
       };
@@ -93,12 +95,14 @@ export const piapiService = {
    */
   async getTaskStatus(
     taskId: string
-  ): Promise<{ status: "pending" | "processing" | "completed" | "failed"; progress?: number; outputUrl?: string; error?: string }> {
+  ): Promise<{ status: "pending" | "processing" | "completed" | "failed"; progress?: number; outputUrl?: string; outputUrls?: string[]; error?: string }> {
     if (taskId.startsWith("mock-")) {
+      const mockUrl = `https://picsum.photos/seed/${taskId.replace("mock-", "")}/1024/1024`;
       return {
         status: "completed",
         progress: 100,
-        outputUrl: `https://picsum.photos/seed/${taskId.replace("mock-", "")}/1024/1024`
+        outputUrl: mockUrl,
+        outputUrls: [mockUrl]
       };
     }
 
@@ -130,15 +134,25 @@ export const piapiService = {
       const status = task?.status;
       const progress = task?.progress || (status === "completed" ? 100 : 0);
       let outputUrl = "";
+      let outputUrls: string[] = [];
 
       if (status === "completed") {
-        outputUrl = (task.output?.image_urls && task.output.image_urls[0]) || task.output?.image_url || task.output?.url;
+        if (task.output?.image_urls && task.output.image_urls.length > 0) {
+          outputUrls = task.output.image_urls;
+        } else {
+          const singleUrl = task.output?.image_url || task.output?.url;
+          if (singleUrl) {
+            outputUrls = [singleUrl];
+          }
+        }
+        outputUrl = outputUrls[0] || "";
       }
 
       return {
         status: status || "failed",
         progress,
         outputUrl,
+        outputUrls,
         error: task?.error || undefined
       };
     } catch (error) {
