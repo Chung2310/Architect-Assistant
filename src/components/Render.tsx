@@ -45,7 +45,7 @@ const MODELS = [
   },
   {
     id: "nano-banana-2",
-    name: "Nano Banana 2 (PiAPI)",
+    name: "Nano Banana 2 Pro (Gemini)",
     isPro: true,
   },
 ];

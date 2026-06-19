@@ -30,9 +30,13 @@ export const geminiController = {
 
     try {
       const { params } = req.body;
-      const userApiKey = req.headers['x-user-api-key'] as string || req.headers['X-User-Api-Key'] as string;
+      // Lấy userApiKey từ header hoặc body
+      const userApiKey = (req.headers['x-user-api-key'] as string)
+        || (req.headers['X-User-Api-Key'] as string)
+        || (req.body.userApiKey as string)
+        || "";
 
-      logger.info(`[Gemini Controller] Handling generate request for model: ${params?.model}`);
+      logger.info(`[Gemini Controller] Handling generate request for model: ${params?.model}, hasUserKey: ${!!userApiKey}`);
       
       const response = await geminiService.generate(params, userApiKey);
       

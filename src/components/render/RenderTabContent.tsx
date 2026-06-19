@@ -36,7 +36,7 @@ const MODELS = [
   },
   {
     id: "nano-banana-2",
-    name: "Nano Banana 2 (PiAPI)",
+    name: "Nano Banana 2 Pro (Gemini)",
     isPro: true,
   },
 ];
@@ -93,7 +93,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
   const [isDraggingRef, setIsDraggingRef] = useState(false);
 
   const [selectedModel, setSelectedModel] = useState(
-    "nano-banana-pro",
+    "nano-banana-2",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
 
@@ -823,7 +823,11 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
       }
 
       setIsRendering(false);
-      toast.success("Đã gửi yêu cầu kết xuất lên hàng đợi PiAPI!");
+      if (jobRes.data && jobRes.data.status === "completed") {
+        toast.success("Kết xuất thành công bằng Gemini!");
+      } else {
+        toast.success("Đã gửi yêu cầu kết xuất lên hàng đợi PiAPI!");
+      }
     } catch (error) {
       console.error("Error creating render job:", error);
       toast.error("Đã xảy ra lỗi khi tạo yêu cầu render.");

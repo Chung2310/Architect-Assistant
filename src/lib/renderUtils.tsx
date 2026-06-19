@@ -271,7 +271,8 @@ export const generateContentWithRetry = async (
         }
       }
 
-      if (modelName.startsWith("imagen-")) {
+      const isImagenMode = modelName.startsWith("imagen-") || modelName === "nano-banana-2" || modelName === "gemini-3.1-flash-image-preview" || modelName === "igen-image-flash";
+      if (isImagenMode) {
         let prompt = "";
         if (Array.isArray(callParams.contents)) {
           const allParts = callParams.contents.flatMap(
