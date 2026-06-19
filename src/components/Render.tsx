@@ -1037,20 +1037,38 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
             },
           };
 
-          const rawResponse = await fetch(url, {
-            method: "POST",
-            headers: headers,
-            body: JSON.stringify(payload),
-          });
+          let responseJson;
+          if (isAIStudio) {
+            const rawResponse = await fetch(url, {
+              method: "POST",
+              headers: headers,
+              body: JSON.stringify(payload),
+            });
 
-          if (!rawResponse.ok) {
-            const errorData = await rawResponse.json().catch(() => ({}));
-            throw new Error(
-              `Lỗi kết nối tới API (${rawResponse.status}): ${JSON.stringify(errorData)}`,
-            );
+            if (!rawResponse.ok) {
+              const errorData = await rawResponse.json().catch(() => ({}));
+              throw new Error(
+                `Lỗi kết nối tới API (${rawResponse.status}): ${JSON.stringify(errorData)}`,
+              );
+            }
+
+            responseJson = await rawResponse.json();
+          } else {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const backendRes = await apiClient.post<ApiResponse<any>>("/api/v1/gemini/generate", {
+              params: {
+                model: selectedModel,
+                contents: payload.contents,
+                config: payload.generationConfig
+              }
+            });
+
+            if (!backendRes || !backendRes.success) {
+              throw new Error(backendRes?.message || "Lỗi sinh ảnh từ server.");
+            }
+
+            responseJson = backendRes.data;
           }
-
-          const responseJson = await rawResponse.json();
           let generatedImageUrl = null;
 
           if (responseJson.candidates && responseJson.candidates.length > 0) {

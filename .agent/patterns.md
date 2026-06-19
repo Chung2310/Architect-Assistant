@@ -25,3 +25,9 @@
   2. Giai đoạn 1 (Builder): Sử dụng `esbuild` để đóng gói `server.ts` thành một mô-đun duy nhất `dist/server.cjs` với tham số `--platform=node --format=cjs --packages=external`.
   3. Giai đoạn 2 (Runner): Chỉ sao chép thư mục `dist` đã đóng gói và các file manifest của package, sau đó cài đặt các dependency chỉ dành cho production bằng cách sử dụng cơ chế yarn cache mount.
   4. Thực thi bằng node gốc: `CMD ["node", "dist/server.cjs"]`.
+
+## 🔒 Bảo Vệ Biến Môi Trường Nhạy Cảm Trong Frontend Builds (Vite)
+- **Vấn đề**: Việc sử dụng plugin `define` của Vite hoặc `process.env` để truyền trực tiếp các khóa API nhạy cảm (như `GEMINI_API_KEY`) cho code phía client-side sẽ làm giá trị thực tế của key bị nhúng cứng (hardcoded) vào các tệp tĩnh được xuất ra ở thư mục `dist/`. Điều này gây rò rỉ bảo mật nghiêm trọng khi mã nguồn build được commit lên git hoặc deploy công khai.
+- **Giải pháp**:
+  1. Chỉ truyền giá trị thực tế của key nhạy cảm khi Vite chạy ở chế độ phát triển (`mode === 'development'`) để phục vụ các luồng sandbox đặc thù (như AI Studio). Ở chế độ sản xuất (`mode === 'production'`), thay thế giá trị này bằng một chuỗi rỗng `""`.
+  2. Bắt buộc chuyển hướng các yêu cầu API từ client-side sang backend proxy (Server-side API) an toàn. Client gọi tới endpoint backend (như `/api/v1/gemini/generate`), backend sẽ chịu trách nhiệm đọc và chèn API key một cách an toàn từ biến môi trường phía server, đảm bảo API key không bao giờ xuất hiện ở client.
