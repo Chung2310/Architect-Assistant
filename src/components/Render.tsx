@@ -43,6 +43,11 @@ const MODELS = [
     name: "Nano Banana Pro (PiAPI)",
     isPro: true,
   },
+  {
+    id: "nano-banana-2",
+    name: "Nano Banana 2 (PiAPI)",
+    isPro: true,
+  },
 ];
 
 const GEMINI_MODELS = [
