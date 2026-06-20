@@ -36,7 +36,7 @@ const MODELS = [
   },
   {
     id: "nano-banana-2",
-    name: "Nano Banana 2 Pro (Gemini)",
+    name: "Nano Banana 2 (Gemini 3.1 Flash Image)",
     isPro: true,
   },
 ];
