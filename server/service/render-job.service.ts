@@ -9,6 +9,7 @@ export const renderJobService = {
     subType?: string;
     inputImageUrls?: string[];
     referenceImageUrls?: string[];
+    outputImageUrls?: string[];
     prompt?: string;
     model?: string;
     resolution?: string;
@@ -22,7 +23,7 @@ export const renderJobService = {
       subType: data.subType || "",
       inputImageUrls: data.inputImageUrls || [],
       referenceImageUrls: data.referenceImageUrls || [],
-      outputImageUrls: [],
+      outputImageUrls: data.outputImageUrls || [],
       prompt: data.prompt || "",
       status: data.status || "pending",
       progress: data.progress !== undefined ? data.progress : 0,

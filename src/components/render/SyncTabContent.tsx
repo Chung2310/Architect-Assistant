@@ -51,6 +51,11 @@ const MODELS = [
     name: "Nano Banana Pro (PiAPI)",
     isPro: true,
   },
+  {
+    id: "nano-banana-2",
+    name: "Nano Banana 2 Pro (Gemini)",
+    isPro: true,
+  },
 ];
 
 const GEMINI_MODELS = [
@@ -1007,7 +1012,7 @@ Output strictly JSON: { "hidden_api_prompt_en": "new english prompt here" }`;
       const promptText = `Edit this image to apply the following camera angle and staging: "${promptInstruction}". 
 Keep the core subject (building/character) exactly the same as in the original image. Only change the camera perspective, lighting, and background/staging. Output must be photorealistic, 8k resolution, highly detailed.`;
       const selectedModel =
-        suggestion.selectedModel || "nano-banana-pro";
+        suggestion.selectedModel || "nano-banana-2";
 
       const generatedImageUrls: string[] = [];
 
@@ -1341,7 +1346,7 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                         null,
                         2,
                       ),
-                      selectedModel: "nano-banana-pro",
+                      selectedModel: "nano-banana-2",
                     };
                   }
                 ),
@@ -1732,7 +1737,7 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                                           className="w-full bg-surface-container-lowest border border-outline-variant/20 focus:border-primary rounded-lg p-2 text-xs font-medium text-on-surface appearance-none outline-none cursor-pointer pr-10 text-ellipsis overflow-hidden whitespace-nowrap"
                                           value={
                                             suggestion.selectedModel ||
-                                            "nano-banana-pro"
+                                            "nano-banana-2"
                                           }
                                           onChange={(e) => {
                                             const newCats = [

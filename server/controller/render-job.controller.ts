@@ -3,6 +3,8 @@ import { AuthRequest } from "../middleware/auth.middleware";
 import { renderJobService } from "../service/render-job.service";
 import { userService } from "../service/user.service";
 import { piapiService } from "../service/piapi.service";
+import { geminiService } from "../service/gemini.service";
+import { cloudinaryService } from "../service/cloudinary.service";
 import { emitToUser } from "../socket";
 import Joi from "joi";
 import { logger } from "../utils/logger";
@@ -129,15 +131,20 @@ export const renderJobController = {
       const aspectRatio = req.body.aspectRatio || settings.aspectRatio;
       const resolution = req.body.resolution || settings.resolution || "1K";
       const numImages = req.body.numImages || settings.numImages || 1;
-      
+
+      // Xác định model: nano-banana-2 dùng Gemini SDK, các model khác dùng PiAPI
+      const GEMINI_NATIVE_MODELS = ["nano-banana-2", "igen-image-flash"];
+      const isGeminiNativeModel = GEMINI_NATIVE_MODELS.includes(model);
+
       let piapiModel = model || "piapi-flux";
-      if (!piapiModel.startsWith("piapi-") && piapiModel !== "nano-banana-pro" && piapiModel !== "nano-banana-2") {
+      if (!isGeminiNativeModel && !piapiModel.startsWith("piapi-") && piapiModel !== "nano-banana-pro") {
         piapiModel = "piapi-flux";
       }
 
       let piapiTaskId = "";
       let status = "pending";
       let progress = 0;
+      let outputImageUrls: string[] = [];
 
       let parsedPrompt = prompt || "";
       try {
@@ -155,23 +162,63 @@ export const renderJobController = {
 
       const aspect = aspectRatio || "1:1";
 
-      try {
-        logger.info(`[renderJobController] Creating ${numImages} PiAPI tasks for model: ${piapiModel}`);
-        const taskIds: string[] = [];
-        for (let i = 0; i < numImages; i++) {
-          const taskResult = await piapiService.createImageTask(finalPrompt, piapiModel, { 
-            aspectRatio: aspect,
-            numImages: 1 // Generate 1 image per call
-          });
-          taskIds.push(taskResult.taskId);
+      const isGeminiModel = isGeminiNativeModel;
+
+      if (isGeminiModel) {
+        try {
+          const user = await userService.getById(req.user!.userId);
+          const userApiKey = user?.apiKey || "";
+
+          logger.info(`[renderJobController] Generating image synchronously via Gemini for model: ${piapiModel}`);
+          const generatedUrls: string[] = [];
+          for (let i = 0; i < numImages; i++) {
+            const geminiRes = await geminiService.generate({
+              model: "gemini-3-pro-image-preview",
+              contents: [{ parts: [{ text: finalPrompt }] }],
+              config: {
+                imageConfig: {
+                  aspectRatio: aspect,
+                }
+              }
+            }, userApiKey);
+
+            const base64Data = geminiRes.generatedImages?.[0]?.image?.imageBytes;
+            if (!base64Data) {
+              throw new Error("Không nhận được dữ liệu ảnh từ Imagen API.");
+            }
+
+            const fileStr = `data:image/jpeg;base64,${base64Data}`;
+            const uploadedUrl = await cloudinaryService.uploadMedia(fileStr, "renders");
+            generatedUrls.push(uploadedUrl);
+          }
+
+          outputImageUrls = generatedUrls;
+          status = "completed";
+          progress = 100;
+        } catch (apiErr) {
+          logger.error(`[renderJobController] Failed to generate Gemini image: ${apiErr}`);
+          res.status(500).json({ success: false, message: "Không thể tạo ảnh từ Gemini: " + (apiErr as Error).message });
+          return;
         }
-        piapiTaskId = taskIds.join(",");
-        status = "processing";
-        progress = 10;
-      } catch (apiErr) {
-        logger.error(`[renderJobController] Failed to create PiAPI tasks: ${apiErr}`);
-        res.status(500).json({ success: false, message: "Không thể khởi tạo tác vụ trên PiAPI: " + (apiErr as Error).message });
-        return;
+      } else {
+        try {
+          logger.info(`[renderJobController] Creating ${numImages} PiAPI tasks for model: ${piapiModel}`);
+          const taskIds: string[] = [];
+          for (let i = 0; i < numImages; i++) {
+            const taskResult = await piapiService.createImageTask(finalPrompt, piapiModel, {
+              aspectRatio: aspect,
+              numImages: 1 // Generate 1 image per call
+            });
+            taskIds.push(taskResult.taskId);
+          }
+          piapiTaskId = taskIds.join(",");
+          status = "processing";
+          progress = 10;
+        } catch (apiErr) {
+          logger.error(`[renderJobController] Failed to create PiAPI tasks: ${apiErr}`);
+          res.status(500).json({ success: false, message: "Không thể khởi tạo tác vụ trên PiAPI: " + (apiErr as Error).message });
+          return;
+        }
       }
 
       const job = await renderJobService.create({
@@ -180,6 +227,7 @@ export const renderJobController = {
         subType: req.body.subType,
         inputImageUrls,
         referenceImageUrls,
+        outputImageUrls,
         prompt: finalPrompt,
         model: piapiModel,
         resolution,

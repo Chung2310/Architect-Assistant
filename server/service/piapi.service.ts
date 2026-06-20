@@ -28,9 +28,13 @@ export const piapiService = {
     }
 
     const aspect = options?.aspectRatio || "1:1";
+    const randomSeed = Math.floor(Math.random() * 2147483647);
     let reqBody: Record<string, unknown> | undefined;
 
-    if (model === "nano-banana-pro" || model === "nano-banana-2") {
+    if (model === "nano-banana-2" || model === "igen-image-flash") {
+      // Các model này dùng Gemini SDK trực tiếp, KHÔNG qua PiAPI
+      throw new Error(`Model ${model} phải dùng Gemini SDK trực tiếp, không qua PiAPI. Vui lòng kiểm tra lại controller.`);
+    } else if (model === "nano-banana-pro") {
       reqBody = {
         model: "gemini",
         task_type: model,
@@ -40,6 +44,7 @@ export const piapiService = {
           aspect_ratio: aspect,
           resolution: "1K",
           number_of_images: options?.numImages || 1,
+          seed: randomSeed,
           ...(options?.image ? { image: options.image } : {}),
         },
       };
@@ -48,13 +53,20 @@ export const piapiService = {
       if (piapiModel === "flux") {
         piapiModel = "Qubico/flux1-dev";
       }
+
+      let finalPrompt = prompt;
+      if (piapiModel === "midjourney" && !prompt.includes("--seed")) {
+        finalPrompt = `${prompt} --seed ${randomSeed}`;
+      }
+
       reqBody = {
         model: piapiModel,
         task_type: piapiModel === "midjourney" ? "imagine" : "txt2img",
         input: {
-          prompt,
+          prompt: finalPrompt,
           aspect_ratio: aspect,
           number_of_images: options?.numImages || 1,
+          seed: randomSeed,
           ...(options?.image ? { image: options.image } : {}),
         },
       };
