@@ -60,13 +60,13 @@ const MODELS = [
 
 const GEMINI_MODELS = [
   {
-    id: "gemini-3.1-flash-image-preview",
-    name: "iGen 3.1 Flash Image Preview",
+    id: "gemini-3.1-flash-image",
+    name: "iGen 3.1 Flash Image",
     isPro: true,
   },
   {
-    id: "gemini-3-pro-image-preview",
-    name: "iGen 3 Pro Image Preview",
+    id: "gemini-3-pro-image",
+    name: "iGen 3 Pro Image",
     isPro: true,
   },
 ];
@@ -216,10 +216,10 @@ export const SyncTabContent: React.FC = () => {
   const [isGeneratingCharacter, setIsGeneratingCharacter] = useState(false);
   const [characterGenProgress, setCharacterGenProgress] = useState(0);
   const [characterModel, setCharacterModel] = useState(
-    "gemini-3-pro-image-preview",
+    "gemini-3-pro-image",
   );
   const [characterGenModel, setCharacterGenModel] = useState(
-    "gemini-3-pro-image-preview",
+    "gemini-3-pro-image",
   );
   const [characterResolution, setCharacterResolution] = useState("1K");
   const [characterAspectRatio, setCharacterAspectRatio] = useState("1:1");
@@ -575,8 +575,8 @@ User Request: ${userAction}`;
               characterAspectRatio === "Tự động" ? "1:1" : aspectRatio,
           };
           if (
-            characterModel === "gemini-3.1-flash-image-preview" ||
-            characterModel === "gemini-3-pro-image-preview"
+            characterModel === "gemini-3.1-flash-image" ||
+            characterModel === "gemini-3-pro-image"
           ) {
             imageConfig.imageSize = imageSize;
             imageConfig.negativePrompt = negativePromptText;
@@ -978,7 +978,7 @@ Output strictly JSON: { "hidden_api_prompt_en": "new english prompt here" }`;
     try {
       updateStatus(5, "Đang tải ảnh gốc...");
       const ai = await getAIClient(
-        suggestion.selectedModel || "gemini-3.1-flash-image-preview",
+        suggestion.selectedModel || "gemini-3.1-flash-image",
       );
 
       let base64Data = "";

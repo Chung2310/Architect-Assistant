@@ -318,7 +318,7 @@ export const VirtualStaging: React.FC = () => {
     }, 400);
 
     try {
-      const selectedModel = aiEngine.includes('Pro') ? 'gemini-3-pro-image-preview' : 'gemini-3.1-flash-image-preview';
+      const selectedModel = aiEngine.includes('Pro') ? 'gemini-3-pro-image' : 'gemini-3.1-flash-image';
       const ai = await getAIClient(selectedModel);
       
       const shapesDescription = shapes.length > 0 

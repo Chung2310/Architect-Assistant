@@ -133,7 +133,12 @@ export const renderJobController = {
       const numImages = req.body.numImages || settings.numImages || 1;
 
       // Xác định model: nano-banana-2 dùng Gemini SDK, các model khác dùng PiAPI
-      const GEMINI_NATIVE_MODELS = ["nano-banana-2", "igen-image-flash"];
+      const GEMINI_NATIVE_MODELS = [
+        "nano-banana-2",
+        "igen-image-flash",
+        "gemini-3.1-flash-image",
+        "gemini-3-pro-image"
+      ];
       const isGeminiNativeModel = GEMINI_NATIVE_MODELS.includes(model);
 
       let piapiModel = model || "piapi-flux";
@@ -173,7 +178,7 @@ export const renderJobController = {
           const generatedUrls: string[] = [];
           for (let i = 0; i < numImages; i++) {
             const geminiRes = await geminiService.generate({
-              model: "gemini-3-pro-image-preview",
+              model: model || "gemini-3-pro-image",
               contents: [{ parts: [{ text: finalPrompt }] }],
               config: {
                 imageConfig: {
