@@ -14,7 +14,7 @@ export const geminiService = {
       modelName.includes("banana");
     const isVideoModel = modelName.includes("veo");
 
-    const apiKey = userApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     const piapiKey = process.env.PIAPI_API_KEY;
 
     // ─── XỬ LÝ MODEL HÌNH ẢNH / VIDEO QUA PIAPI ─────────────────────────────────
