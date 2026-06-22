@@ -64,11 +64,6 @@ const GEMINI_MODELS = [
     name: "iGen 3.1 Flash Image",
     isPro: true,
   },
-  {
-    id: "gemini-3-pro-image",
-    name: "iGen 3 Pro Image",
-    isPro: true,
-  },
 ];
 
 const RESOLUTIONS = [

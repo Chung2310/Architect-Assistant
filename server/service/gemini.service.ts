@@ -25,17 +25,18 @@ export const geminiService = {
     if (!apiKey) {
       apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
     }
-    // Validate API key format - Gemini keys must start with 'AIza'
-    if (apiKey && !apiKey.startsWith("AIza")) {
-      logger.warn(`[Gemini Service] API key format invalid (does not start with 'AIza'). Trying env fallback.`);
+    // Validate API key format - Gemini keys must start with 'AIza' or 'AQ.'
+    const isValidGeminiKey = (key: string) => key.startsWith("AIza") || key.startsWith("AQ.");
+    if (apiKey && !isValidGeminiKey(apiKey)) {
+      logger.warn(`[Gemini Service] API key format invalid (does not start with 'AIza' or 'AQ.'). Trying env fallback.`);
       const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
-      if (envKey && envKey.startsWith("AIza")) {
+      if (envKey && isValidGeminiKey(envKey)) {
         apiKey = envKey;
       } else {
         logger.error(`[Gemini Service] No valid Gemini API key found! Both user key and .env key are invalid.`);
       }
     }
-    logger.info(`[Gemini Service] Using API key prefix: ${apiKey ? apiKey.substring(0, 10) + '...' : 'None'} (Length: ${apiKey.length}, Valid: ${apiKey.startsWith('AIza')})`);
+    logger.info(`[Gemini Service] Using API key prefix: ${apiKey ? apiKey.substring(0, 10) + '...' : 'None'} (Length: ${apiKey.length}, Valid: ${apiKey ? isValidGeminiKey(apiKey) : false})`);
     const piapiKey = process.env.PIAPI_API_KEY;
 
     // ─── XỬ LÝ MODEL HÌNH ẢNH / VIDEO QUA PIAPI ─────────────────────────────────

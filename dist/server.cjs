@@ -1395,16 +1395,17 @@ var geminiService = {
     if (!apiKey) {
       apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
     }
-    if (apiKey && !apiKey.startsWith("AIza")) {
-      logger.warn(`[Gemini Service] API key format invalid (does not start with 'AIza'). Trying env fallback.`);
+    const isValidGeminiKey = (key) => key.startsWith("AIza") || key.startsWith("AQ.");
+    if (apiKey && !isValidGeminiKey(apiKey)) {
+      logger.warn(`[Gemini Service] API key format invalid (does not start with 'AIza' or 'AQ.'). Trying env fallback.`);
       const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
-      if (envKey && envKey.startsWith("AIza")) {
+      if (envKey && isValidGeminiKey(envKey)) {
         apiKey = envKey;
       } else {
         logger.error(`[Gemini Service] No valid Gemini API key found! Both user key and .env key are invalid.`);
       }
     }
-    logger.info(`[Gemini Service] Using API key prefix: ${apiKey ? apiKey.substring(0, 10) + "..." : "None"} (Length: ${apiKey.length}, Valid: ${apiKey.startsWith("AIza")})`);
+    logger.info(`[Gemini Service] Using API key prefix: ${apiKey ? apiKey.substring(0, 10) + "..." : "None"} (Length: ${apiKey.length}, Valid: ${apiKey ? isValidGeminiKey(apiKey) : false})`);
     const piapiKey = process.env.PIAPI_API_KEY;
     if (piapiKey && (isImageModel || isVideoModel) && !isGeminiNativeImageModel) {
       const { contents, generationConfig, config: reqConfig } = params;
@@ -1560,8 +1561,8 @@ var geminiService = {
       promptText = promptText.trim();
       const imageConfig = params.config?.imageConfig || params.generationConfig?.imageConfig || {};
       const aspectRatio = imageConfig.aspectRatio || "1:1";
-      const isFlashVariant = modelName === "nano-banana-2" || modelName === "igen-image-flash" || modelName === "gemini-3.1-flash-image" || modelName === "gemini-3.1-flash-image-preview";
-      const IMAGE_GEN_MODEL = isFlashVariant ? "gemini-3.1-flash-image-preview" : "gemini-3-pro-image-preview";
+      const isFlashVariant = modelName === "nano-banana-2" || modelName === "igen-image-flash" || modelName === "gemini-3.1-flash-image";
+      const IMAGE_GEN_MODEL = isFlashVariant ? "gemini-3.1-flash-image" : "gemini-3-pro-image";
       logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL} (variant: ${isFlashVariant ? "flash" : "pro"}), aspect: ${aspectRatio}`);
       const finalPromptText = aspectRatio && aspectRatio !== "1:1" ? `${promptText}
 [Aspect ratio: ${aspectRatio}]` : promptText;

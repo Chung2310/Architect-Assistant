@@ -35,11 +35,6 @@ const MODELS = [
     isPro: true,
   },
   {
-    id: "gemini-3-pro-image",
-    name: "iGen 3 Pro Image",
-    isPro: true,
-  },
-  {
     id: "nano-banana-pro",
     name: "Nano Banana Pro (PiAPI)",
     isPro: true,
