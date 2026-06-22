@@ -14,19 +14,40 @@ export const geminiService = {
       modelName.includes("banana");
     const isVideoModel = modelName.includes("veo");
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const isGeminiNativeImageModel =
+      modelName === "nano-banana-2" ||
+      modelName === "igen-image-flash" ||
+      modelName === "gemini-3-pro-image" ||
+      modelName === "gemini-3.1-flash-image" ||
+      modelName.startsWith("imagen-");
+
+    let apiKey = (userApiKey && userApiKey.trim().length > 15) ? userApiKey.trim() : "";
+    if (!apiKey) {
+      apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
+    }
+    // Validate API key format - Gemini keys must start with 'AIza'
+    if (apiKey && !apiKey.startsWith("AIza")) {
+      logger.warn(`[Gemini Service] API key format invalid (does not start with 'AIza'). Trying env fallback.`);
+      const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
+      if (envKey && envKey.startsWith("AIza")) {
+        apiKey = envKey;
+      } else {
+        logger.error(`[Gemini Service] No valid Gemini API key found! Both user key and .env key are invalid.`);
+      }
+    }
+    logger.info(`[Gemini Service] Using API key prefix: ${apiKey ? apiKey.substring(0, 10) + '...' : 'None'} (Length: ${apiKey.length}, Valid: ${apiKey.startsWith('AIza')})`);
     const piapiKey = process.env.PIAPI_API_KEY;
 
     // ─── XỬ LÝ MODEL HÌNH ẢNH / VIDEO QUA PIAPI ─────────────────────────────────
-    if (piapiKey && (isImageModel || isVideoModel)) {
+    if (piapiKey && (isImageModel || isVideoModel) && !isGeminiNativeImageModel) {
       const { contents, generationConfig, config: reqConfig } = params;
 
       // ─── Xử lý sinh ảnh (Image) ───
       if (isImageModel) {
         let targetModel = "nano-banana-pro";
-        if (modelName === "gemini-3-pro-image-preview" || modelName === "nano-banana-pro" || modelName === "igen-image-pro") {
+        if (modelName === "gemini-3-pro-image" || modelName === "nano-banana-pro" || modelName === "igen-image-pro") {
           targetModel = "nano-banana-pro";
-        } else if (modelName === "gemini-3.1-flash-image-preview" || modelName === "nano-banana-2" || modelName === "igen-image-flash") {
+        } else if (modelName === "gemini-3.1-flash-image" || modelName === "nano-banana-2" || modelName === "igen-image-flash") {
           targetModel = "nano-banana-2";
         } else if (modelName.includes("image-preview")) {
           targetModel = "nano-banana-pro";
@@ -186,6 +207,81 @@ export const geminiService = {
           ]
         };
       }
+    }
+
+    // ─── XỬ LÝ MODEL IMAGEN NATIVE QUA GOOGLE GENAI SDK ─────────────────────────
+    if (isGeminiNativeImageModel) {
+      if (!apiKey) {
+        throw new Error("API Key không hợp lệ hoặc không có quyền truy cập.");
+      }
+
+      const ai = new GoogleGenAI({ apiKey: apiKey as string });
+      logger.info(`[Gemini Service] Calling Google SDK for Gemini Image model: ${modelName}`);
+
+      let promptText = "";
+      const contentsArray = Array.isArray(params.contents)
+        ? params.contents
+        : (params.contents && params.contents.parts ? [{ parts: params.contents.parts }] : []);
+
+      for (const content of contentsArray) {
+        if (content.parts && Array.isArray(content.parts)) {
+          for (const part of content.parts) {
+            if (part.text) {
+              promptText += part.text + "\n";
+            }
+          }
+        }
+      }
+      promptText = promptText.trim();
+
+      const imageConfig = params.config?.imageConfig || params.generationConfig?.imageConfig || {};
+      const aspectRatio = imageConfig.aspectRatio || "1:1";
+
+      // Chọn model Gemini native dựa trên model được yêu cầu:
+      // - nano-banana-2 / igen-image-flash / gemini-3.1-flash-image → Flash (nhanh hơn, rẻ hơn)
+      // - nano-banana-pro / gemini-3-pro-image / imagen-* → Pro (chất lượng cao hơn)
+      // KHÔNG dùng generateImages / imagen-3.0-generate-002 (chỉ cho Vertex AI)
+      const isFlashVariant =
+        modelName === "nano-banana-2" ||
+        modelName === "igen-image-flash" ||
+        modelName === "gemini-3.1-flash-image";
+      const IMAGE_GEN_MODEL = isFlashVariant
+        ? "gemini-3.1-flash-image"
+        : "gemini-3-pro-image";
+      logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL} (variant: ${isFlashVariant ? "flash" : "pro"}), aspect: ${aspectRatio}`);
+
+      // Thêm aspect ratio vào prompt vì GenerateContentConfig không hỗ trợ aspectRatio
+      const finalPromptText = aspectRatio && aspectRatio !== "1:1"
+        ? `${promptText}\n[Aspect ratio: ${aspectRatio}]`
+        : promptText;
+
+      const response = await ai.models.generateContent({
+        model: IMAGE_GEN_MODEL,
+        contents: finalPromptText,
+        config: {
+          responseModalities: ["TEXT", "IMAGE"],
+        },
+      });
+
+      // Chuyển đổi response sang format generatedImages để tương thích với controller
+      const parts = response.candidates?.[0]?.content?.parts || [];
+      const imageParts = parts.filter((p: { inlineData?: { data?: string; mimeType?: string } }) => p.inlineData?.data);
+
+      if (imageParts.length === 0) {
+        throw new Error("Không nhận được dữ liệu ảnh từ Gemini Image API.");
+      }
+
+      // Trả về format tương thích với controller (generatedImages[0].image.imageBytes)
+      return {
+        generatedImages: imageParts.map((p: { inlineData: { data: string; mimeType: string } }) => ({
+          image: {
+            imageBytes: p.inlineData.data,
+            mimeType: p.inlineData.mimeType || "image/jpeg",
+          }
+        })),
+        // Cũng giữ candidates để tương thích ngược
+        candidates: response.candidates,
+      };
     }
 
     // ─── XỬ LÝ MODEL TEXT QUA GOOGLE GENAI SDK ──────────────────────────────────

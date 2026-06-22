@@ -43,17 +43,22 @@ const MODELS = [
     name: "Nano Banana Pro (PiAPI)",
     isPro: true,
   },
+  {
+    id: "nano-banana-2",
+    name: "Nano Banana 2 (Gemini 3.1 Flash Image)",
+    isPro: true,
+  },
 ];
 
 const GEMINI_MODELS = [
   {
-    id: "gemini-3.1-flash-image-preview",
-    name: "iGen 3.1 Flash Image Preview",
+    id: "gemini-3.1-flash-image",
+    name: "iGen 3.1 Flash Image",
     isPro: true,
   },
   {
-    id: "gemini-3-pro-image-preview",
-    name: "iGen 3 Pro Image Preview",
+    id: "gemini-3-pro-image",
+    name: "iGen 3 Pro Image",
     isPro: true,
   },
 ];
@@ -213,7 +218,7 @@ const EditTabContent: React.FC = () => {
   // States for "Sửa Tổng Thể"
   const [prompt, setPrompt] = useState("");
   const [selectedModel, setSelectedModel] = useState(
-    "gemini-3-pro-image-preview",
+    "gemini-3-pro-image",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
   const [numImages, setNumImages] = useState(1);
@@ -464,7 +469,7 @@ ${cropInfo}
         config = {
           systemInstruction: `
 <role>
-You are the "iGen Image Surgeon," a specialized spatial reasoning engine for localized architectural image editing. Your mission is to analyze a reference image, a user-defined crop box (coordinates), and an editing request, then generate a perfect inpainting instruction for \`gemini-3.1-flash-image-preview\`.
+You are the "iGen Image Surgeon," a specialized spatial reasoning engine for localized architectural image editing. Your mission is to analyze a reference image, a user-defined crop box (coordinates), and an editing request, then generate a perfect inpainting instruction for \`gemini-3.1-flash-image\`.
 </role>
 
 <core_logic>
@@ -559,7 +564,7 @@ If the user's text description is vague or gibberish but a crop box is provided:
       } else if (activeSubTab === "Sửa Tổng Thể") {
         config = {
           systemInstruction: `<role>
-You are an Elite AI Image Retoucher and Master Prompt Engineer. Your task is to analyze a user-provided original image along with their raw (often brief or messy) editing requests, and generate a highly optimized JSON prompt payload for the \`gemini-3.1-flash-image-preview\` model.
+You are an Elite AI Image Retoucher and Master Prompt Engineer. Your task is to analyze a user-provided original image along with their raw (often brief or messy) editing requests, and generate a highly optimized JSON prompt payload for the \`gemini-3.1-flash-image\` model.
 </role>
 
 <core_directives>
@@ -1268,7 +1273,7 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
 
       if (
         apiAspectRatio &&
-        selectedModel === "gemini-3.1-flash-image-preview"
+        selectedModel === "gemini-3.1-flash-image"
       ) {
         const supported25 = ["1:1", "3:4", "4:3", "9:16", "16:9", "21:9"];
         if (!supported25.includes(apiAspectRatio)) {
@@ -1286,8 +1291,8 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
       }
 
       if (
-        selectedModel === "gemini-3.1-flash-image-preview" ||
-        selectedModel === "gemini-3-pro-image-preview"
+        selectedModel === "gemini-3.1-flash-image" ||
+        selectedModel === "gemini-3-pro-image"
       ) {
         imageConfig.imageSize = selectedResolution;
       }
@@ -1298,7 +1303,7 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
       }
 
       // If crop logic is active, the mask is already added as the second image part in `parts`
-      // We don't set INPAINT_REPLACE here because gemini-3.1-flash-image-preview / gemini-3-pro-image-preview might handle it via masks directly.
+      // We don't set INPAINT_REPLACE here because gemini-3.1-flash-image / gemini-3-pro-image might handle it via masks directly.
 
       let waitInterval: NodeJS.Timeout | undefined;
 
@@ -2208,11 +2213,11 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
                       value={selectedModel}
                       onChange={(e) => setSelectedModel(e.target.value)}
                     >
-                      <option value="gemini-3.1-flash-image-preview">
-                        iGen 3.1 Flash Image Preview
+                      <option value="gemini-3.1-flash-image">
+                        iGen 3.1 Flash Image
                       </option>
-                      <option value="gemini-3-pro-image-preview">
-                        iGen 3 Pro Image Preview
+                      <option value="gemini-3-pro-image">
+                        iGen 3 Pro Image
                       </option>
                     </select>
                     <Icon
@@ -5200,7 +5205,7 @@ const UtilitiesTabContent: React.FC = () => {
   const [inputImage, setInputImage] = useState<string | null>(null);
   const [inputImage2, setInputImage2] = useState<string | null>(null);
   const [utilityModel, setUtilityModel] = useState(
-    "gemini-3-pro-image-preview",
+    "gemini-3-pro-image",
   );
   const [utilityResolution, setUtilityResolution] = useState("1K");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -5437,7 +5442,7 @@ const UtilitiesTabContent: React.FC = () => {
       const modelToUse =
         activeUtility === "mood"
           ? utilityModel
-          : "gemini-3.1-flash-image-preview";
+          : "gemini-3.1-flash-image";
       const ai = await getAIClient(modelToUse);
       const imageData = await getImageBase64(inputImage, true);
 
@@ -5576,7 +5581,7 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
 
         const promises = moodPrompts.map(async (currentMoodPrompt, i) => {
           const imgResponse = await generateContentWithRetry(ai, {
-            model: "gemini-3.1-flash-image-preview",
+            model: "gemini-3.1-flash-image",
             contents: [
               {
                 role: "user",
@@ -5643,7 +5648,7 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
       } else {
         // Single image generation
         const imgResponse = await generateContentWithRetry(ai, {
-          model: "gemini-3.1-flash-image-preview",
+          model: "gemini-3.1-flash-image",
           contents: [{ role: "user", parts }],
           systemInstruction: systemInstruction + " Always output an image.",
           generationConfig: {

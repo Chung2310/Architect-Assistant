@@ -772,7 +772,7 @@ var renderJobService = {
       subType: data.subType || "",
       inputImageUrls: data.inputImageUrls || [],
       referenceImageUrls: data.referenceImageUrls || [],
-      outputImageUrls: [],
+      outputImageUrls: data.outputImageUrls || [],
       prompt: data.prompt || "",
       status: data.status || "pending",
       progress: data.progress !== void 0 ? data.progress : 0,
@@ -1122,8 +1122,11 @@ var piapiService = {
       };
     }
     const aspect = options?.aspectRatio || "1:1";
+    const randomSeed = Math.floor(Math.random() * 2147483647);
     let reqBody;
-    if (model === "nano-banana-pro" || model === "nano-banana-2") {
+    if (model === "nano-banana-2" || model === "igen-image-flash") {
+      throw new Error(`Model ${model} ph\u1EA3i d\xF9ng Gemini SDK tr\u1EF1c ti\u1EBFp, kh\xF4ng qua PiAPI. Vui l\xF2ng ki\u1EC3m tra l\u1EA1i controller.`);
+    } else if (model === "nano-banana-pro") {
       reqBody = {
         model: "gemini",
         task_type: model,
@@ -1133,6 +1136,7 @@ var piapiService = {
           aspect_ratio: aspect,
           resolution: "1K",
           number_of_images: options?.numImages || 1,
+          seed: randomSeed,
           ...options?.image ? { image: options.image } : {}
         }
       };
@@ -1141,13 +1145,18 @@ var piapiService = {
       if (piapiModel === "flux") {
         piapiModel = "Qubico/flux1-dev";
       }
+      let finalPrompt = prompt;
+      if (piapiModel === "midjourney" && !prompt.includes("--seed")) {
+        finalPrompt = `${prompt} --seed ${randomSeed}`;
+      }
       reqBody = {
         model: piapiModel,
         task_type: piapiModel === "midjourney" ? "imagine" : "txt2img",
         input: {
-          prompt,
+          prompt: finalPrompt,
           aspect_ratio: aspect,
           number_of_images: options?.numImages || 1,
+          seed: randomSeed,
           ...options?.image ? { image: options.image } : {}
         }
       };
@@ -1373,6 +1382,237 @@ var piapiService = {
   }
 };
 
+// server/service/gemini.service.ts
+var import_genai = require("@google/genai");
+var geminiService = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async generate(params, userApiKey) {
+    const modelName = params.model || "";
+    const isImageModel = modelName.includes("image-preview") || modelName.includes("imagen") || modelName.includes("generateImages") || modelName.includes("banana");
+    const isVideoModel = modelName.includes("veo");
+    const isGeminiNativeImageModel = modelName === "nano-banana-2" || modelName === "igen-image-flash" || modelName === "gemini-3-pro-image" || modelName === "gemini-3.1-flash-image" || modelName.startsWith("imagen-");
+    let apiKey = userApiKey && userApiKey.trim().length > 15 ? userApiKey.trim() : "";
+    if (!apiKey) {
+      apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
+    }
+    if (apiKey && !apiKey.startsWith("AIza")) {
+      logger.warn(`[Gemini Service] API key format invalid (does not start with 'AIza'). Trying env fallback.`);
+      const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
+      if (envKey && envKey.startsWith("AIza")) {
+        apiKey = envKey;
+      } else {
+        logger.error(`[Gemini Service] No valid Gemini API key found! Both user key and .env key are invalid.`);
+      }
+    }
+    logger.info(`[Gemini Service] Using API key prefix: ${apiKey ? apiKey.substring(0, 10) + "..." : "None"} (Length: ${apiKey.length}, Valid: ${apiKey.startsWith("AIza")})`);
+    const piapiKey = process.env.PIAPI_API_KEY;
+    if (piapiKey && (isImageModel || isVideoModel) && !isGeminiNativeImageModel) {
+      const { contents, generationConfig, config: reqConfig } = params;
+      if (isImageModel) {
+        let targetModel = "nano-banana-pro";
+        if (modelName === "gemini-3-pro-image" || modelName === "nano-banana-pro" || modelName === "igen-image-pro") {
+          targetModel = "nano-banana-pro";
+        } else if (modelName === "gemini-3.1-flash-image" || modelName === "nano-banana-2" || modelName === "igen-image-flash") {
+          targetModel = "nano-banana-2";
+        } else if (modelName.includes("image-preview")) {
+          targetModel = "nano-banana-pro";
+        }
+        let promptText = "";
+        let inputImageBase64 = "";
+        let inputImageMimeType = "";
+        const contentsArray = Array.isArray(contents) ? contents : contents && contents.parts ? [{ parts: contents.parts }] : [];
+        for (const content of contentsArray) {
+          if (content.parts && Array.isArray(content.parts)) {
+            for (const part of content.parts) {
+              if (part.text) {
+                promptText += part.text + "\n";
+              } else if (part.inlineData && part.inlineData.data) {
+                inputImageBase64 = part.inlineData.data;
+                inputImageMimeType = part.inlineData.mimeType || "image/jpeg";
+              }
+            }
+          }
+        }
+        promptText = promptText.trim();
+        let aspectRatio = "1:1";
+        const mergedConfig = { ...generationConfig || {}, ...reqConfig || {} };
+        const imageConfig = mergedConfig?.imageConfig || {};
+        if (imageConfig.aspectRatio) {
+          aspectRatio = imageConfig.aspectRatio;
+        }
+        let uploadedImageUrl = "";
+        if (inputImageBase64) {
+          const fileStr = `data:${inputImageMimeType};base64,${inputImageBase64}`;
+          logger.info(`[Gemini Service] Uploading input image to Cloudinary...`);
+          uploadedImageUrl = await cloudinaryService.uploadMedia(fileStr, "temp_staging");
+        }
+        logger.info(`[Gemini Service] Generating image via PiAPI. Model: ${targetModel}, Aspect: ${aspectRatio}`);
+        const piapiRes = await piapiService.generateImage(promptText, targetModel, {
+          aspectRatio,
+          image: uploadedImageUrl || void 0
+        });
+        const imgFetchRes = await fetch(piapiRes.url);
+        if (!imgFetchRes.ok) {
+          throw new Error(`Failed to download generated image: ${imgFetchRes.status}`);
+        }
+        const arrayBuffer = await imgFetchRes.arrayBuffer();
+        const base64 = Buffer.from(arrayBuffer).toString("base64");
+        const mimeType = imgFetchRes.headers.get("content-type") || "image/png";
+        return {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    inlineData: {
+                      data: base64,
+                      mimeType
+                    }
+                  }
+                ],
+                role: "model"
+              },
+              finishReason: "STOP"
+            }
+          ]
+        };
+      }
+      if (isVideoModel) {
+        const normalizedModel = modelName.toLowerCase();
+        let piapiVideoModel = "veo31-video-fast-audio";
+        if (normalizedModel === "veo-3.1-generate-preview" || normalizedModel === "veo31-video-audio" || normalizedModel === "piapi-veo31-video-audio" || normalizedModel === "veo") {
+          piapiVideoModel = "veo31-video-audio";
+        } else if (normalizedModel === "veo-3.1-fast-generate-preview" || normalizedModel === "veo31-video-fast-audio" || normalizedModel === "piapi-veo31-video-fast-audio") {
+          piapiVideoModel = "veo31-video-fast-audio";
+        } else if (normalizedModel === "veo-3.1-lite-generate-preview" || normalizedModel === "veo31-video-fast-no-audio" || normalizedModel === "piapi-veo31-video-fast-no-audio") {
+          piapiVideoModel = "veo31-video-fast-no-audio";
+        } else if (normalizedModel.includes("veo-3.1") || normalizedModel.includes("veo31") || normalizedModel.startsWith("veo3")) {
+          piapiVideoModel = "veo31-video-audio";
+        }
+        let promptText = "";
+        const referenceImageUris = [];
+        const contentsArray = Array.isArray(contents) ? contents : contents && contents.parts ? [{ parts: contents.parts }] : [];
+        for (const content of contentsArray) {
+          if (content.parts && Array.isArray(content.parts)) {
+            for (const part of content.parts) {
+              if (part.text) {
+                promptText += part.text + "\n";
+              } else if (part.inlineData && part.inlineData.data) {
+                referenceImageUris.push(`data:${part.inlineData.mimeType || "image/jpeg"};base64,${part.inlineData.data}`);
+              } else if (part.fileData && part.fileData.fileUri) {
+                referenceImageUris.push(part.fileData.fileUri);
+              }
+            }
+          }
+        }
+        promptText = promptText.trim();
+        const mergedConfig = { ...generationConfig || {}, ...reqConfig || {} };
+        const videoConfig = mergedConfig?.videoConfig || mergedConfig?.imageConfig || {};
+        const aspectRatio = videoConfig.aspectRatio || mergedConfig.aspectRatio || "16:9";
+        const durationSeconds = videoConfig.durationSeconds || mergedConfig.durationSeconds || 5;
+        logger.info(`[Gemini Service] Generating video via PiAPI. Model: ${piapiVideoModel}, Aspect: ${aspectRatio}, Duration: ${durationSeconds}s`);
+        const piapiVideoRes = await piapiService.generateVideo(
+          promptText,
+          piapiVideoModel,
+          durationSeconds,
+          {
+            aspectRatio,
+            referenceImageUris: referenceImageUris.length > 0 ? referenceImageUris : void 0
+          }
+        );
+        return {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    fileData: {
+                      mimeType: "video/mp4",
+                      fileUri: piapiVideoRes.url
+                    }
+                  }
+                ],
+                role: "model"
+              },
+              finishReason: "STOP"
+            }
+          ]
+        };
+      }
+    }
+    if (isGeminiNativeImageModel) {
+      if (!apiKey) {
+        throw new Error("API Key kh\xF4ng h\u1EE3p l\u1EC7 ho\u1EB7c kh\xF4ng c\xF3 quy\u1EC1n truy c\u1EADp.");
+      }
+      const ai2 = new import_genai.GoogleGenAI({ apiKey });
+      logger.info(`[Gemini Service] Calling Google SDK for Gemini Image model: ${modelName}`);
+      let promptText = "";
+      const contentsArray = Array.isArray(params.contents) ? params.contents : params.contents && params.contents.parts ? [{ parts: params.contents.parts }] : [];
+      for (const content of contentsArray) {
+        if (content.parts && Array.isArray(content.parts)) {
+          for (const part of content.parts) {
+            if (part.text) {
+              promptText += part.text + "\n";
+            }
+          }
+        }
+      }
+      promptText = promptText.trim();
+      const imageConfig = params.config?.imageConfig || params.generationConfig?.imageConfig || {};
+      const aspectRatio = imageConfig.aspectRatio || "1:1";
+      const isFlashVariant = modelName === "nano-banana-2" || modelName === "igen-image-flash" || modelName === "gemini-3.1-flash-image" || modelName === "gemini-3.1-flash-image-preview";
+      const IMAGE_GEN_MODEL = isFlashVariant ? "gemini-3.1-flash-image-preview" : "gemini-3-pro-image-preview";
+      logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL} (variant: ${isFlashVariant ? "flash" : "pro"}), aspect: ${aspectRatio}`);
+      const finalPromptText = aspectRatio && aspectRatio !== "1:1" ? `${promptText}
+[Aspect ratio: ${aspectRatio}]` : promptText;
+      const response2 = await ai2.models.generateContent({
+        model: IMAGE_GEN_MODEL,
+        contents: finalPromptText,
+        config: {
+          responseModalities: ["TEXT", "IMAGE"]
+        }
+      });
+      const parts = response2.candidates?.[0]?.content?.parts || [];
+      const imageParts = parts.filter((p) => p.inlineData?.data);
+      if (imageParts.length === 0) {
+        throw new Error("Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c d\u1EEF li\u1EC7u \u1EA3nh t\u1EEB Gemini Image API.");
+      }
+      return {
+        generatedImages: imageParts.map((p) => ({
+          image: {
+            imageBytes: p.inlineData.data,
+            mimeType: p.inlineData.mimeType || "image/jpeg"
+          }
+        })),
+        // Cũng giữ candidates để tương thích ngược
+        candidates: response2.candidates
+      };
+    }
+    if (!apiKey) {
+      throw new Error("API Key kh\xF4ng h\u1EE3p l\u1EC7 ho\u1EB7c kh\xF4ng c\xF3 quy\u1EC1n truy c\u1EADp.");
+    }
+    const ai = new import_genai.GoogleGenAI({ apiKey });
+    logger.info(`[Gemini Service] Calling Google SDK for text model: ${modelName}`);
+    const rawConfig = params.config || params.generationConfig || {};
+    const sanitizedConfig = { ...rawConfig };
+    const isThinkingModel = modelName.toLowerCase().includes("thinking");
+    if (!isThinkingModel) {
+      if ("thinkingConfig" in sanitizedConfig) {
+        delete sanitizedConfig.thinkingConfig;
+      }
+      if ("thinking_config" in sanitizedConfig) {
+        delete sanitizedConfig.thinking_config;
+      }
+    }
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: params.contents,
+      config: sanitizedConfig
+    });
+    return response;
+  }
+};
+
 // server/socket.ts
 var import_socket = require("socket.io");
 var io = null;
@@ -1525,13 +1765,21 @@ var renderJobController = {
       const aspectRatio = req.body.aspectRatio || settings.aspectRatio;
       const resolution = req.body.resolution || settings.resolution || "1K";
       const numImages = req.body.numImages || settings.numImages || 1;
+      const GEMINI_NATIVE_MODELS = [
+        "nano-banana-2",
+        "igen-image-flash",
+        "gemini-3.1-flash-image",
+        "gemini-3-pro-image"
+      ];
+      const isGeminiNativeModel = GEMINI_NATIVE_MODELS.includes(model);
       let piapiModel = model || "piapi-flux";
-      if (!piapiModel.startsWith("piapi-") && piapiModel !== "nano-banana-pro" && piapiModel !== "nano-banana-2") {
+      if (!isGeminiNativeModel && !piapiModel.startsWith("piapi-") && piapiModel !== "nano-banana-pro") {
         piapiModel = "piapi-flux";
       }
       let piapiTaskId = "";
       let status = "pending";
       let progress = 0;
+      let outputImageUrls = [];
       let parsedPrompt = prompt || "";
       try {
         const parsed = JSON.parse(prompt);
@@ -1543,24 +1791,59 @@ var renderJobController = {
         finalPrompt = inputImageUrls.join(" ") + " " + finalPrompt;
       }
       const aspect = aspectRatio || "1:1";
-      try {
-        logger.info(`[renderJobController] Creating ${numImages} PiAPI tasks for model: ${piapiModel}`);
-        const taskIds = [];
-        for (let i = 0; i < numImages; i++) {
-          const taskResult = await piapiService.createImageTask(finalPrompt, piapiModel, {
-            aspectRatio: aspect,
-            numImages: 1
-            // Generate 1 image per call
-          });
-          taskIds.push(taskResult.taskId);
+      const isGeminiModel = isGeminiNativeModel;
+      if (isGeminiModel) {
+        try {
+          const user = await userService.getById(req.user.userId);
+          const userApiKey = user?.apiKey || "";
+          logger.info(`[renderJobController] Generating image synchronously via Gemini for model: ${piapiModel}`);
+          const generatedUrls = [];
+          for (let i = 0; i < numImages; i++) {
+            const geminiRes = await geminiService.generate({
+              model: model || "gemini-3-pro-image",
+              contents: [{ parts: [{ text: finalPrompt }] }],
+              config: {
+                imageConfig: {
+                  aspectRatio: aspect
+                }
+              }
+            }, userApiKey);
+            const base64Data = geminiRes.generatedImages?.[0]?.image?.imageBytes;
+            if (!base64Data) {
+              throw new Error("Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c d\u1EEF li\u1EC7u \u1EA3nh t\u1EEB Imagen API.");
+            }
+            const fileStr = `data:image/jpeg;base64,${base64Data}`;
+            const uploadedUrl = await cloudinaryService.uploadMedia(fileStr, "renders");
+            generatedUrls.push(uploadedUrl);
+          }
+          outputImageUrls = generatedUrls;
+          status = "completed";
+          progress = 100;
+        } catch (apiErr) {
+          logger.error(`[renderJobController] Failed to generate Gemini image: ${apiErr}`);
+          res.status(500).json({ success: false, message: "Kh\xF4ng th\u1EC3 t\u1EA1o \u1EA3nh t\u1EEB Gemini: " + apiErr.message });
+          return;
         }
-        piapiTaskId = taskIds.join(",");
-        status = "processing";
-        progress = 10;
-      } catch (apiErr) {
-        logger.error(`[renderJobController] Failed to create PiAPI tasks: ${apiErr}`);
-        res.status(500).json({ success: false, message: "Kh\xF4ng th\u1EC3 kh\u1EDFi t\u1EA1o t\xE1c v\u1EE5 tr\xEAn PiAPI: " + apiErr.message });
-        return;
+      } else {
+        try {
+          logger.info(`[renderJobController] Creating ${numImages} PiAPI tasks for model: ${piapiModel}`);
+          const taskIds = [];
+          for (let i = 0; i < numImages; i++) {
+            const taskResult = await piapiService.createImageTask(finalPrompt, piapiModel, {
+              aspectRatio: aspect,
+              numImages: 1
+              // Generate 1 image per call
+            });
+            taskIds.push(taskResult.taskId);
+          }
+          piapiTaskId = taskIds.join(",");
+          status = "processing";
+          progress = 10;
+        } catch (apiErr) {
+          logger.error(`[renderJobController] Failed to create PiAPI tasks: ${apiErr}`);
+          res.status(500).json({ success: false, message: "Kh\xF4ng th\u1EC3 kh\u1EDFi t\u1EA1o t\xE1c v\u1EE5 tr\xEAn PiAPI: " + apiErr.message });
+          return;
+        }
       }
       const job = await renderJobService.create({
         userId: req.user.userId,
@@ -1568,6 +1851,7 @@ var renderJobController = {
         subType: req.body.subType,
         inputImageUrls,
         referenceImageUrls,
+        outputImageUrls,
         prompt: finalPrompt,
         model: piapiModel,
         resolution,
@@ -1829,175 +2113,6 @@ router5.post("/webhook", piapiController.handleWebhook);
 // server/router/gemini.router.ts
 var import_express6 = require("express");
 
-// server/service/gemini.service.ts
-var import_genai = require("@google/genai");
-var geminiService = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async generate(params, userApiKey) {
-    const modelName = params.model || "";
-    const isImageModel = modelName.includes("image-preview") || modelName.includes("imagen") || modelName.includes("generateImages") || modelName.includes("banana");
-    const isVideoModel = modelName.includes("veo");
-    const apiKey = userApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
-    const piapiKey = process.env.PIAPI_API_KEY;
-    if (piapiKey && (isImageModel || isVideoModel)) {
-      const { contents, generationConfig, config: reqConfig } = params;
-      if (isImageModel) {
-        let targetModel = "nano-banana-pro";
-        if (modelName === "gemini-3-pro-image-preview" || modelName === "nano-banana-pro" || modelName === "igen-image-pro") {
-          targetModel = "nano-banana-pro";
-        } else if (modelName === "gemini-3.1-flash-image-preview" || modelName === "nano-banana-2" || modelName === "igen-image-flash") {
-          targetModel = "nano-banana-2";
-        } else if (modelName.includes("image-preview")) {
-          targetModel = "nano-banana-pro";
-        }
-        let promptText = "";
-        let inputImageBase64 = "";
-        let inputImageMimeType = "";
-        const contentsArray = Array.isArray(contents) ? contents : contents && contents.parts ? [{ parts: contents.parts }] : [];
-        for (const content of contentsArray) {
-          if (content.parts && Array.isArray(content.parts)) {
-            for (const part of content.parts) {
-              if (part.text) {
-                promptText += part.text + "\n";
-              } else if (part.inlineData && part.inlineData.data) {
-                inputImageBase64 = part.inlineData.data;
-                inputImageMimeType = part.inlineData.mimeType || "image/jpeg";
-              }
-            }
-          }
-        }
-        promptText = promptText.trim();
-        let aspectRatio = "1:1";
-        const mergedConfig = { ...generationConfig || {}, ...reqConfig || {} };
-        const imageConfig = mergedConfig?.imageConfig || {};
-        if (imageConfig.aspectRatio) {
-          aspectRatio = imageConfig.aspectRatio;
-        }
-        let uploadedImageUrl = "";
-        if (inputImageBase64) {
-          const fileStr = `data:${inputImageMimeType};base64,${inputImageBase64}`;
-          logger.info(`[Gemini Service] Uploading input image to Cloudinary...`);
-          uploadedImageUrl = await cloudinaryService.uploadMedia(fileStr, "temp_staging");
-        }
-        logger.info(`[Gemini Service] Generating image via PiAPI. Model: ${targetModel}, Aspect: ${aspectRatio}`);
-        const piapiRes = await piapiService.generateImage(promptText, targetModel, {
-          aspectRatio,
-          image: uploadedImageUrl || void 0
-        });
-        const imgFetchRes = await fetch(piapiRes.url);
-        if (!imgFetchRes.ok) {
-          throw new Error(`Failed to download generated image: ${imgFetchRes.status}`);
-        }
-        const arrayBuffer = await imgFetchRes.arrayBuffer();
-        const base64 = Buffer.from(arrayBuffer).toString("base64");
-        const mimeType = imgFetchRes.headers.get("content-type") || "image/png";
-        return {
-          candidates: [
-            {
-              content: {
-                parts: [
-                  {
-                    inlineData: {
-                      data: base64,
-                      mimeType
-                    }
-                  }
-                ],
-                role: "model"
-              },
-              finishReason: "STOP"
-            }
-          ]
-        };
-      }
-      if (isVideoModel) {
-        const normalizedModel = modelName.toLowerCase();
-        let piapiVideoModel = "veo31-video-fast-audio";
-        if (normalizedModel === "veo-3.1-generate-preview" || normalizedModel === "veo31-video-audio" || normalizedModel === "piapi-veo31-video-audio" || normalizedModel === "veo") {
-          piapiVideoModel = "veo31-video-audio";
-        } else if (normalizedModel === "veo-3.1-fast-generate-preview" || normalizedModel === "veo31-video-fast-audio" || normalizedModel === "piapi-veo31-video-fast-audio") {
-          piapiVideoModel = "veo31-video-fast-audio";
-        } else if (normalizedModel === "veo-3.1-lite-generate-preview" || normalizedModel === "veo31-video-fast-no-audio" || normalizedModel === "piapi-veo31-video-fast-no-audio") {
-          piapiVideoModel = "veo31-video-fast-no-audio";
-        } else if (normalizedModel.includes("veo-3.1") || normalizedModel.includes("veo31") || normalizedModel.startsWith("veo3")) {
-          piapiVideoModel = "veo31-video-audio";
-        }
-        let promptText = "";
-        const referenceImageUris = [];
-        const contentsArray = Array.isArray(contents) ? contents : contents && contents.parts ? [{ parts: contents.parts }] : [];
-        for (const content of contentsArray) {
-          if (content.parts && Array.isArray(content.parts)) {
-            for (const part of content.parts) {
-              if (part.text) {
-                promptText += part.text + "\n";
-              } else if (part.inlineData && part.inlineData.data) {
-                referenceImageUris.push(`data:${part.inlineData.mimeType || "image/jpeg"};base64,${part.inlineData.data}`);
-              } else if (part.fileData && part.fileData.fileUri) {
-                referenceImageUris.push(part.fileData.fileUri);
-              }
-            }
-          }
-        }
-        promptText = promptText.trim();
-        const mergedConfig = { ...generationConfig || {}, ...reqConfig || {} };
-        const videoConfig = mergedConfig?.videoConfig || mergedConfig?.imageConfig || {};
-        const aspectRatio = videoConfig.aspectRatio || mergedConfig.aspectRatio || "16:9";
-        const durationSeconds = videoConfig.durationSeconds || mergedConfig.durationSeconds || 5;
-        logger.info(`[Gemini Service] Generating video via PiAPI. Model: ${piapiVideoModel}, Aspect: ${aspectRatio}, Duration: ${durationSeconds}s`);
-        const piapiVideoRes = await piapiService.generateVideo(
-          promptText,
-          piapiVideoModel,
-          durationSeconds,
-          {
-            aspectRatio,
-            referenceImageUris: referenceImageUris.length > 0 ? referenceImageUris : void 0
-          }
-        );
-        return {
-          candidates: [
-            {
-              content: {
-                parts: [
-                  {
-                    fileData: {
-                      mimeType: "video/mp4",
-                      fileUri: piapiVideoRes.url
-                    }
-                  }
-                ],
-                role: "model"
-              },
-              finishReason: "STOP"
-            }
-          ]
-        };
-      }
-    }
-    if (!apiKey) {
-      throw new Error("API Key kh\xF4ng h\u1EE3p l\u1EC7 ho\u1EB7c kh\xF4ng c\xF3 quy\u1EC1n truy c\u1EADp.");
-    }
-    const ai = new import_genai.GoogleGenAI({ apiKey });
-    logger.info(`[Gemini Service] Calling Google SDK for text model: ${modelName}`);
-    const rawConfig = params.config || params.generationConfig || {};
-    const sanitizedConfig = { ...rawConfig };
-    const isThinkingModel = modelName.toLowerCase().includes("thinking");
-    if (!isThinkingModel) {
-      if ("thinkingConfig" in sanitizedConfig) {
-        delete sanitizedConfig.thinkingConfig;
-      }
-      if ("thinking_config" in sanitizedConfig) {
-        delete sanitizedConfig.thinking_config;
-      }
-    }
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: params.contents,
-      config: sanitizedConfig
-    });
-    return response;
-  }
-};
-
 // server/controller/gemini.controller.ts
 var import_joi6 = __toESM(require("joi"), 1);
 var generateSchema = import_joi6.default.object({
@@ -2025,8 +2140,8 @@ var geminiController = {
     }
     try {
       const { params } = req.body;
-      const userApiKey = req.headers["x-user-api-key"] || req.headers["X-User-Api-Key"];
-      logger.info(`[Gemini Controller] Handling generate request for model: ${params?.model}`);
+      const userApiKey = req.headers["x-user-api-key"] || req.headers["X-User-Api-Key"] || req.body.userApiKey || "";
+      logger.info(`[Gemini Controller] Handling generate request for model: ${params?.model}, hasUserKey: ${!!userApiKey}`);
       const response = await geminiService.generate(params, userApiKey);
       return res.status(200).json({
         success: true,

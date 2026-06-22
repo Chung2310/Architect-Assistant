@@ -12,6 +12,11 @@ const MODELS = [
     name: "Nano Banana Pro (PiAPI)",
     isPro: true,
   },
+  {
+    id: "nano-banana-2",
+    name: "Nano Banana 2 (Gemini 3.1 Flash Image)",
+    isPro: true,
+  },
 ];
 
 const RESOLUTIONS = [
@@ -117,7 +122,7 @@ export const EnhanceRenderTabContent: React.FC = () => {
   const [promptProgress, setPromptProgress] = useState(0);
   const [smoothPromptProgress, setSmoothPromptProgress] = useState(0);
   const [selectedModel, setSelectedModel] = useState(
-    "nano-banana-pro",
+    "nano-banana-2",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
   const [numImages, setNumImages] = useState(1);
@@ -412,7 +417,11 @@ export const EnhanceRenderTabContent: React.FC = () => {
       }
 
       setIsRendering(false);
-      toast.success("Đã gửi yêu cầu kết xuất lên hàng đợi PiAPI!");
+      if (jobRes.data && jobRes.data.status === "completed") {
+        toast.success("Cải thiện ảnh thành công bằng Gemini!");
+      } else {
+        toast.success("Đã gửi yêu cầu kết xuất lên hàng đợi PiAPI!");
+      }
     } catch (error) {
       console.error("Render error:", error);
       toast.error("Có lỗi xảy ra trong quá trình tạo ảnh. Vui lòng thử lại.");
