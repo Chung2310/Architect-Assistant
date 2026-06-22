@@ -30,13 +30,18 @@ interface RenderJob {
 
 const MODELS = [
   {
-    id: "nano-banana-pro",
-    name: "Nano Banana Pro (PiAPI)",
+    id: "gemini-3.1-flash-image",
+    name: "iGen 3.1 Flash Image",
     isPro: true,
   },
   {
-    id: "nano-banana-2",
-    name: "Nano Banana 2 Pro (Gemini)",
+    id: "gemini-3-pro-image",
+    name: "iGen 3 Pro Image",
+    isPro: true,
+  },
+  {
+    id: "nano-banana-pro",
+    name: "Nano Banana Pro (PiAPI)",
     isPro: true,
   },
 ];
@@ -93,7 +98,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
   const [isDraggingRef, setIsDraggingRef] = useState(false);
 
   const [selectedModel, setSelectedModel] = useState(
-    "nano-banana-2",
+    "gemini-3.1-flash-image",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
 
@@ -117,6 +122,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
     [jobId: string]: number;
   }>({});
   const [smoothPromptProgress, setSmoothPromptProgress] = useState(0);
+  const [smoothRenderProgress, setSmoothRenderProgress] = useState(0);
   const [sessionStartTimeMs] = useState(() => Date.now());
 
   const isCurrentSession = (job: RenderJob) => {
@@ -498,7 +504,7 @@ ${floorplanStylePrompt}- Quy tắc bố cục: giữ nguyên 100% vị trí tư�
         systemInstruction = `<vai_tro>
 BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT KIẾN TRÚC NGOẠI THẤT.
 CỰC KỲ QUAN TRỌNG: Tất cả thông tin phân tích, mô tả, phong cách, chất liệu, bối cảnh, kết quả đầu ra, và toàn bộ prompt tối ưu hóa PHẢI được viết hoàn toàn bằng TIẾNG VIỆT 100%. Tuyệt đối không sử dụng tiếng Anh trong mô tả, tiêu đề, phân tích hoặc kết quả đầu ra. Giữ nguyên các thuật ngữ kỹ thuật bắt buộc (nếu có), nhưng ưu tiên diễn đạt bằng tiếng Việt.
-Bạn đang vận hành ứng dụng "iGen" - nền tảng render ngoại thất AI cao cấp. Mục tiêu của bạn là xử lý dữ liệu đầu vào của người dùng để tạo ra một prompt tạo ảnh tiếng Việt được tối ưu hóa xuất sắc nhất cho \`gemini-3.1-flash-image-preview\`.
+Bạn đang vận hành ứng dụng "iGen" - nền tảng render ngoại thất AI cao cấp. Mục tiêu của bạn là xử lý dữ liệu đầu vào của người dùng để tạo ra một prompt tạo ảnh tiếng Việt được tối ưu hóa xuất sắc nhất cho \`gemini-3.1-flash-image\`.
 </vai_tro>
 
 <giao_thuc_trang_thai_dau_vao>
@@ -792,6 +798,12 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
     }
 
     setIsRendering(true);
+    setSmoothRenderProgress(15);
+    let progress = 15;
+    const progressInterval = setInterval(() => {
+      progress += (90 - progress) * 0.05;
+      setSmoothRenderProgress(Math.floor(progress));
+    }, 300);
 
     try {
       const jobData = {
@@ -818,20 +830,27 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
       };
 
       const jobRes = await apiClient.post<ApiResponse<RenderJob>>("/api/v1/render-jobs", jobData);
+      clearInterval(progressInterval);
+      setSmoothRenderProgress(100);
+
       if (!jobRes.success || !jobRes.data) {
         throw new Error("Không thể khởi tạo render job trên server.");
       }
 
-      setIsRendering(false);
       if (jobRes.data && jobRes.data.status === "completed") {
         toast.success("Kết xuất thành công bằng Gemini!");
       } else {
         toast.success("Đã gửi yêu cầu kết xuất lên hàng đợi PiAPI!");
       }
     } catch (error) {
+      clearInterval(progressInterval);
       console.error("Error creating render job:", error);
       toast.error("Đã xảy ra lỗi khi tạo yêu cầu render.");
-      setIsRendering(false);
+    } finally {
+      setTimeout(() => {
+        setIsRendering(false);
+        setSmoothRenderProgress(0);
+      }, 500);
     }
   };
 
@@ -1946,7 +1965,47 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
             </h3>
 
             <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-              {currentResultItems.length === 0 && !selectedItem ? (
+              {isRendering ? (
+                <div className="flex-1 bg-surface-container-low/50 rounded-xl flex flex-col items-center justify-center text-center border border-outline-variant/10 min-h-0 p-8 animate-fade-in">
+                  <div className="relative w-24 h-24 mb-6">
+                    <svg
+                      className="w-full h-full transform -rotate-90"
+                      viewBox="0 0 100 100"
+                    >
+                      <circle
+                        className="text-outline-variant/30 stroke-current"
+                        strokeWidth="8"
+                        cx="50"
+                        cy="50"
+                        r="40"
+                        fill="transparent"
+                      ></circle>
+                      <circle
+                        className="text-primary stroke-current transition-all duration-500 ease-out"
+                        strokeWidth="8"
+                        strokeLinecap="round"
+                        cx="50"
+                        cy="50"
+                        r="40"
+                        fill="transparent"
+                        strokeDasharray={`${2 * Math.PI * 40}`}
+                        strokeDashoffset={`${2 * Math.PI * 40 * (1 - smoothRenderProgress / 100)}`}
+                      ></circle>
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-xl font-bold text-primary">
+                        {Math.round(smoothRenderProgress)}%
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-sm font-medium text-primary">
+                    AI đang xử lý hình ảnh...
+                  </p>
+                  <p className="text-xs text-on-surface-variant mt-2">
+                    Quá trình này có thể mất vài chục giây
+                  </p>
+                </div>
+              ) : currentResultItems.length === 0 && !selectedItem ? (
                 <div className="flex-1 bg-surface-container-low/50 rounded-xl flex flex-col items-center justify-center text-center border border-outline-variant/10 min-h-0">
                   <Icon
                     name="image"

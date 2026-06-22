@@ -20,8 +20,8 @@ export const getAIClient = async (modelName: string) => {
 
   if (isAIStudio) {
     if (
-      modelName === "gemini-3.1-flash-image-preview" ||
-      modelName === "gemini-3-pro-image-preview" ||
+      modelName === "gemini-3.1-flash-image" ||
+      modelName === "gemini-3-pro-image" ||
       modelName === "gemini-2.5-flash" ||
       modelName === "veo-3.1-generate-preview" ||
       modelName === "veo-3.1-lite-generate-preview"
@@ -410,9 +410,9 @@ export const generateContentWithRetry = async (
             (params.generationConfig as { imageConfig?: { imageSize?: string } })?.imageConfig?.imageSize ||
             (params.config as { imageConfig?: { imageSize?: string } })?.imageConfig?.imageSize ||
             "1K";
-          if (modelName === "gemini-3.1-flash-image-preview") {
+          if (modelName === "gemini-3.1-flash-image") {
             cost = resolution === "2K" ? 42 : 27.5;
-          } else if (modelName === "gemini-3-pro-image-preview") {
+          } else if (modelName === "gemini-3-pro-image") {
             cost = 57;
           } else {
             cost = 27.5;
@@ -609,9 +609,9 @@ export const generateContentStreamWithRetry = async function* (
               (params.generationConfig as { imageConfig?: { imageSize?: string } })?.imageConfig?.imageSize ||
               (params.config as { imageConfig?: { imageSize?: string } })?.imageConfig?.imageSize ||
               "1K";
-            if (modelName === "gemini-3.1-flash-image-preview") {
+            if (modelName === "gemini-3.1-flash-image") {
               cost = resolution === "2K" ? 42 : 27.5;
-            } else if (modelName === "gemini-3-pro-image-preview") {
+            } else if (modelName === "gemini-3-pro-image") {
               cost = 57;
             } else {
               cost = 27.5;

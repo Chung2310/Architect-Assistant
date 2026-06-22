@@ -10,13 +10,13 @@ import { uploadMedia, getAIClient, checkUserCredits, generateContentWithRetry, g
 
 const MODELS = [
   {
-    id: "gemini-3.1-flash-image-preview",
-    name: "iGen 3.1 Flash Image Preview",
+    id: "gemini-3.1-flash-image",
+    name: "iGen 3.1 Flash Image",
     isPro: true,
   },
   {
-    id: "gemini-3-pro-image-preview",
-    name: "iGen 3 Pro Image Preview",
+    id: "gemini-3-pro-image",
+    name: "iGen 3 Pro Image",
     isPro: true,
   },
 ];
@@ -28,7 +28,7 @@ export const UpscaleTabContent: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [selectedModel, setSelectedModel] = useState(
-    "gemini-3-pro-image-preview",
+    "gemini-3-pro-image",
   );
   const [isUpscaling, setIsUpscaling] = useState(false);
   const [upscaleProgress, setUpscaleProgress] = useState(0);
@@ -283,7 +283,7 @@ export const UpscaleTabContent: React.FC = () => {
       };
 
       const systemInstructionText = `<role>
-You are the "iGen Image Enhancer", an elite spatial and visual analyzer. Your objective is to examine a low-resolution, blurry, or pixelated Reference Image and generate a precise reconstruction prompt for \`gemini-3.1-flash-image-preview\` to upscale it to crisp 2K resolution.
+You are the "iGen Image Enhancer", an elite spatial and visual analyzer. Your objective is to examine a low-resolution, blurry, or pixelated Reference Image and generate a precise reconstruction prompt for \`gemini-3.1-flash-image\` to upscale it to crisp 2K resolution.
 </role>
 
 <core_directives>
@@ -361,8 +361,8 @@ If the image is too blurry to identify specific details, describe the general sh
       };
 
       if (
-        selectedModel === "gemini-3.1-flash-image-preview" ||
-        selectedModel === "gemini-3-pro-image-preview"
+        selectedModel === "gemini-3.1-flash-image" ||
+        selectedModel === "gemini-3-pro-image"
       ) {
         imageConfig.imageSize = resolution;
         imageConfig.negativePrompt = negativePrompt;

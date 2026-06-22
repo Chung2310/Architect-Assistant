@@ -17,8 +17,8 @@ export const geminiService = {
     const isGeminiNativeImageModel =
       modelName === "nano-banana-2" ||
       modelName === "igen-image-flash" ||
-      modelName === "gemini-3-pro-image-preview" ||
-      modelName === "gemini-3.1-flash-image-preview" ||
+      modelName === "gemini-3-pro-image" ||
+      modelName === "gemini-3.1-flash-image" ||
       modelName.startsWith("imagen-");
 
     let apiKey = (userApiKey && userApiKey.trim().length > 15) ? userApiKey.trim() : "";
@@ -45,9 +45,9 @@ export const geminiService = {
       // ─── Xử lý sinh ảnh (Image) ───
       if (isImageModel) {
         let targetModel = "nano-banana-pro";
-        if (modelName === "gemini-3-pro-image-preview" || modelName === "nano-banana-pro" || modelName === "igen-image-pro") {
+        if (modelName === "gemini-3-pro-image" || modelName === "nano-banana-pro" || modelName === "igen-image-pro") {
           targetModel = "nano-banana-pro";
-        } else if (modelName === "gemini-3.1-flash-image-preview" || modelName === "nano-banana-2" || modelName === "igen-image-flash") {
+        } else if (modelName === "gemini-3.1-flash-image" || modelName === "nano-banana-2" || modelName === "igen-image-flash") {
           targetModel = "nano-banana-2";
         } else if (modelName.includes("image-preview")) {
           targetModel = "nano-banana-pro";
@@ -237,11 +237,19 @@ export const geminiService = {
       const imageConfig = params.config?.imageConfig || params.generationConfig?.imageConfig || {};
       const aspectRatio = imageConfig.aspectRatio || "1:1";
 
-      // Dùng generateContent với model gemini-3-pro-image-preview (Nano Banana Pro)
-      // Đây là model chính thức cho Gemini Developer API (key AIza...)
+      // Chọn model Gemini native dựa trên model được yêu cầu:
+      // - nano-banana-2 / igen-image-flash / gemini-3.1-flash-image → Flash (nhanh hơn, rẻ hơn)
+      // - nano-banana-pro / gemini-3-pro-image / imagen-* → Pro (chất lượng cao hơn)
       // KHÔNG dùng generateImages / imagen-3.0-generate-002 (chỉ cho Vertex AI)
-      const IMAGE_GEN_MODEL = "gemini-3-pro-image-preview";
-      logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL}, aspect: ${aspectRatio}`);
+      const isFlashVariant =
+        modelName === "nano-banana-2" ||
+        modelName === "igen-image-flash" ||
+        modelName === "gemini-3.1-flash-image" ||
+        modelName === "gemini-3.1-flash-image-preview";
+      const IMAGE_GEN_MODEL = isFlashVariant
+        ? "gemini-3.1-flash-image-preview"
+        : "gemini-3-pro-image-preview";
+      logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL} (variant: ${isFlashVariant ? "flash" : "pro"}), aspect: ${aspectRatio}`);
 
       // Thêm aspect ratio vào prompt vì GenerateContentConfig không hỗ trợ aspectRatio
       const finalPromptText = aspectRatio && aspectRatio !== "1:1"
