@@ -14,11 +14,6 @@ const MODELS = [
     name: "iGen 3.1 Flash Image",
     isPro: true,
   },
-  {
-    id: "gemini-3-pro-image",
-    name: "iGen 3 Pro Image",
-    isPro: true,
-  },
 ];
 
 export const UpscaleTabContent: React.FC = () => {
@@ -28,7 +23,7 @@ export const UpscaleTabContent: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [selectedModel, setSelectedModel] = useState(
-    "gemini-3-pro-image",
+    "gemini-3.1-flash-image",
   );
   const [isUpscaling, setIsUpscaling] = useState(false);
   const [upscaleProgress, setUpscaleProgress] = useState(0);
