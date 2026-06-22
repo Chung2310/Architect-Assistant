@@ -1560,8 +1560,8 @@ var geminiService = {
       promptText = promptText.trim();
       const imageConfig = params.config?.imageConfig || params.generationConfig?.imageConfig || {};
       const aspectRatio = imageConfig.aspectRatio || "1:1";
-      const isFlashVariant = modelName === "nano-banana-2" || modelName === "igen-image-flash" || modelName === "gemini-3.1-flash-image";
-      const IMAGE_GEN_MODEL = isFlashVariant ? "gemini-3.1-flash-image" : "gemini-3-pro-image";
+      const isFlashVariant = modelName === "nano-banana-2" || modelName === "igen-image-flash" || modelName === "gemini-3.1-flash-image" || modelName === "gemini-3.1-flash-image-preview";
+      const IMAGE_GEN_MODEL = isFlashVariant ? "gemini-3.1-flash-image-preview" : "gemini-3-pro-image-preview";
       logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL} (variant: ${isFlashVariant ? "flash" : "pro"}), aspect: ${aspectRatio}`);
       const finalPromptText = aspectRatio && aspectRatio !== "1:1" ? `${promptText}
 [Aspect ratio: ${aspectRatio}]` : promptText;

@@ -244,10 +244,11 @@ export const geminiService = {
       const isFlashVariant =
         modelName === "nano-banana-2" ||
         modelName === "igen-image-flash" ||
-        modelName === "gemini-3.1-flash-image";
+        modelName === "gemini-3.1-flash-image" ||
+        modelName === "gemini-3.1-flash-image-preview";
       const IMAGE_GEN_MODEL = isFlashVariant
-        ? "gemini-3.1-flash-image"
-        : "gemini-3-pro-image";
+        ? "gemini-3.1-flash-image-preview"
+        : "gemini-3-pro-image-preview";
       logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL} (variant: ${isFlashVariant ? "flash" : "pro"}), aspect: ${aspectRatio}`);
 
       // Thêm aspect ratio vào prompt vì GenerateContentConfig không hỗ trợ aspectRatio

@@ -28,7 +28,7 @@ export const VirtualStaging: React.FC = () => {
   const [resolution, setResolution] = useState('1K Full HD');
   const [aspectRatio, setAspectRatio] = useState('Tự động');
   const [detectedAspectRatio, setDetectedAspectRatio] = useState('1:1');
-  const [aiEngine, setAiEngine] = useState('iGen 3.1 Pro Preview');
+  const [aiEngine, setAiEngine] = useState('iGen 3 Pro Image');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [generatedResults, setGeneratedResults] = useState<string[]>([]);
@@ -565,8 +565,8 @@ export const VirtualStaging: React.FC = () => {
                   onChange={(e) => setAiEngine(e.target.value)}
                   className="bg-surface-container-low border border-outline-variant/20 rounded-lg px-2 py-1 text-[10px] font-bold text-on-surface outline-none appearance-none pr-6 cursor-pointer"
                 >
-                  <option>iGen 3 Flash Preview</option>
-                  <option>iGen 3.1 Pro Preview</option>
+                  <option>iGen 3.1 Flash Image</option>
+                  <option>iGen 3 Pro Image</option>
                 </select>
                 <Icon name="expand_more" className="absolute right-1 top-1/2 -translate-y-1/2 text-on-surface-variant text-[12px] pointer-events-none" />
               </div>
@@ -612,8 +612,8 @@ export const VirtualStaging: React.FC = () => {
                     onChange={(e) => setAiEngine(e.target.value)}
                     className="w-full bg-surface-container-low border border-outline-variant/20 rounded-lg p-2 text-[11px] font-bold text-on-surface outline-none appearance-none cursor-pointer pr-8 overflow-hidden text-ellipsis"
                   >
-                    <option>iGen 3.1 Flash Preview</option>
-                    <option>iGen 3.1 Pro Preview</option>
+                    <option>iGen 3.1 Flash Image</option>
+                    <option>iGen 3 Pro Image</option>
                   </select>
                   <Icon name="expand_more" className="absolute right-2 top-1/2 -translate-y-1/2 text-on-surface pointer-events-none" />
                 </div>
