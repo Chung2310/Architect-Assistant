@@ -10,9 +10,14 @@ import { uploadMedia, getAIClient, checkUserCredits, generateContentWithRetry, g
 
 const MODELS = [
   {
+    id: "gemini-3-pro-image",
+    name: "iGen 3 Pro Image",
+    isPro: true,
+  },
+  {
     id: "gemini-3.1-flash-image",
     name: "iGen 3.1 Flash Image",
-    isPro: true,
+    isPro: false,
   },
 ];
 
@@ -23,7 +28,7 @@ export const UpscaleTabContent: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [selectedModel, setSelectedModel] = useState(
-    "gemini-3.1-flash-image",
+    "gemini-3-pro-image",
   );
   const [isUpscaling, setIsUpscaling] = useState(false);
   const [upscaleProgress, setUpscaleProgress] = useState(0);

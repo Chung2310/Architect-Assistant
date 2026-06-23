@@ -52,9 +52,14 @@ const MODELS = [
 
 const GEMINI_MODELS = [
   {
+    id: "gemini-3-pro-image",
+    name: "iGen 3 Pro Image",
+    isPro: true,
+  },
+  {
     id: "gemini-3.1-flash-image",
     name: "iGen 3.1 Flash Image",
-    isPro: true,
+    isPro: false,
   },
 ];
 
@@ -1268,7 +1273,8 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
 
       if (
         apiAspectRatio &&
-        selectedModel === "gemini-3.1-flash-image"
+        (selectedModel === "gemini-3.1-flash-image" ||
+          selectedModel === "gemini-3-pro-image")
       ) {
         const supported25 = ["1:1", "3:4", "4:3", "9:16", "16:9", "21:9"];
         if (!supported25.includes(apiAspectRatio)) {
@@ -2208,12 +2214,11 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
                       value={selectedModel}
                       onChange={(e) => setSelectedModel(e.target.value)}
                     >
-                      <option value="gemini-3.1-flash-image">
-                        iGen 3.1 Flash Image
-                      </option>
-                      <option value="gemini-3-pro-image">
-                        iGen 3 Pro Image
-                      </option>
+                      {GEMINI_MODELS.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.name} {model.isPro ? "(Pro)" : ""}
+                        </option>
+                      ))}
                     </select>
                     <Icon
                       name="keyboard_arrow_down"

@@ -60,9 +60,14 @@ const MODELS = [
 
 const GEMINI_MODELS = [
   {
+    id: "gemini-3-pro-image",
+    name: "iGen 3 Pro Image",
+    isPro: true,
+  },
+  {
     id: "gemini-3.1-flash-image",
     name: "iGen 3.1 Flash Image",
-    isPro: true,
+    isPro: false,
   },
 ];
 
