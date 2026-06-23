@@ -1124,12 +1124,11 @@ var piapiService = {
     const aspect = options?.aspectRatio || "1:1";
     const randomSeed = Math.floor(Math.random() * 2147483647);
     let reqBody;
-    if (model === "nano-banana-2" || model === "igen-image-flash") {
-      throw new Error(`Model ${model} ph\u1EA3i d\xF9ng Gemini SDK tr\u1EF1c ti\u1EBFp, kh\xF4ng qua PiAPI. Vui l\xF2ng ki\u1EC3m tra l\u1EA1i controller.`);
-    } else if (model === "nano-banana-pro") {
+    if (model === "nano-banana-2" || model === "igen-image-flash" || model === "nano-banana-pro") {
+      const taskType = model === "igen-image-flash" ? "nano-banana-2" : model;
       reqBody = {
         model: "gemini",
-        task_type: model,
+        task_type: taskType,
         input: {
           prompt,
           output_format: "png",
@@ -1566,17 +1565,106 @@ var geminiService = {
       logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL} (variant: ${isFlashVariant ? "flash" : "pro"}), aspect: ${aspectRatio}`);
       const finalPromptText = aspectRatio && aspectRatio !== "1:1" ? `${promptText}
 [Aspect ratio: ${aspectRatio}]` : promptText;
-      const response2 = await ai2.models.generateContent({
-        model: IMAGE_GEN_MODEL,
-        contents: finalPromptText,
-        config: {
-          responseModalities: ["TEXT", "IMAGE"]
+      let response2;
+      let usePiapiFallback = false;
+      let apiErrorMsg = "";
+      try {
+        response2 = await ai2.models.generateContent({
+          model: IMAGE_GEN_MODEL,
+          contents: finalPromptText,
+          config: {
+            responseModalities: ["TEXT", "IMAGE"]
+          }
+        });
+      } catch (err) {
+        const errStr = err?.message || JSON.stringify(err) || "";
+        const statusCode = err?.status || err?.statusCode || 0;
+        logger.warn(`[Gemini Service] Native Image generation failed (Status: ${statusCode}, Msg: ${errStr}).`);
+        if (statusCode === 429 || errStr.includes("429") || errStr.toLowerCase().includes("quota") || errStr.toLowerCase().includes("exhausted") || statusCode === 403 || errStr.includes("403") || statusCode === 401 || errStr.includes("401")) {
+          logger.info(`[Gemini Service] Quota exceeded/billing issue or permission error. Falling back to PiAPI...`);
+          usePiapiFallback = true;
+          apiErrorMsg = errStr;
+        } else {
+          throw err;
         }
-      });
-      const parts = response2.candidates?.[0]?.content?.parts || [];
-      const imageParts = parts.filter((p) => p.inlineData?.data);
-      if (imageParts.length === 0) {
-        throw new Error("Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c d\u1EEF li\u1EC7u \u1EA3nh t\u1EEB Gemini Image API.");
+      }
+      let imageParts = [];
+      if (!usePiapiFallback && response2) {
+        const parts = response2.candidates?.[0]?.content?.parts || [];
+        imageParts = parts.filter((p) => p.inlineData?.data);
+        if (imageParts.length === 0) {
+          logger.warn(`[Gemini Service] Gemini Native returned success but no images. Falling back to PiAPI...`);
+          usePiapiFallback = true;
+        }
+      }
+      if (usePiapiFallback) {
+        if (!piapiKey) {
+          throw new Error(`L\u1ED7i API Gemini (${apiErrorMsg || "429 Quota Exceeded"}). Kh\xF4ng th\u1EC3 t\u1EF1 \u0111\u1ED9ng chuy\u1EC3n sang PiAPI do ch\u01B0a c\u1EA5u h\xECnh PIAPI_API_KEY.`);
+        }
+        let targetModel = "nano-banana-2";
+        if (IMAGE_GEN_MODEL === "gemini-3-pro-image") {
+          targetModel = "nano-banana-pro";
+        }
+        let inputImageBase64 = "";
+        let inputImageMimeType = "";
+        for (const content of contentsArray) {
+          if (content.parts && Array.isArray(content.parts)) {
+            for (const part of content.parts) {
+              if (part.inlineData && part.inlineData.data) {
+                inputImageBase64 = part.inlineData.data;
+                inputImageMimeType = part.inlineData.mimeType || "image/jpeg";
+              }
+            }
+          }
+        }
+        let uploadedImageUrl = "";
+        if (inputImageBase64) {
+          const fileStr = `data:${inputImageMimeType};base64,${inputImageBase64}`;
+          logger.info(`[Gemini Service Fallback] Uploading input image to Cloudinary...`);
+          try {
+            uploadedImageUrl = await cloudinaryService.uploadMedia(fileStr, "temp_staging");
+          } catch (uploadErr) {
+            logger.error(`[Gemini Service Fallback] Cloudinary upload failed: ${uploadErr}`);
+          }
+        }
+        logger.info(`[Gemini Service Fallback] Generating image via PiAPI. Model: ${targetModel}, Aspect: ${aspectRatio}`);
+        const piapiRes = await piapiService.generateImage(promptText, targetModel, {
+          aspectRatio,
+          image: uploadedImageUrl || void 0
+        });
+        const imgFetchRes = await fetch(piapiRes.url);
+        if (!imgFetchRes.ok) {
+          throw new Error(`Failed to download generated image from PiAPI fallback: ${imgFetchRes.status}`);
+        }
+        const arrayBuffer = await imgFetchRes.arrayBuffer();
+        const base64 = Buffer.from(arrayBuffer).toString("base64");
+        const mimeType = imgFetchRes.headers.get("content-type") || "image/png";
+        return {
+          generatedImages: [
+            {
+              image: {
+                imageBytes: base64,
+                mimeType
+              }
+            }
+          ],
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    inlineData: {
+                      data: base64,
+                      mimeType
+                    }
+                  }
+                ],
+                role: "model"
+              },
+              finishReason: "STOP"
+            }
+          ]
+        };
       }
       return {
         generatedImages: imageParts.map((p) => ({

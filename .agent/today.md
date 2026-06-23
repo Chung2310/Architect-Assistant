@@ -1,3 +1,16 @@
+# 📅 Today - 2026-06-23
+
+## 🛠 Fixes & Improvements
+- **Feature**: Tích hợp luồng tự động fallback sang PiAPI khi gọi Google Gemini Native Image bị lỗi Quota/Rate Limit (429) hoặc Lỗi Quyền (403/401).
+  1. Bắt lỗi `429` (Quota Exceeded / limit 0 của tài khoản Free Tier) và `403/401` khi gọi `generateContent` trực tiếp qua Google SDK.
+  2. Điều hướng tác vụ sang PiAPI (`nano-banana-2` hoặc `nano-banana-pro`), trích xuất ảnh đầu vào `inlineData` nếu có để upload lên Cloudinary làm ảnh tham khảo.
+  3. Loại bỏ lớp bảo vệ chặn cứng (error guard) đối với model `nano-banana-2` và `igen-image-flash` trong `piapi.service.ts` để cho phép định tuyến thành công các model này sang PiAPI khi xảy ra lỗi.
+  4. Định cấu hình payload trả về chứa cả `generatedImages` và `candidates` để tương thích ngược với mọi luồng xử lý trên Client và Controller.
+- **Feature**: Khóa cơ chế API Key cá nhân & định hướng cứng sang mô hình Pro:
+  1. Sửa [gemini.service.ts](file:///c:/Users/PC/Documents/GitHub/Architect-Assistant/server/service/gemini.service.ts) bỏ qua tham số `userApiKey` truyền từ DB của user, luôn dùng key từ `.env`.
+  2. Cập nhật [user.service.ts](file:///c:/Users/PC/Documents/GitHub/Architect-Assistant/server/service/user.service.ts) tại hàm `updateApiKey` để luôn lưu giá trị rỗng `""` thay vì lưu trữ API Key cá nhân của người dùng, giữ sạch cơ sở dữ liệu.
+  3. Sửa logic chọn model Native của Gemini trong [gemini.service.ts](file:///c:/Users/PC/Documents/GitHub/Architect-Assistant/server/service/gemini.service.ts) để luôn luôn sử dụng **`gemini-3-pro-image`** (mô hình Pro) thay vì `gemini-3.1-flash-image` (mô hình Flash bị giới hạn quota = 0 ở tài khoản Paid Tier 1), giúp quá trình sinh ảnh chạy trực tiếp không bị lỗi.
+
 # 📅 Today - 2026-06-19
 
 ## 🛠 Fixes & Improvements

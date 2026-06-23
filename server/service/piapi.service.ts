@@ -31,13 +31,11 @@ export const piapiService = {
     const randomSeed = Math.floor(Math.random() * 2147483647);
     let reqBody: Record<string, unknown> | undefined;
 
-    if (model === "nano-banana-2" || model === "igen-image-flash") {
-      // Các model này dùng Gemini SDK trực tiếp, KHÔNG qua PiAPI
-      throw new Error(`Model ${model} phải dùng Gemini SDK trực tiếp, không qua PiAPI. Vui lòng kiểm tra lại controller.`);
-    } else if (model === "nano-banana-pro") {
+    if (model === "nano-banana-2" || model === "igen-image-flash" || model === "nano-banana-pro") {
+      const taskType = model === "igen-image-flash" ? "nano-banana-2" : model;
       reqBody = {
         model: "gemini",
-        task_type: model,
+        task_type: taskType,
         input: {
           prompt,
           output_format: "png",
