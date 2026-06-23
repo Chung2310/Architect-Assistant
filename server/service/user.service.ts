@@ -26,10 +26,11 @@ export const userService = {
     return user;
   },
 
-  async updateApiKey(userId: string, apiKey: string) {
+  async updateApiKey(userId: string, _apiKey: string) {
+    // Chỉ lưu apiKey là rỗng và đánh dấu hasSetupApiKey là true, luôn sử dụng .env key ở backend
     const user = await UserModel.findByIdAndUpdate(
       userId,
-      { apiKey, hasSetupApiKey: true },
+      { apiKey: "", hasSetupApiKey: true },
       { new: true }
     ).select("-password");
     if (!user) throw new Error("Không tìm thấy tài khoản.");

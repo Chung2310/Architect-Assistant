@@ -31,3 +31,13 @@
 - **Giải pháp**:
   1. Chỉ truyền giá trị thực tế của key nhạy cảm khi Vite chạy ở chế độ phát triển (`mode === 'development'`) để phục vụ các luồng sandbox đặc thù (như AI Studio). Ở chế độ sản xuất (`mode === 'production'`), thay thế giá trị này bằng một chuỗi rỗng `""`.
   2. Bắt buộc chuyển hướng các yêu cầu API từ client-side sang backend proxy (Server-side API) an toàn. Client gọi tới endpoint backend (như `/api/v1/gemini/generate`), backend sẽ chịu trách nhiệm đọc và chèn API key một cách an toàn từ biến môi trường phía server, đảm bảo API key không bao giờ xuất hiện ở client.
+
+## 🔀 Tự Động Chuyển Đổi Dự Phòng Khi Hết Hạn Mức Hoặc Thiếu Quyền (API Quota & Permission Fallback)
+- **Vấn đề**: Các tài khoản Google Gemini API ở Free Tier thường bị giới hạn quota bằng 0 đối với các mô-đun sinh ảnh/retouch (`gemini-3.1-flash-image` / `gemini-3-pro-image`), gây ra lỗi `429 RESOURCE_EXHAUSTED` hoặc `403/401 Forbidden` khi gọi trực tiếp từ ứng dụng.
+- **Giải pháp**:
+  1. Sử dụng khối lệnh `try...catch` bọc xung quanh lệnh gọi trực tiếp Google Gen AI SDK.
+  2. Bắt các trạng thái lỗi cụ thể như Status `429` (Quota Limit), `403` / `401` (Unauthorized/Forbidden) hoặc các thông điệp liên quan đến `quota`, `exhausted` hay `billing`.
+  3. Khi phát hiện các lỗi này, tự động điều hướng luồng xử lý sang dịch vụ thay thế (PiAPI) sử dụng `PIAPI_API_KEY` từ môi trường server.
+  4. Trích xuất đúng hình ảnh đầu vào (`inlineData`) từ payload ban đầu, đưa qua Cloudinary để lấy link URL rồi chuyển tiếp cho PiAPI, đảm bảo các tính năng phức tạp như inpainting/edit vẫn hoạt động.
+  5. Định hình dữ liệu phản hồi trả về bao gồm cả cấu trúc `generatedImages` và `candidates` để đảm bảo tương thích 100% với cả 2 phương án hiển thị ở client-side và lưu trữ ở controller.
+

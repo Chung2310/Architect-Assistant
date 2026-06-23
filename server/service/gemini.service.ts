@@ -5,7 +5,7 @@ import { logger } from "../utils/logger";
 
 export const geminiService = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async generate(params: Record<string, any>, userApiKey?: string): Promise<any> {
+  async generate(params: Record<string, any>, _userApiKey?: string): Promise<any> {
     const modelName = (params.model as string) || "";
     const isImageModel =
       modelName.includes("image-preview") ||
@@ -21,10 +21,8 @@ export const geminiService = {
       modelName === "gemini-3.1-flash-image" ||
       modelName.startsWith("imagen-");
 
-    let apiKey = (userApiKey && userApiKey.trim().length > 15) ? userApiKey.trim() : "";
-    if (!apiKey) {
-      apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
-    }
+    // Luôn luôn sử dụng API Key từ biến môi trường .env (không dùng key cá nhân/key từ DB của user nữa)
+    let apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
     // Validate API key format - Gemini keys must start with 'AIza' or 'AQ.'
     const isValidGeminiKey = (key: string) => key.startsWith("AIza") || key.startsWith("AQ.");
     if (apiKey && !isValidGeminiKey(apiKey)) {
@@ -242,34 +240,140 @@ export const geminiService = {
       // - nano-banana-2 / igen-image-flash / gemini-3.1-flash-image → Flash (nhanh hơn, rẻ hơn)
       // - nano-banana-pro / gemini-3-pro-image / imagen-* → Pro (chất lượng cao hơn)
       // KHÔNG dùng generateImages / imagen-3.0-generate-002 (chỉ cho Vertex AI)
-      const isFlashVariant =
-        modelName === "nano-banana-2" ||
-        modelName === "igen-image-flash" ||
-        modelName === "gemini-3.1-flash-image";
-      const IMAGE_GEN_MODEL = isFlashVariant
-        ? "gemini-3.1-flash-image"
-        : "gemini-3-pro-image";
-      logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL} (variant: ${isFlashVariant ? "flash" : "pro"}), aspect: ${aspectRatio}`);
+      // Luôn sử dụng gemini-3-pro-image làm mô hình mặc định cho sinh ảnh native của Gemini do hạn mức của tài khoản Paid Tier 1 hoạt động tốt với model Pro (Flash model có hạn mức bằng 0)
+      const IMAGE_GEN_MODEL = "gemini-3-pro-image";
+      logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL} (variant: pro), aspect: ${aspectRatio}`);
 
       // Thêm aspect ratio vào prompt vì GenerateContentConfig không hỗ trợ aspectRatio
       const finalPromptText = aspectRatio && aspectRatio !== "1:1"
         ? `${promptText}\n[Aspect ratio: ${aspectRatio}]`
         : promptText;
 
-      const response = await ai.models.generateContent({
-        model: IMAGE_GEN_MODEL,
-        contents: finalPromptText,
-        config: {
-          responseModalities: ["TEXT", "IMAGE"],
-        },
-      });
+      let response;
+      let usePiapiFallback = false;
+      let apiErrorMsg = "";
 
-      // Chuyển đổi response sang format generatedImages để tương thích với controller
-      const parts = response.candidates?.[0]?.content?.parts || [];
-      const imageParts = parts.filter((p: { inlineData?: { data?: string; mimeType?: string } }) => p.inlineData?.data);
+      try {
+        response = await ai.models.generateContent({
+          model: IMAGE_GEN_MODEL,
+          contents: finalPromptText,
+          config: {
+            responseModalities: ["TEXT", "IMAGE"],
+          },
+        });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (err: any) {
+        const errStr = err?.message || JSON.stringify(err) || "";
+        const statusCode = err?.status || err?.statusCode || 0;
+        logger.warn(`[Gemini Service] Native Image generation failed (Status: ${statusCode}, Msg: ${errStr}).`);
 
-      if (imageParts.length === 0) {
-        throw new Error("Không nhận được dữ liệu ảnh từ Gemini Image API.");
+        // Check if error is quota/rate limit (429), billing issues, or permission error (403/401)
+        if (
+          statusCode === 429 ||
+          errStr.includes("429") ||
+          errStr.toLowerCase().includes("quota") ||
+          errStr.toLowerCase().includes("exhausted") ||
+          statusCode === 403 ||
+          errStr.includes("403") ||
+          statusCode === 401 ||
+          errStr.includes("401")
+        ) {
+          logger.info(`[Gemini Service] Quota exceeded/billing issue or permission error. Falling back to PiAPI...`);
+          usePiapiFallback = true;
+          apiErrorMsg = errStr;
+        } else {
+          // Re-throw other errors
+          throw err;
+        }
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let imageParts: any[] = [];
+      if (!usePiapiFallback && response) {
+        const parts = response.candidates?.[0]?.content?.parts || [];
+        imageParts = parts.filter((p: { inlineData?: { data?: string; mimeType?: string } }) => p.inlineData?.data);
+        if (imageParts.length === 0) {
+          logger.warn(`[Gemini Service] Gemini Native returned success but no images. Falling back to PiAPI...`);
+          usePiapiFallback = true;
+        }
+      }
+
+      if (usePiapiFallback) {
+        if (!piapiKey) {
+          throw new Error(`Lỗi API Gemini (${apiErrorMsg || "429 Quota Exceeded"}). Không thể tự động chuyển sang PiAPI do chưa cấu hình PIAPI_API_KEY.`);
+        }
+
+        let targetModel = "nano-banana-2"; // Default for flash variant
+        if (IMAGE_GEN_MODEL === "gemini-3-pro-image") {
+          targetModel = "nano-banana-pro";
+        }
+
+        // Trích xuất hình ảnh đầu vào (nếu có) từ contents đầu vào
+        let inputImageBase64 = "";
+        let inputImageMimeType = "";
+
+        for (const content of contentsArray) {
+          if (content.parts && Array.isArray(content.parts)) {
+            for (const part of content.parts) {
+              if (part.inlineData && part.inlineData.data) {
+                inputImageBase64 = part.inlineData.data;
+                inputImageMimeType = part.inlineData.mimeType || "image/jpeg";
+              }
+            }
+          }
+        }
+
+        let uploadedImageUrl = "";
+        if (inputImageBase64) {
+          const fileStr = `data:${inputImageMimeType};base64,${inputImageBase64}`;
+          logger.info(`[Gemini Service Fallback] Uploading input image to Cloudinary...`);
+          try {
+            uploadedImageUrl = await cloudinaryService.uploadMedia(fileStr, "temp_staging");
+          } catch (uploadErr) {
+            logger.error(`[Gemini Service Fallback] Cloudinary upload failed: ${uploadErr}`);
+          }
+        }
+
+        logger.info(`[Gemini Service Fallback] Generating image via PiAPI. Model: ${targetModel}, Aspect: ${aspectRatio}`);
+        const piapiRes = await piapiService.generateImage(promptText, targetModel, {
+          aspectRatio,
+          image: uploadedImageUrl || undefined
+        });
+
+        const imgFetchRes = await fetch(piapiRes.url);
+        if (!imgFetchRes.ok) {
+          throw new Error(`Failed to download generated image from PiAPI fallback: ${imgFetchRes.status}`);
+        }
+        const arrayBuffer = await imgFetchRes.arrayBuffer();
+        const base64 = Buffer.from(arrayBuffer).toString("base64");
+        const mimeType = imgFetchRes.headers.get("content-type") || "image/png";
+
+        return {
+          generatedImages: [
+            {
+              image: {
+                imageBytes: base64,
+                mimeType: mimeType
+              }
+            }
+          ],
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    inlineData: {
+                      data: base64,
+                      mimeType: mimeType
+                    }
+                  }
+                ],
+                role: "model"
+              },
+              finishReason: "STOP"
+            }
+          ]
+        };
       }
 
       // Trả về format tương thích với controller (generatedImages[0].image.imageBytes)

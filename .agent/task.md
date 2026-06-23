@@ -13,3 +13,10 @@
 - [x] Nâng cấp `package.json` bổ sung script esbuild bundling cho server backend.
 - [x] Tối ưu hóa `Dockerfile` sang luồng Multi-stage Alpine và cache mount Yarn.
 - [x] Đồng bộ `.github/workflows/cd.yml` hỗ trợ cấu hình triển khai tự động VPS cho cả nhánh `develop` và `production`.
+- [x] Thêm luồng tự động fallback sang PiAPI khi Gemini Native Image gặp lỗi 429 (hết hạn mức/chưa bật billing) hoặc 403/401 (không có quyền/key không hợp lệ).
+- [x] Loại bỏ lớp chặn cứng (guard error) đối với các model `nano-banana-2` và `igen-image-flash` trong `piapi.service.ts` để cho phép gọi PiAPI khi xảy ra lỗi.
+- [x] Khóa cơ chế nạp API Key cá nhân từ DB, bắt buộc 100% cuộc gọi sử dụng API Key trong `.env` và ngăn chặn lưu key cá nhân của user.
+- [x] Định tuyến cứng mọi yêu cầu sinh ảnh Native của Gemini sang mô hình `gemini-3-pro-image` để vượt qua giới hạn bằng 0 của mô hình Flash trên tài khoản Paid Tier 1.
+
+
+
