@@ -308,24 +308,15 @@ If the image is too blurry to identify specific details, describe the general sh
       console.log("Analyzing image to generate upscale prompt...");
       const textResponse = await generateContentWithRetry(promptAi, {
         model: "gemini-2.5-flash",
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                inlineData: {
-                  data: base64Data,
-                  mimeType: mimeType,
-                },
-              },
-              {
-                text: "Analyze this image and generate the upscaling prompt.",
-              },
-            ],
-          },
-        ],
-        systemInstruction: systemInstructionText,
-        generationConfig: generationConfigText,
+        promptTemplateKey: "upscale_prompt",
+        promptTemplateInput: {
+          images: [
+            {
+              data: base64Data,
+              mimeType: mimeType,
+            },
+          ],
+        },
       });
 
       const textResult =

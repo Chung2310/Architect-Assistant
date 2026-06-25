@@ -3,10 +3,63 @@ import { cloudinaryService } from "./cloudinary.service";
 import { piapiService } from "./piapi.service";
 import { logger } from "../utils/logger";
 
+function extractTextFromContents(contents: unknown): string {
+  const contentsArray = Array.isArray(contents)
+    ? contents
+    : (contents && typeof contents === "object" && "parts" in contents
+      ? [contents]
+      : []);
+
+  let promptText = "";
+  for (const content of contentsArray) {
+    if (content && typeof content === "object" && "parts" in content) {
+      const parts = (content as { parts?: Array<Record<string, unknown>> }).parts;
+      if (Array.isArray(parts)) {
+        for (const part of parts) {
+          if (typeof part?.text === "string") {
+            promptText += part.text + "\n";
+          }
+        }
+      }
+    }
+  }
+
+  return promptText.trim();
+}
+
+function summarizeContents(contents: unknown): string {
+  if (typeof contents === "string") {
+    return `string:${contents.slice(0, 120)}`;
+  }
+
+  if (!Array.isArray(contents)) {
+    return "non-array";
+  }
+
+  return contents
+    .map((content, index) => {
+      if (!content || typeof content !== "object" || !("parts" in content)) {
+        return `item${index}:no-parts`;
+      }
+
+      const parts = (content as { parts?: Array<Record<string, unknown>> }).parts || [];
+      const partSummary = parts.map((part) => {
+        if (typeof part?.text === "string") return "text";
+        if (part?.inlineData) return "inlineData";
+        if (part?.fileData) return "fileData";
+        return "other";
+      });
+
+      return `item${index}:${partSummary.join(",")}`;
+    })
+    .join(" | ");
+}
+
 export const geminiService = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async generate(params: Record<string, any>, _userApiKey?: string): Promise<any> {
     const modelName = (params.model as string) || "";
+    const systemInstruction = params.systemInstruction;
     const isImageModel =
       modelName.includes("image-preview") ||
       modelName.includes("imagen") ||
@@ -36,6 +89,9 @@ export const geminiService = {
     }
     logger.info(`[Gemini Service] Using API key prefix: ${apiKey ? apiKey.substring(0, 10) + '...' : 'None'} (Length: ${apiKey.length}, Valid: ${apiKey ? isValidGeminiKey(apiKey) : false})`);
     const piapiKey = process.env.PIAPI_API_KEY;
+    logger.info(
+      `[Gemini Service] Request summary - model: ${modelName}, hasSystemInstruction: ${!!systemInstruction}, contents: ${summarizeContents(params.contents)}`
+    );
 
     // ─── XỬ LÝ MODEL HÌNH ẢNH / VIDEO QUA PIAPI ─────────────────────────────────
     if (piapiKey && (isImageModel || isVideoModel) && !isGeminiNativeImageModel) {
@@ -73,6 +129,9 @@ export const geminiService = {
           }
         }
         promptText = promptText.trim();
+        if (systemInstruction) {
+          promptText = `${String(systemInstruction).trim()}\n\n${promptText}`.trim();
+        }
 
         let aspectRatio = "1:1";
         const mergedConfig = { ...(generationConfig || {}), ...(reqConfig || {}) };
@@ -88,7 +147,7 @@ export const geminiService = {
           uploadedImageUrl = await cloudinaryService.uploadMedia(fileStr, "temp_staging");
         }
 
-        logger.info(`[Gemini Service] Generating image via PiAPI. Model: ${targetModel}, Aspect: ${aspectRatio}`);
+        logger.info(`[Gemini Service] Provider: PiAPI image. Model: ${targetModel}, Aspect: ${aspectRatio}`);
         const piapiRes = await piapiService.generateImage(promptText, targetModel, {
           aspectRatio,
           image: uploadedImageUrl || undefined
@@ -170,13 +229,16 @@ export const geminiService = {
           }
         }
         promptText = promptText.trim();
+        if (systemInstruction) {
+          promptText = `${String(systemInstruction).trim()}\n\n${promptText}`.trim();
+        }
 
         const mergedConfig = { ...(generationConfig || {}), ...(reqConfig || {}) };
         const videoConfig = (mergedConfig?.videoConfig as Record<string, unknown>) || (mergedConfig?.imageConfig as Record<string, unknown>) || {};
         const aspectRatio = (videoConfig.aspectRatio as string) || (mergedConfig.aspectRatio as string) || "16:9";
         const durationSeconds = (videoConfig.durationSeconds as number) || (mergedConfig.durationSeconds as number) || 5;
 
-        logger.info(`[Gemini Service] Generating video via PiAPI. Model: ${piapiVideoModel}, Aspect: ${aspectRatio}, Duration: ${durationSeconds}s`);
+        logger.info(`[Gemini Service] Provider: PiAPI video. Model: ${piapiVideoModel}, Aspect: ${aspectRatio}, Duration: ${durationSeconds}s`);
         const piapiVideoRes = await piapiService.generateVideo(
           promptText,
           piapiVideoModel,
@@ -215,23 +277,9 @@ export const geminiService = {
       }
 
       const ai = new GoogleGenAI({ apiKey: apiKey as string });
-      logger.info(`[Gemini Service] Calling Google SDK for Gemini Image model: ${modelName}`);
+      logger.info(`[Gemini Service] Provider: Gemini native image. Requested model: ${modelName}`);
 
-      let promptText = "";
-      const contentsArray = Array.isArray(params.contents)
-        ? params.contents
-        : (params.contents && params.contents.parts ? [{ parts: params.contents.parts }] : []);
-
-      for (const content of contentsArray) {
-        if (content.parts && Array.isArray(content.parts)) {
-          for (const part of content.parts) {
-            if (part.text) {
-              promptText += part.text + "\n";
-            }
-          }
-        }
-      }
-      promptText = promptText.trim();
+      const promptText = extractTextFromContents(params.contents);
 
       const imageConfig = params.config?.imageConfig || params.generationConfig?.imageConfig || {};
       const aspectRatio = imageConfig.aspectRatio || "1:1";
@@ -256,15 +304,20 @@ export const geminiService = {
         ? `${promptText}\n[Aspect ratio: ${aspectRatio}]`
         : promptText;
 
+      const imageConfigForSdk: Record<string, unknown> = {
+        responseModalities: ["TEXT", "IMAGE"],
+      };
+      if (systemInstruction) {
+        imageConfigForSdk.systemInstruction = systemInstruction;
+      }
+
       let response;
 
       try {
         response = await ai.models.generateContent({
           model: IMAGE_GEN_MODEL,
           contents: finalPromptText,
-          config: {
-            responseModalities: ["TEXT", "IMAGE"],
-          },
+          config: imageConfigForSdk,
         });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
@@ -300,7 +353,7 @@ export const geminiService = {
     }
 
     const ai = new GoogleGenAI({ apiKey: apiKey as string });
-    logger.info(`[Gemini Service] Calling Google SDK for text model: ${modelName}`);
+    logger.info(`[Gemini Service] Provider: Gemini text. Model: ${modelName}`);
 
     // Clone and sanitize config to avoid validation errors on models without thinking support
     const rawConfig = params.config || params.generationConfig || {};
@@ -314,6 +367,10 @@ export const geminiService = {
       if ("thinking_config" in sanitizedConfig) {
         delete sanitizedConfig.thinking_config;
       }
+    }
+
+    if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
+      sanitizedConfig.systemInstruction = systemInstruction;
     }
 
     const response = await ai.models.generateContent({
