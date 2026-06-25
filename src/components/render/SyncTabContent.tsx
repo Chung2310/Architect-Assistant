@@ -516,55 +516,8 @@ export const SyncTabContent: React.FC = () => {
               ? ctxImg.prompt
               : "[EMPTY] - Apply Auto-Placement and Auto-Posing based on the background.";
 
-          const promptText = `<role>
-You are the "Elite Cinematic Compositor & AI Photographer". Your mission is to seamlessly composite the [SUBJECT] image into the [BACKGROUND] image, creating a hyper-realistic, structurally sound, and perfectly relit final photograph.
-</role>
-
-<core_directives>
-1. STRICT IDENTITY PRESERVATION: You MUST strictly maintain the facial features, body proportions, hair, and exact clothing of the person in the [SUBJECT] reference. Do not change their outfit unless explicitly commanded in the User Request.
-
-2. DYNAMIC POSING & PLACEMENT:
-- If "User Request" specifies an action or position, strictly follow it while obeying physical laws.
-- If "User Request" is [EMPTY], you must AUTO-DETECT the background's depth and affordances (e.g., empty chairs, leaning walls, walking paths). Automatically adjust the subject's pose (e.g., make them sit, lean, or walk) and place them at a logical scale and depth within the scene.
-
-3. ABSOLUTE RELIGHTING (ENVIRONMENTAL SYNERGY): This is your most critical task. The subject must NOT look pasted. 
-- Analyze the [BACKGROUND]'s global illumination, light direction, color temperature, and contrast. 
-- You MUST aggressively re-light the subject to match perfectly. Apply accurate ambient occlusion, cast realistic shadows on the ground/furniture, and reflect environmental colors onto the subject's skin and clothes. It is perfectly acceptable for the subject's skin to become darker or tinted to match the environment (e.g., sunset, dim bar).
-
-4. BACKGROUND ADAPTATION (PHYSICAL LOGIC): 
-- You are permitted to make minor micro-adjustments to the background objects (e.g., slightly shifting a chair to accommodate a sitting subject, compressing cushions under their weight) to ensure physical contact realism.
-- Apply natural camera depth-of-field (bokeh) if the subject is placed close to the lens.
-</core_directives>
-
-<quality_enforcement>
-Output must be photorealistic, hyper-detailed, 8k resolution quality. No uncanny valley effects, no floating subjects without shadows, no mismatching light sources.
-</quality_enforcement>
-
-User Request: ${userAction}`;
-
           const negativePromptText =
             "mutated hands, extra fingers, deformed face, morphed identity, mismatched lighting, flat lighting, floating subject, missing cast shadows, incorrect perspective, wrong scale, giant person, tiny person, clipping through objects, unnatural skin tone, cartoon, illustration, heavy vignette, distorted architecture, blurry subject, artificial outline, green screen edges.";
-
-          const parts: (
-            | { inlineData: { data: string; mimeType: string }; text?: undefined }
-            | { text: string; inlineData?: undefined }
-          )[] = [
-            {
-              inlineData: {
-                data: ctxImageData.base64Data,
-                mimeType: ctxImageData.mimeType,
-              },
-            },
-            {
-              inlineData: {
-                data: charImageData.base64Data,
-                mimeType: charImageData.mimeType,
-              },
-            },
-            {
-              text: promptText,
-            },
-          ];
 
           const imageConfig: {
             aspectRatio: string;
@@ -584,9 +537,20 @@ User Request: ${userAction}`;
 
           const response = await generateContentWithRetry(ai, {
             model: characterModel,
-            contents: [{ role: "user", parts }],
-            config: {
+            promptTemplateKey: "sync_character_composite_prompt",
+            promptTemplateInput: {
+              userAction,
               imageConfig,
+              images: [
+                {
+                  data: ctxImageData.base64Data,
+                  mimeType: ctxImageData.mimeType,
+                },
+                {
+                  data: charImageData.base64Data,
+                  mimeType: charImageData.mimeType,
+                },
+              ],
             },
           });
 
@@ -1288,6 +1252,43 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
 
       if (systemInstruction) {
         apiParams.systemInstruction = systemInstruction;
+      }
+
+      const normalizedActiveSubTab = activeSubTab
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+
+      if (normalizedActiveSubTab.includes("dong bo cong trinh")) {
+        apiParams.promptTemplateKey = "sync_analyze_prompt";
+        apiParams.promptTemplateInput = {
+          activeSubTab,
+          images: [
+            {
+              data: base64Data,
+              mimeType,
+            },
+          ],
+        };
+        delete apiParams.contents;
+        delete apiParams.config;
+        delete apiParams.systemInstruction;
+      }
+
+      if (activeSubTab === "Äá»“ng Bá»™ CÃ´ng TrÃ¬nh") {
+        apiParams.promptTemplateKey = "sync_analyze_prompt";
+        apiParams.promptTemplateInput = {
+          activeSubTab,
+          images: [
+            {
+              data: base64Data,
+              mimeType,
+            },
+          ],
+        };
+        delete apiParams.contents;
+        delete apiParams.config;
+        delete apiParams.systemInstruction;
       }
 
       const result = await generateContentWithRetry(ai, apiParams);

@@ -753,9 +753,36 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
 
       const response = await generateContentWithRetry(ai, {
         model: promptModel,
-        contents: [{ role: "user", parts }],
-        systemInstruction: systemInstruction,
-        generationConfig: generationConfig,
+        promptTemplateKey: "render_tab_prompt",
+        promptTemplateInput: {
+          activeSubTab,
+          description,
+          style,
+          roomType,
+          interiorStyle,
+          lighting,
+          colorTone,
+          context,
+          buildingStyle,
+          images: await Promise.all(
+            inputImages.map(async (url) => {
+              const imageData = await getImageBase64(url);
+              return {
+                data: imageData.base64Data,
+                mimeType: imageData.mimeType,
+              };
+            }),
+          ),
+          referenceImages: await Promise.all(
+            referenceImages.map(async (url) => {
+              const imageData = await getImageBase64(url);
+              return {
+                data: imageData.base64Data,
+                mimeType: imageData.mimeType,
+              };
+            }),
+          ),
+        },
       });
 
       try {

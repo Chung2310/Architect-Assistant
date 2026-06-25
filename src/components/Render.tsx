@@ -872,8 +872,21 @@ You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your
 
       const response = await generateContentWithRetry(ai, {
         model: promptModel,
-        contents: [{ role: "user", parts }],
-        config: config,
+        promptTemplateKey: "render_edit_prompt",
+        promptTemplateInput: {
+          activeSubTab,
+          description,
+          cropInfo,
+          images: parts
+            .filter(
+              (part): part is { inlineData: { data: string; mimeType: string } } =>
+                "inlineData" in part,
+            )
+            .map((part) => ({
+              data: part.inlineData.data,
+              mimeType: part.inlineData.mimeType,
+            })),
+        },
       });
 
       clearInterval(progressInterval);
@@ -4389,6 +4402,8 @@ const LayoutTabContent: React.FC = () => {
 
     let requestContents: unknown = null;
     let requestConfig: Record<string, unknown> | null = null;
+    let promptTemplateKey: string | null = null;
+    let promptTemplateInput: Record<string, unknown> | null = null;
 
     try {
       const ai = await getAIClient(selectedModel);
@@ -4410,6 +4425,8 @@ const LayoutTabContent: React.FC = () => {
       const apiAspectRatio = "3:4";
       requestContents = null;
       requestConfig = null;
+      promptTemplateKey = null;
+      promptTemplateInput = null;
 
       const styleMapper: Record<string, string> = {
         "Minimalist (Tối giản)":
@@ -4430,133 +4447,99 @@ const LayoutTabContent: React.FC = () => {
         presentationStyle;
 
       if (toolName === "Presentation Board") {
-        const systemInstruction = `BẠN LÀ CHUYÊN GIA THIẾT KẾ ĐỒ HỌA KIẾN TRÚC BẬC THẦY.
-CỰC KỲ QUAN TRỌNG: Tất cả thông tin phân tích, mô tả, nội dung văn bản bộc lộ trên bản thiết kế, chú thích, và nội dung kết quả đầu ra PHẢI viết hoàn toàn bằng TIẾNG VIỆT 100%. Tuyệt đối không sử dụng tiếng Anh trong mô tả, tiêu đề, phân tích hoặc kết quả đầu ra. Giữ nguyên các thuật ngữ kỹ thuật bắt buộc (nếu có), nhưng ưu tiên diễn đạt bằng tiếng Việt.
-Nhiệm vụ của bạn là chuyển đổi hình ảnh tham khảo của tòa nhà được cung cấp thành một bố cục "Bảng Thuyết Trình Ý Tưởng Thiết Kế Kiến Trúc" cỡ A1 hoàn chỉnh, chuyên nghiệp.`;
-
-        prompt = `<core_directives>\n1. ĐỒNG BỘ PHONG CÁCH HOÀN TOÀN: Toàn bộ bảng thuyết trình, bao gồm hình ảnh chính, hình nền, sơ đồ phân tích và phông chữ chú ý, BẮT BUỘC phải tuân thủ nghiêm ngặt phong cách thẩm mỹ sau: [${selectedStyle}]. Bản render ảnh thực tế ban đầu phải được chuyển đổi hoàn toàn và vẽ lại theo đúng phong cách yêu cầu này.\n\n2. BỐ CỤC TẬP TRUNG VÀO CHỦ THỂ HERO: Trọng tâm trung tâm của bảng thuyết trình phải là "GÓC PHỐI CẢNH CHÍNH" (tòa nhà được cung cấp), chiếm khoảng 50-60% diện tích không gian trung tâm.\n\n3. SƠ ĐỒ PHÂN TÍCH VÀ CÁC CHI TIẾT SÁNG TẠO: Bao quanh hình ảnh phối cảnh chính bằng các yếu tố kiến trúc bổ trợ được sắp xếp logic, đồng điệu với cấu hình hình học của tòa nhà. Bạn PHẢI tạo ra cảnh quan xung quanh bao gồm:\n- Một Bản Đồ Quy Hoạch Tổng Thể Mặt Bằng Vị Trí (Góc trên bên trái).\n- Một bản nghiên cứu Mặt Đứng hoặc Mặt Cắt Kiến Trúc (Góc trên bằng phải).\n- Một phối cảnh cận cảnh chi tiết Vật Liệu hoặc Chi Tiết Cấu Tạo (Góc dưới bên phải).\n- Một Mặt Bằng Bố Trí Tầng Trệt (Góc dưới bên trái).\n- Một sơ đồ biểu diễn Hướng Nắng hoặc Đặc Tính Bền Vững của dự án.\n\n4. CHỮ VÀ CHÚ THÍCH THẬT CHỮ NGHĨA (PHẢI VIẾT BẰNG TIẾNG VIỆT 100%): Bạn phải kết xuất các đoạn văn bản kiến trúc rõ ràng, dễ đọc bằng tiếng Việt hoàn toàn.\n- Sử dụng các tiêu đề viết hoa sắc nét: "Ý TƯỞNG THIẾT KẾ", "PHÂN TÍCH KHU ĐẤT", "MẶT ĐỨNG PHÍA ĐÔNG", "SƠ ĐỒ PHÂN TÍCH VẬT LIỆU", "GIẢI PHÁP TIẾT KIỆM NĂNG LƯỢNG", "MẶT BẰNG TẦNG TRỆT".\n- Đối với các khối văn bản đoạn văn, hãy kết xuất chữ diễn giải kiến trúc chuyên nghiệp bằng tiếng Việt dễ đọc, kiểu như: "Thiết kế kiến trúc hài hòa tinh tế với bối cảnh khu vực, ứng dụng các giải pháp thông gió tự nhiên thông minh và đón sáng hiệu quả. Bảng vật liệu ưu tiên tôn vinh các kết cấu bản địa ấm áp và thẩm mỹ bền vững giúp nâng cao trải nghiệm sống."\n- Thêm các đường kích thước đo đạc rõ, thước tỷ lệ biểu diễn, và các đường chỉ dẫn leader chỉ vào tòa nhà kèm theo chú thích tiếng Việt như "Đón Gió Tự Nhiên", "Mái Xanh Thân Thiện", "Gỗ Tự Nhiên Bản Địa".\n</core_directives>\n\n<output_formatting>\nTạo ra một bản thuyết trình ý tưởng kiến trúc tổng thể duy nhất có độ phân giải siêu cao, bố cục hoàn mỹ. Thiết kế gọn gàng, căn lề chuẩn xác, phông chữ đồng điệu đồng nhất, tuân thủ nghiêm khắc tinh thần thẩm mỹ của phong cách [${selectedStyle}] viết hoàn toàn bằng tiếng Việt 100%.\n</output_formatting>`;
-
-        requestContents = [
-          {
-            role: "user",
-            parts: [
-              { text: prompt },
-              {
-                inlineData: {
-                  mimeType: imageData.mimeType,
-                  data: imageData.base64Data,
-                },
-              },
-            ],
-          },
-        ];
-
-        requestConfig = {
-          systemInstruction: systemInstruction,
-          imageConfig: {
-            aspectRatio: apiAspectRatio,
-            imageSize: "1K",
+        promptTemplateKey = "utility_layout_prompt";
+        promptTemplateInput = {
+          toolName,
+          selectedStyle,
+          images: [
+            {
+              data: imageData.base64Data,
+              mimeType: imageData.mimeType,
+            },
+          ],
+          requestConfig: {
+            imageConfig: {
+              aspectRatio: apiAspectRatio,
+              imageSize: "1K",
+            },
           },
         };
       } else if (toolName === "Overall") {
-        prompt = `<role>\nYou are an Elite Architectural Editorial Designer. Your task is to transform the provided reference image into a stunning, high-end "Overall Architectural Board". \n</role>\n\n<core_directives>\n1. FULL-BLEED BACKGROUND & STYLE OVERRIDE: The original building must be adapted to the EXACT visual style of:[${selectedStyle}]. The building and its surrounding environment (sky, landscape) MUST fill the entire canvas edge-to-edge (Full-bleed composition). There are no white outer margins. \n\n2. EDITORIAL TYPOGRAPHY (TOP CENTER): Do not generate long paragraphs. In the upper center of the image (typically in the sky or negative space), generate a large, elegant, perfectly legible English title: "THE WOODLAND TERRACES" (or a similar majestic architectural name). Right below it, generate a smaller, elegant subtitle: "OVERALL PERSPECTIVE VIEW". Use clean serif or sans-serif fonts.\n\n3. HALLUCINATED INSET IMAGES (PICTURE-IN-PICTURE): At the bottom right/center of the canvas, hovering OVER the main background, you MUST hallucinate and generate exactly TWO small rectangular inset images. \n- Inset 1 (Left): A minimal site integration diagram or massing model matching the main building.\n- Inset 2 (Right): A zoomed-in functional diagram (e.g., showing a terrace or facade detail).\n- Both insets must have a thin, crisp white border to separate them from the background.\n\n4. INSET LABELS & FOOTERS: \n- Directly beneath the two inset images, generate tiny, crisp text labels (e.g., "SITE INTEGRATION DIAGRAM" and "TERRACE FUNCTIONALITY DIAGRAM").\n- In the absolute bottom-left corner of the board, generate the text: "OVERALL BOARD".\n- In the absolute bottom-right corner, generate a mock timestamp: "17:59:21".\n</core_directives>\n\n<output_formatting>\nGenerate a single, ultra-high-resolution landscape architectural board. Ensure the text is perfectly spelled, the inset images are logically derived from the main building's geometry, and the ${selectedStyle} is applied uniformly to the entire composition.\n</output_formatting>`;
-
-        requestContents = [
-          {
-            role: "user",
-            parts: [
-              { text: prompt },
-              {
-                inlineData: {
-                  mimeType: imageData.mimeType,
-                  data: imageData.base64Data,
-                },
-              },
-            ],
-          },
-        ];
-
-        requestConfig = {
-          temperature: 0.4,
-          responseMimeType: "image/jpeg",
-          imageConfig: {
-            aspectRatio: "16:9",
+        promptTemplateKey = "utility_layout_prompt";
+        promptTemplateInput = {
+          toolName,
+          selectedStyle,
+          images: [
+            {
+              data: imageData.base64Data,
+              mimeType: imageData.mimeType,
+            },
+          ],
+          requestConfig: {
+            temperature: 0.4,
+            responseMimeType: "image/jpeg",
+            imageConfig: {
+              aspectRatio: "16:9",
+            },
           },
         };
       } else if (toolName === "Layout") {
-        prompt = `<role>\nYou are an Elite Architectural Competition Board Designer. Your task is to analyze the provided building image and deconstruct it into a highly technical, professional Landscape (16:9) Competition Layout Board.\n</role>\n\n<core_directives>\n1. STRICT SWISS GRID LAYOUT (MODULAR DESIGN): The board MUST be organized using a rigorous "Swiss Grid" system. Divide the landscape canvas into clean, strictly aligned rectangular columns and rows. There must be distinct margins and gutters. NO messy overlapping of elements. Every diagram and text block must sit perfectly inside its own invisible bounding box.\n\n2. THE HERO ELEMENT - VERTICAL EXPLODED AXONOMETRIC: The central and most prominent element (taking up at least 40% of the board) MUST be a highly detailed, hallucinated Vertical Exploded Axonometric diagram of the exact building in the reference image.\n- Lift the roof straight up.\n- Suspend the intermediate floor slabs and walls in mid-air.\n- Keep the foundation/ground floor at the bottom.\n- Connect these vertically exploded layers with crisp, dashed vertical drafting lines.\n\n3. SECONDARY GRID ELEMENTS: Fill the remaining grid boxes with the following hallucinated elements, all mathematically aligned:\n- "MAIN RENDER": A small but high-quality inset image of the original building perspective.\n- "MASSING EVOLUTION": A sequence of 3 small diagrams showing the volumetric process (box -> carved -> final form).\n- "SPATIAL SECTION": A clean, orthogonal architectural cross-section.\n- "CONTEXT MAP": A minimal, abstract site map.\n\n4. TYPOGRAPHY & TEXT BLOCKS: Use precise, minimalist sans-serif typography. \n- Above each grid element, place a crisp English heading (e.g., "EXPLODED AXONOMETRIC", "MASSING STRATEGY", "TRANSVERSAL SECTION").\n- Generate justified, structured blocks of realistic architectural text (e.g., describing structural integrity, programmatic distribution, and spatial flow) to fill the text-designated grid cells.\n\n5. UNIFIED STYLE OVERRIDE: The entire board, including the exploded diagram, sections, and the render inset, MUST be completely unified under this exact visual aesthetic:[${selectedStyle}].\n</core_directives>\n\n<output_formatting>\nGenerate a single, ultra-high-resolution landscape board. Prioritize the alignment of the Swiss grid, the structural logic of the exploded view, and the overall professional competition-level aesthetic.\n</output_formatting>`;
-
-        requestContents = [
-          {
-            role: "user",
-            parts: [
-              { text: prompt },
-              {
-                inlineData: {
-                  mimeType: imageData.mimeType,
-                  data: imageData.base64Data,
-                },
-              },
-            ],
-          },
-        ];
-
-        requestConfig = {
-          temperature: 0.5,
-          responseMimeType: "image/jpeg",
-          imageConfig: {
-            aspectRatio: "16:9",
+        promptTemplateKey = "utility_layout_prompt";
+        promptTemplateInput = {
+          toolName,
+          selectedStyle,
+          images: [
+            {
+              data: imageData.base64Data,
+              mimeType: imageData.mimeType,
+            },
+          ],
+          requestConfig: {
+            temperature: 0.5,
+            responseMimeType: "image/jpeg",
+            imageConfig: {
+              aspectRatio: "16:9",
+            },
           },
         };
       } else if (toolName === "Interior Moodboard") {
-        prompt = `<role>\nYou are an Elite Interior Design Art Director. Your task is to transform the provided interior reference image into a high-end, professional "Interior Moodboard" layout.\n</role>\n\n<core_directives>\n1. DIGITAL EDITORIAL GRID COMPOSITION: Organize the landscape board using a clean, flat, modern digital grid system. Use generous whitespace/negative space. The layout must feel like a premium design catalogue. The overall aesthetic of the board and all elements must strictly adhere to this style:[${selectedStyle}].\n\n2. THE HERO PERSPECTIVE: The largest element on the board MUST be a high-quality restyled render of the provided interior room, occupying about 40-50% of the layout.\n\n3. OPTICAL MATERIAL EXTRACTION (PALETTE GRID): Visually analyze the materials, textures, and colors present in the reference room. Generate a neat, mathematically aligned row or grid of 4 to 5 "Material Swatches" (perfectly shaped circles or squares). These swatches MUST visually represent the exact DNA of the room (e.g., the specific wood grain of the floor, the fabric of the sofa, the metal of the fixtures, the wall paint color). \n\n4. 3D ISOMETRIC CUTAWAY (DOLLHOUSE VIEW): In a designated grid section, hallucinate and generate a 3D isometric top-down cutaway diagram of the exact same room. It must show the spatial layout of the furniture and soft, realistic lighting, matching the hero image's color palette.\n\n5. FLOATING FURNITURE CUTOUTS: Break the grid slightly by hallucinating 1 or 2 isolated furniture pieces from the room (e.g., an accent chair, a coffee table, or a pendant light). Render them as "cutouts" with no background, floating elegantly in the negative space to add depth and catalog-style aesthetics.\n\n6. EDITORIAL TYPOGRAPHY: Generate crisp, legible English headings above the respective sections. Use titles like: "INTERIOR MOODBOARD", "MATERIAL PALETTE", "SPATIAL ISOMETRIC", "KEY PIECES". Keep text minimal and highly professional.\n</core_directives>\n\n<output_formatting>\nOutput a single, ultra-high-resolution interior presentation board. Ensure the swatches accurately reflect the hero image, the isometric view is logically consistent, and the layout remains strictly organized within the digital grid aesthetic.\n</output_formatting>`;
-
-        requestContents = [
-          {
-            role: "user",
-            parts: [
-              { text: prompt },
-              {
-                inlineData: {
-                  mimeType: imageData.mimeType,
-                  data: imageData.base64Data,
-                },
-              },
-            ],
-          },
-        ];
-
-        requestConfig = {
-          temperature: 0.4,
-          responseMimeType: "image/jpeg",
-          imageConfig: {
-            aspectRatio: "16:9",
+        promptTemplateKey = "utility_layout_prompt";
+        promptTemplateInput = {
+          toolName,
+          selectedStyle,
+          images: [
+            {
+              data: imageData.base64Data,
+              mimeType: imageData.mimeType,
+            },
+          ],
+          requestConfig: {
+            temperature: 0.4,
+            responseMimeType: "image/jpeg",
+            imageConfig: {
+              aspectRatio: "16:9",
+            },
           },
         };
       } else if (toolName === "Advanced Layout") {
         const projectName = "ARCHITECTURAL PRESENTATION";
-        prompt = `<role>\nYou are an Elite Architectural Portfolio Designer. Your task is to transform the provided reference building image into a highly dense, comprehensive, and perfectly structured Portrait (3:4) "Advanced Architectural Presentation Board".\n</role>\n\n<core_directives>\n1. UNIFIED AESTHETIC & STYLE: The ENTIRE board, including the main image, all hallucinated diagrams, and background, MUST strictly adhere to this visual style:[${selectedStyle}]. All generated drawings must be fully rendered (colored, textured, soft lighting) to match the hero image, NOT flat CAD lines.\n\n2. STRICT 3-COLUMN PORTRAIT GRID: The layout must be a highly disciplined, dense vertical board divided into 3 distinct columns. Do not overlap elements. Ensure consistent white space between boxes.\n\n3. HEADER (TOP ROW): Generate a large, elegant headline spanning the top: "[${projectName}] - ARCHITECTURAL PRESENTATION".\n\n4. LEFT COLUMN (CONCEPT & MASSING EVOLUTION):\n- Top left: A dense text block titled "CONCEPT" with realistic architectural paragraphs.\n- Below the text: A vertical sequence of exactly 4 to 5 "Step-by-Step Isometric Massing Diagrams" showing the volumetric evolution of the building (from a simple box to the final carved form). Connect these steps with downward-pointing arrows and labels like "STEP 1 - MASSING", "STEP 2", etc.\n\n5. CENTER COLUMN (HERO & CORE STRUCTURE):\n- Top center: The restyled Hero Image (the original building perspective).\n- Middle center: A hallucinated 3D Axonometric or Isometric view of the building.\n- Below that: Two structured text blocks titled "MATERIALS" and "DESIGN".\n- Bottom center: A rendered Front Elevation of the building.\n\n6. RIGHT COLUMN (SPATIAL & INTERIOR DETAILS):\n- Top right: A hallucinated rendered Interior View matching the building's style.\n- Middle right: A grid of 4 rendered Floor Plans (e.g., Ground Plan, First Floor, Roof Terrace).\n- Bottom right: A hallucinated rendered Cross Section of the building, and another small interior perspective.\n\n7. TYPOGRAPHY & FOOTER: \n- Use crisp, highly legible architectural sans-serif or serif fonts for all titles and text blocks.\n- Generate a dark footer bar at the absolute bottom with the text "ADVANCED LAYOUT" aligned left, and a timestamp (e.g., "17:57:47") aligned right.\n</core_directives>\n\n<output_formatting>\nOutput a single, ultra-high-resolution portrait presentation board. The grid must be exceptionally clean, mimicking a professional university architecture thesis board. Maximize the information density while maintaining perfect stylistic cohesion.\n</output_formatting>`;
-
-        requestContents = [
-          {
-            role: "user",
-            parts: [
-              { text: prompt },
-              {
-                inlineData: {
-                  mimeType: imageData.mimeType,
-                  data: imageData.base64Data,
-                },
-              },
-            ],
-          },
-        ];
-
-        requestConfig = {
-          temperature: 0.45,
-          responseMimeType: "image/jpeg",
-          imageConfig: {
-            aspectRatio: "3:4",
+        promptTemplateKey = "utility_layout_prompt";
+        promptTemplateInput = {
+          toolName,
+          selectedStyle,
+          projectName,
+          images: [
+            {
+              data: imageData.base64Data,
+              mimeType: imageData.mimeType,
+            },
+          ],
+          requestConfig: {
+            temperature: 0.45,
+            responseMimeType: "image/jpeg",
+            imageConfig: {
+              aspectRatio: "3:4",
+            },
           },
         };
       } else {
@@ -4595,6 +4578,8 @@ Nhiệm vụ của bạn là chuyển đổi hình ảnh tham khảo của tòa 
         model: selectedModel,
         contents: requestContents,
         config: requestConfig,
+        promptTemplateKey: promptTemplateKey || undefined,
+        promptTemplateInput: promptTemplateInput || undefined,
       });
 
       setGeneratingStatus({
@@ -5521,6 +5506,10 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
         throw new Error("Dữ liệu ảnh gốc không hợp lệ.");
       }
 
+      let imageData2:
+        | { base64Data: string; mimeType?: string }
+        | null = null;
+
       const parts: (
         | { inlineData: { data: string; mimeType: string }; text?: undefined }
         | { text: string; inlineData?: undefined }
@@ -5534,7 +5523,7 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
       ];
 
       if (inputImage2) {
-        const imageData2 = await getImageBase64(inputImage2, true);
+        imageData2 = await getImageBase64(inputImage2, true);
         if (!imageData2 || !imageData2.base64Data) {
           throw new Error("Dữ liệu ảnh mẫu không hợp lệ.");
         }
@@ -5649,10 +5638,27 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
         // Single image generation
         const imgResponse = await generateContentWithRetry(ai, {
           model: "gemini-3.1-flash-image",
-          contents: [{ role: "user", parts }],
-          systemInstruction: systemInstruction + " Always output an image.",
-          generationConfig: {
-            imageConfig: { aspectRatio: "1:1", imageSize: "1K" },
+          promptTemplateKey: "utility_process_prompt",
+          promptTemplateInput: {
+            activeUtility,
+            userPrompt,
+            systemInstruction: `${systemInstruction} Always output an image.`,
+            imageSize: "1K",
+            aspectRatio: "1:1",
+            images: [
+              {
+                data: imageData.base64Data,
+                mimeType: imageData.mimeType || "image/jpeg",
+              },
+              ...(imageData2
+                ? [
+                    {
+                      data: imageData2.base64Data,
+                      mimeType: imageData2.mimeType || "image/jpeg",
+                    },
+                  ]
+                : []),
+            ],
           },
         });
 

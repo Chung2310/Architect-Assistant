@@ -522,11 +522,24 @@ Trả về một đối tượng JSON có định dạng sau:
 
       const response = await generateContentWithRetry(ai, {
         model: promptModel,
-        contents: [{ role: "user", parts }],
-        systemInstruction: systemInstruction,
-        generationConfig: {
-          temperature: 1.0,
-          responseMimeType: "application/json",
+        promptTemplateKey: "enhance_render_prompt",
+        promptTemplateInput: {
+          activeSubTab,
+          customPrompt,
+          contextOption,
+          lightingOption,
+          interiorRoomType,
+          interiorStyle,
+          interiorLighting,
+          images: await Promise.all(
+            inputImages.map(async (url) => {
+              const imageData = await getImageBase64(url);
+              return {
+                data: imageData.base64Data,
+                mimeType: imageData.mimeType,
+              };
+            }),
+          ),
         },
       });
 
