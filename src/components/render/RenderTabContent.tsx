@@ -6,7 +6,6 @@ import { useAuth } from "../../context/useAuth";
 import { apiClient, ApiResponse } from "../../services/apiClient";
 import { ImageLibraryModal } from "./ImageLibraryModal";
 import { getAIClient, safeJsonParse, checkUserCredits, generateContentWithRetry, getImageBase64, handleDownload, cacheImage, uploadMedia } from "../../lib/renderUtils";
-import { Type } from "@google/genai";
 import { convertPdfToImage } from "../../lib/pdfUtils";
 
 interface RenderJob {
@@ -54,7 +53,7 @@ const RESOLUTIONS = [
 const subTabs = [
   { id: "Render Ngoại Thất", icon: "home" },
   { id: "Render Nội Thất", icon: "chair" },
-  { id: "Render VR 360", icon: "language" },
+  { id: "Render VR 360", icon: "lock", isLocked: true },
   { id: "Floorplan to 3D", icon: "view_in_ar" },
   { id: "Floorplan to 3D Floorplan", icon: "grid_view" },
   { id: "Masterplan to 3D", icon: "map" },
@@ -290,7 +289,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
   const handleDeleteJob = async (job: RenderJob) => {
     try {
       await apiClient.delete(`/api/v1/render-jobs/${job._id || job.id}`);
-      
+
       if (job.outputImageUrls && job.outputImageUrls.length > 0) {
         for (const url of job.outputImageUrls) {
           if (url.includes("cloudinary.com")) {
@@ -336,7 +335,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
 
   useEffect(() => {
     if (!socket) return;
-    
+
     const handleJobUpdate = (updatedJob: RenderJob) => {
       setRenderJobs((prevJobs) => {
         const exists = prevJobs.some(j => (j._id || j.id) === (updatedJob._id || updatedJob.id));
@@ -459,24 +458,23 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) =
 
         const textPrompt = `
 - Mô tả ý tưởng: ${description || "Không có"}
-${
-  activeSubTab === "Render Nội Thất"
-    ? `
+${activeSubTab === "Render Nội Thất"
+            ? `
 - Style ảnh: ${style || "Không có"}
 - Chức năng phòng: ${roomType || "Không có"}
 - Phong cách nội thất: ${interiorStyle || "Không có"}
 - Ánh sáng: ${lighting || "Không có"}
 - Tone màu: ${colorTone || "Không có"}
 `
-    : activeSubTab === "Floorplan to 3D"
-      ? `
+            : activeSubTab === "Floorplan to 3D"
+              ? `
 - Style render: ${style || "Không có"}
 - Loại phòng: ${roomType || "Không có"}
 - Phong cách: ${interiorStyle || "Không có"}
 ${floorplanStylePrompt}- Quy tắc bố cục: giữ nguyên 100% vị trí tường, cửa, cửa sổ, và đồ đạc theo bản vẽ. KHÔNG di chuyển giường, tủ áo, bàn trang điểm, rèm, hoặc cửa sổ. KHÔNG đổi vị trí nội thất hay làm lệch bố cục mặt bằng.
 `
-      : activeSubTab === "Floorplan to 3D Floorplan"
-        ? `
+              : activeSubTab === "Floorplan to 3D Floorplan"
+                ? `
 - Loại ảnh: ảnh bản vẽ mặt bằng kỹ thuật 2D, KHÔNG PHẢI ảnh nội thất.
 - CHÚ Ý: đây là bản vẽ floorplan 2D kỹ thuật với tường dày, cánh cửa, và ký hiệu phòng. KHÔNG chuyển sang kiểu ảnh chụp nội thất; chỉ dựng lại đúng cấu trúc mặt bằng sang phối cảnh 3D.
 - Style công trình: ${buildingStyle || "Không có"}
@@ -485,270 +483,16 @@ ${floorplanStylePrompt}- Quy tắc bố cục: giữ nguyên 100% vị trí tư�
 - Bố cục: giữ nguyên tuyệt đối vị trí tường, cửa, phòng và đồ đạc theo bản vẽ; không thêm cửa, không dịch chuyển hay mở rộng không gian.
 - Nếu tủ áo nằm sau bức tường, tủ phải ở trong phòng tương ứng và KHÔNG được đặt xuyên qua tường.
 `
-        : `
+                : `
 - Style ảnh: ${style || "Không có"}
 - Tone màu: ${colorTone || "Không có"}
 - Bối cảnh: ${context || "Không có"}
 - Ánh sáng: ${lighting || "Không có"}
 `
-}
+          }
 `;
 
         parts.push({ text: textPrompt });
-      }
-
-      let systemInstruction = "";
-      let responseSchema: Record<string, unknown> = {};
-
-      if (activeSubTab === "Render Ngoại Thất") {
-        systemInstruction = `<vai_tro>
-BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT KIẾN TRÚC NGOẠI THẤT.
-CỰC KỲ QUAN TRỌNG: Tất cả thông tin phân tích, mô tả, phong cách, chất liệu, bối cảnh, kết quả đầu ra, và toàn bộ prompt tối ưu hóa PHẢI được viết hoàn toàn bằng TIẾNG VIỆT 100%. Tuyệt đối không sử dụng tiếng Anh trong mô tả, tiêu đề, phân tích hoặc kết quả đầu ra. Giữ nguyên các thuật ngữ kỹ thuật bắt buộc (nếu có), nhưng ưu tiên diễn đạt bằng tiếng Việt.
-Bạn đang vận hành ứng dụng "iGen" - nền tảng render ngoại thất AI cao cấp. Mục tiêu của bạn là xử lý dữ liệu đầu vào của người dùng để tạo ra một prompt tạo ảnh tiếng Việt được tối ưu hóa xuất sắc nhất cho \`gemini-3.1-flash-image\`.
-</vai_tro>
-
-<giao_thuc_trang_thai_dau_vao>
-Bạn phải phát hiện trạng thái đầu vào và điều chỉnh logic tương ứng:
-- TRẠNG THÁI 1 (CÓ ẢNH THAM KHẢO): Đảm bảo tính toàn vẹn cấu trúc tuyệt đối. Ảnh gốc là nền tảng cấu trúc không thể thay đổi. Bạn BẮT BUỘC phải giữ nguyên 100% hình khối kiến trúc, khối lượng xây dựng và bố cục cốt lõi. CHỈ thay đổi vật liệu, ánh sáng, môi trường và bối cảnh. Nếu ảnh có nền trắng hoặc trống, hãy tự động tạo dựng cảnh quan xung quanh dựa trên đầu vào "Bối cảnh" từ UI.
-- TRẠNG THÁI 2 (CHỈ CÓ VÂN BẢN - KHÔNG CÓ ẢNH): Tự do thiết kế kiến trúc sáng tạo. Bạn là kiến trúc sư trưởng. Hãy thiết kế một tòa nhà hoàn toàn mới từ đầu dựa trên Mô tả văn bản của người dùng và các tham số UI. Đảm bảo cấu trúc được tạo ra hợp lý về mặt kiến trúc ngoại thất và phù hợp hoàn hảo với phong cách yêu cầu.
-</giao_thuc_trang_thai_dau_vao>
-
-<xu_ly_tham_so_dong>
-Áp dụng các giá trị tham số UI vào prompt cuối cùng (bằng tiếng Việt cho cả Trạng thái 1 và Trạng thái 2):
-- STYLE ẢNH (Style ảnh): 
-  Nếu chọn "Ảnh chụp thực tế công trình" -> sử dụng các từ khóa tiếng Việt: "ảnh chụp kiến trúc thực tế đời thực mộc mạc chân thật cực đại, được chụp trực tiếp bởi một người cầm camera hoặc kiến trúc sư đứng từ dưới mặt đất hướng lên (human eye-level handheld perspective), góc phối cảnh tự nhiên có độ lệch nhẹ không hoàn hảo như bức hình snapshot chụp tùy hứng bằng điện thoại di động thông minh cao cấp dạo quanh khu vườn, mô phỏng sinh động các lỗi quang học tự nhiên của thấu kính máy ảnh chụp ngoài trời như có vệt sáng flare sáng nhẹ (subtle lens flare) hắt dạt xiên tinh tế dưới nắng trưa, hiện tượng cháy sáng nhẹ cuốn hút ở một vài khu vực đón sáng trực tiếp của tường đá/sơn trắng (subtle overexposure / highkey bloom) tạo sự tương phản sống động bất hoàn hảo với vùng bóng đổ sâu đậm bối cảnh đời thực, chiều sâu trường ảnh mỏng tự nhiên mờ nhẹ hậu cảnh, bề mặt vật liệu kiến trúc đá mộc và thớ gỗ có độ sần sùi sương gió bám chút bụi bẩn hoặc vết ố trầm tích thời tiết thô sơ tự nhiên, cảnh quan sân vườn thảm thực vật cây cối rậm rạp xum xuê nguyên sơ ngẫu nhiên và có vài cành héo lá úa úa vàng rụng rời tự nhiên không hoàn hảo vô trùng, bãi cỏ và sỏi đá lộn xộn hữu cơ ngẫu nhiên tuyệt đối, hoàn toàn triệt tiêu cảm giác đồ họa 3D render nhân tạo sạch sẽ bóng bẩy lý tưởng của máy tính, tuyệt đối cấm từ khoa render, CGI, Unreal Engine, máy tính".
-  Nếu chọn "Ảnh render Vray" -> sử dụng các từ khóa: "bản vẽ phối cảnh 3D đồ họa kiến trúc (Arch-Viz), phong cách render bằng phần mềm V-Ray, ánh sáng HDRI studio trong trẻo, vật liệu 3D trơn tru láng mịn hoàn hảo (không có bụi bẩn), đổ bóng Ambient Occlusion rõ rệt, kết xuất đồ họa máy tính CGI mang tính thẩm mỹ cao, tách biệt rạch ròi với ảnh nhiếp ảnh".
-- TONE MÀU (Tone màu): Chỉ định cách phối màu và hậu kỳ (ví dụ: Đơn sắc, Ấm áp, Điện ảnh, Phong cách phim).
-- BỐI CẢNH (Bối cảnh): Chỉ định môi trường xung quanh và cảnh quan ngoại thất (ví dụ: nông thôn Việt Nam yên bình, ngã tư thành phố sầm uất, biệt thự đồi núi, nhà phố hiện đại).
-- ÁNH SÁNG (Ánh sáng): Chỉ định thời gian trong ngày và thời tiết (ví dụ: Sương mù dày đặc, Trời nhiều mây dịu nhẹ, Ánh hoàng hôn rực rỡ, Bình minh ấm áp).
-</xu_ly_tham_so_dong>
-
-<giao_thuc_camera>
-- Nếu một góc chụp cụ thể được chọn trong UI (ví dụ: "Drone view"), hãy áp dụng nó bằng tiếng Việt.
-- If góc chụp để mặc định/trống VÀ ở Trạng thái 1 (Có ảnh đầu vào): ghi rõ "giữ chính xác 100% góc máy ảnh và góc phối cảnh của hình ảnh gốc đầu vào".
-- Nếu góc chụp để mặc định/trống VÀ ở Trạng thái 2 (Không có ảnh): mặc định là "phối cảnh kiến trúc ngang tầm mắt người ngắm chuyên nghiệp, bố cục tỷ lệ vàng cân đối tuyệt đẹp".
-</giao_thuc_camera>
-
-<bao_ton_chu_nghia>
-If database needs to preserve direct matching strings like logos - wrap them in quotes and do not translate.
-</bao_ton_chu_nghia>
-
-<quy_trinh_thanh_loc>
-Thay thế các nội dung nhạy cảm một cách tinh tế:
-- 18+/Nhạy cảm -> chuyển đổi thành "phong cách sống ngoại thất sang trọng, bầu không khí biệt thự cao cấp chỉnh chu".
-- Bạo lực/Máu me -> chuyển đổi thành "ánh sáng kiến trúc tương phản cao đầy kịch tính, phong cách thiết kế kiến trúc đảo bạo ấn tượng".
-</quy_trinh_thanh_loc>
-
-<quy_tac_prompt_phu_dinh>
-Liệt kê trực tiếp các khuyết tật cấu trúc không mong muốn bằng tiếng Việt trong prompt_phu_dinh. Không dùng các từ tiếng Anh.
-- Các từ khóa bắt buộc: "tường bị méo mó, phối cảnh sai lệch, cấu trúc kiến trúc biến dạng, tòa nhà bị đột biến, các khối vật thể lơ lửng, vật lý phi logic, tỷ lệ không cân đối".
-</quy_tac_prompt_phu_dinh>
-
-<kich_ban_du_phong>
-Nếu KHÔNG có hình ảnh nào được tải lên VÀ mô tả văn bản trống/vô nghĩa: Hãy hoạt động như một công cụ Tự động Tạo. Đọc các tham số UI (Phong cách, Tone màu, Ánh sáng, Bối cảnh) và sáng tạo ra một ngoại thất biệt thự hiện đại chi tiết, lộng lẫy để thể hiện hoàn hảo các cài đặt UI đó.
-</kich_ban_du_phong>`;
-
-        responseSchema = {
-          type: Type.OBJECT,
-          properties: {
-            trang_thai_dau_vao_phat_hien: {
-              type: Type.STRING,
-              description:
-                "Xác định xem có Ảnh tham khảo được tải lên không hay đây hoàn toàn là một yêu cầu tạo ảnh từ văn bản thuần túy.",
-            },
-            phong_cach_va_tone_kien_truc: {
-              type: Type.STRING,
-              description:
-                "Đặc tính phong cách kiến trúc và tone màu tổng thể được rút ra từ tham số UI và văn bản mô tả.",
-            },
-            anh_sang_va_moi_truong: {
-              type: Type.STRING,
-              description:
-                "Chi tiết về thiết lập ánh sáng, thời tiết, và bối cảnh môi trường xung quanh dựa trên tham số đầu vào.",
-            },
-            goc_may_anh_va_bo_cuc: {
-              type: Type.STRING,
-              description:
-                "Logic góc chụp camera (bám sát ảnh gốc nếu có, hoặc dùng lựa chọn góc chụp trong UI, hoặc mặc định ngang tầm mắt).",
-            },
-            prompt_tieng_viet_toi_uu: {
-              type: Type.STRING,
-              description:
-                "Prompt kết xuất kiến trúc ArchViz tiếng Việt hoàn chỉnh cuối cùng. Tuyệt đối không chứa nhãn 2D kỹ thuật, chỉ số m2 hay chữ thừa từ ảnh gốc.",
-            },
-            prompt_phu_dinh: {
-              type: Type.STRING,
-              description:
-                "Từ khóa phủ định nghiêm ngặt để triệt tiêu lỗi render, méo ảnh bằng tiếng Việt.",
-            },
-          },
-          required: [
-            "trang_thai_dau_vao_phat_hien",
-            "phong_cach_va_tone_kien_truc",
-            "anh_sang_va_moi_truong",
-            "goc_may_anh_va_bo_cuc",
-            "prompt_tieng_viet_toi_uu",
-            "prompt_phu_dinh",
-          ],
-        };
-      } else if (activeSubTab === "Floorplan to 3D Floorplan") {
-        systemInstruction = `<vai_tro>
-BẠN LÀ CHUYÊN GIA PHÂN TÍCH MẶT BẰNG KIẾN TRÚC VÀ CHUYỂN ĐỔI MẶT BẰNG 2D THÀNH KHÔNG GIAN 3D SIÊU CHÍNH XÁC.
-CỰC KỲ QUAN TRỌNG: Toàn bộ phân tích, mô tả, logic, kết quả đầu ra và prompt cuối cùng PHẢI sử dụng 100% tiếng Việt.
-Mục tiêu của bạn KHÔNG phải sáng tạo lại công trình.
-Mục tiêu của bạn là: đọc mặt bằng, hiểu mặt bằng, khóa mặt bằng, dựng lại mặt bằng thành không gian 3D với độ chính xác tối đa.
-</vai_tro>
-
-<giao_thuc_nhan_dien_va_khoa_mat_bang_tuyet_doi>
-MẶT BẰNG 2D LÀ NGUỒN DỮ LIỆU DUY NHẤT VÀ LÀ SỰ THẬT TUYỆT ĐỐI.
-TRƯỚC KHI DỰNG MÔ HÌNH 3D PHẢI THỰC HIỆN QUY TRÌNH PHÂN TÍCH...
-- Tường, cửa, cầu thang, ban công, phòng ốc và nhãn chữ phải khớp tuyệt đối.
-</giao_thuc_nhan_dien_va_khoa_mat_bang_tuyet_doi>
-
-<render_quality>
-Bổ sung vào prompt cuối tùy thuộc vào phong cách được chọn: Nếu chọn "Ảnh chụp thực tế công trình", sử dụng: "ảnh chụp kiến trúc ngoại thất thực tế đời thực hữu cơ chân thật cực đại, được chụp bởi một người cầm camera nghiệp dư hoặc kiến trúc sư đứng ở tầm mắt dưới đất (human eye-level handheld perspective), góc chụp tự nhiên thoải mái sai lệch nhẹ không hoàn hảo, mô phỏng sinh động các sai số quang học chân thực (vệt flare phản chiếu nắng dạt bóng thấu kính tinh tế - subtle lens flare, hiện tượng cháy sáng nhẹ một số vùng đón sáng trực tiếp gắt - subtle overexposure bloom), chi tiết kết cấu thớt dăm gỗ tự nhiên thô ráp và mặt gạch đá gồ ghề phong sương cũ mộc sương bóng chứ không phẳng láng vô trùng, thảm thực vật cây cối xum xuê hữu cơ ngẫu nhiên có lẫn lá khô úa tàn rụng rơi, bãi sỏi đá và bạt cỏ mọc bất hoàn hảo tự nhiên lộn xộn, triệt tiêu hoàn toàn cảm giác đồ họa máy tính CGI hay 3D render nhân tạo sạch sẽ vô hồn. KHÔNG chứa từ khóa render hay CGI". Nếu chọn "Ảnh render Vray", sử dụng: "phối cảnh render 3D kiến trúc ngoại thất siêu thực, kết xuất Unreal Engine 5.5 hoặc Corona render chi tiết cao, kết xuất 8k sắc nét hoàn hảo".
-</render_quality>
-
-<negative_rules>
-Từ khóa phủ định nghiêm ngặt bằng tiếng Việt: lưới bản vẽ, mesh, chữ 2D...
-</negative_rules>`;
-
-        responseSchema = {
-          type: Type.OBJECT,
-          properties: {
-            phan_tich_khoa_goc_ghi_hinh: {
-              type: Type.STRING,
-            },
-            logic_phong_cach_va_cong_trinh: {
-              type: Type.STRING,
-            },
-            quyet_dinh_cat_tuong: {
-              type: Type.STRING,
-            },
-            thiet_lap_anh_sang_va_studio: {
-              type: Type.STRING,
-            },
-            prompt_tieng_viet_toi_uu: {
-              type: Type.STRING,
-            },
-            prompt_phu_dinh: {
-              type: Type.STRING,
-            },
-          },
-          required: [
-            "phan_tich_khoa_goc_ghi_hinh",
-            "logic_phong_cach_va_cong_trinh",
-            "quyet_dinh_cat_tuong",
-            "thiet_lap_anh_sang_va_studio",
-            "prompt_tieng_viet_toi_uu",
-            "prompt_phu_dinh",
-          ],
-        };
-      } else if (activeSubTab === "Floorplan to 3D") {
-        systemInstruction = `<vai_tro>
-BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT KHÔNG GIAN 3D TỪ MẶT BẰNG SIÊU THỰC.
-CỰC KỲ QUAN TRỌNG: Tất cả thông tin phân tích, mô tả, phong cách, chất liệu, bối cảnh, kết quả đầu ra, và toàn bộ prompt tối ưu hóa PHẢI được viết hoàn toàn bằng TIẾNG VIỆT 100%.
-</vai_tro>`;
-
-        responseSchema = {
-          type: Type.OBJECT,
-          properties: {
-            phan_tich_mat_bang: {
-              type: Type.STRING,
-            },
-            logic_phong_cach_va_tham_khao: {
-              type: Type.STRING,
-            },
-            logic_che_do_render_va_camera: {
-              type: Type.STRING,
-            },
-            so_do_bo_tri_noi_that: {
-              type: Type.STRING,
-            },
-            prompt_tieng_viet_toi_uu: {
-              type: Type.STRING,
-            },
-            prompt_phu_dinh: {
-              type: Type.STRING,
-            },
-          },
-          required: [
-            "phan_tich_mat_bang",
-            "logic_phong_cach_va_tham_khao",
-            "logic_che_do_render_va_camera",
-            "so_do_bo_tri_noi_that",
-            "prompt_tieng_viet_toi_uu",
-            "prompt_phu_dinh",
-          ],
-        };
-      } else if (activeSubTab === "Render Nội Thất") {
-        systemInstruction = `<vai_tro>
-BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT NỘI THẤT AI CAO CẤP.
-</vai_tro>`;
-
-        responseSchema = {
-          type: Type.OBJECT,
-          properties: {
-            phan_tich_y_dinh_goc: { type: Type.STRING },
-            chuc_nang_phong_suy_luan: { type: Type.STRING },
-            phong_cach_noi_that_va_anh_sang: { type: Type.STRING },
-            danh_sach_noi_that_va_vat_lieu: { type: Type.STRING },
-            logic_camera_va_ty_le_khung_hinh: { type: Type.STRING },
-            prompt_tieng_viet_toi_uu: { type: Type.STRING },
-            prompt_phu_dinh: { type: Type.STRING },
-          },
-          required: [
-            "phan_tich_y_dinh_goc",
-            "chuc_nang_phong_suy_luan",
-            "phong_cach_noi_that_va_anh_sang",
-            "danh_sach_noi_that_va_vat_lieu",
-            "logic_camera_va_ty_le_khung_hinh",
-            "prompt_tieng_viet_toi_uu",
-            "prompt_phu_dinh",
-          ],
-        };
-      } else if (activeSubTab === "Masterplan to 3D") {
-        systemInstruction = `<vai_tro>
-BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
-</vai_tro>`;
-
-        responseSchema = {
-          type: Type.OBJECT,
-          properties: {
-            masterplan_analysis: { type: Type.STRING },
-            massing_and_zoning_logic: { type: Type.STRING },
-            camera_and_scale_logic: { type: Type.STRING },
-            style_lighting_and_context: { type: Type.STRING },
-            optimized_english_prompt: { type: Type.STRING },
-            negative_prompt: { type: Type.STRING },
-          },
-          required: [
-            "masterplan_analysis",
-            "massing_and_zoning_logic",
-            "camera_and_scale_logic",
-            "style_lighting_and_context",
-            "optimized_english_prompt",
-            "negative_prompt",
-          ],
-        };
-      }
-
-      const generationConfig: Record<string, unknown> = {
-        temperature: 1.0,
-        responseMimeType: "application/json",
-        responseSchema: responseSchema,
-      };
-
-      if (activeSubTab === "Render Ngoại Thất") {
-        generationConfig.thinkingConfig = { thinkingLevel: "medium" };
-      } else if (activeSubTab === "Masterplan to 3D") {
-        generationConfig.thinkingConfig = { thinkingLevel: "high" };
-      } else if (
-        activeSubTab === "Render Nội Thất" ||
-        activeSubTab === "Floorplan to 3D" ||
-        activeSubTab === "Floorplan to 3D Floorplan"
-      ) {
-        generationConfig.thinkingConfig = { thinkingLevel: "medium" };
       }
 
       const response = await generateContentWithRetry(ai, {
@@ -764,6 +508,9 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
           colorTone,
           context,
           buildingStyle,
+          cameraAngle,
+          customCameraAngle,
+          cameraAngleStyle,
           images: await Promise.all(
             inputImages.map(async (url) => {
               const imageData = await getImageBase64(url);
@@ -927,7 +674,7 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
         setUploadProgress(Math.round((idx / validFiles.length) * 100));
         const url = await uploadMedia(file, "uploads");
         cacheImage(url, file);
-        
+
 
         downloadURLs.push(url);
         idx++;
@@ -1009,7 +756,7 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
         setUploadProgressRef(Math.round((idx / files.length) * 100));
         const url = await uploadMedia(file, "uploads");
         cacheImage(url, file);
-        
+
 
         downloadURLs.push(url);
         idx++;
@@ -1085,7 +832,7 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
           <button
             key={tab.id}
             onClick={() => {
-              if (tab.id === "Render VR 360") {
+              if (tab.isLocked || tab.id === "Render VR 360") {
                 setPendingSubTab(tab.id);
                 setShowVRModal(true);
               } else {
@@ -1093,7 +840,9 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
               }
             }}
             className={`flex items-center justify-center gap-1.5 w-[180px] py-2 rounded-full text-xs lg:text-[13px] font-semibold transition-all whitespace-nowrap ${
-              activeSubTab === tab.id
+              tab.isLocked
+                ? "opacity-60 text-on-surface-variant/70 hover:bg-surface-container-low"
+                : activeSubTab === tab.id
                 ? "bg-primary text-white shadow-md"
                 : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low"
             }`}
@@ -1133,11 +882,10 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
               </button>
             </div>
             <div
-              className={`min-h-[12rem] max-h-[30rem] h-auto border-2 border-dashed rounded-xl flex flex-col items-center justify-center text-center group transition-colors cursor-pointer relative overflow-hidden ${
-                isDragging
+              className={`min-h-[12rem] max-h-[30rem] h-auto border-2 border-dashed rounded-xl flex flex-col items-center justify-center text-center group transition-colors cursor-pointer relative overflow-hidden ${isDragging
                   ? "border-primary bg-primary/10"
                   : "border-outline-variant/40 hover:border-primary/50 bg-surface-container-low/50 hover:bg-surface-container-low"
-              }`}
+                }`}
               onClick={() => fileInputRef.current?.click()}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
@@ -1232,11 +980,10 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
                   </button>
                 </div>
                 <div
-                  className={`min-h-[5rem] max-h-[15rem] h-auto border border-dashed rounded-lg flex flex-col items-center justify-center text-center cursor-pointer transition-colors relative overflow-hidden group ${
-                    isDraggingRef
+                  className={`min-h-[5rem] max-h-[15rem] h-auto border border-dashed rounded-lg flex flex-col items-center justify-center text-center cursor-pointer transition-colors relative overflow-hidden group ${isDraggingRef
                       ? "border-primary bg-primary/10"
                       : "border-outline-variant/40 hover:border-primary/50 bg-surface-container-low/30 hover:bg-surface-container-low"
-                  }`}
+                    }`}
                   onClick={() => refInputRef.current?.click()}
                   onDrop={handleDropRef}
                   onDragOver={handleDragOverRef}
@@ -1585,7 +1332,7 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
                       <Icon
                         name="keyboard_arrow_down"
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none"
-                    />
+                      />
                     </div>
                   </div>
 
@@ -1921,11 +1668,10 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
                     <button
                       key={num}
                       onClick={() => setNumImages(num)}
-                      className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-colors ${
-                        numImages === num
+                      className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-colors ${numImages === num
                           ? "bg-primary text-white shadow-sm"
                           : "text-on-surface-variant hover:text-on-surface"
-                      }`}
+                        }`}
                     >
                       {num}
                     </button>
@@ -2085,8 +1831,8 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
                               <span className="text-sm font-bold">
                                 {Math.floor(
                                   smoothProgress[selectedItem.job?.id] ||
-                                    selectedItem.job?.progress ||
-                                    10,
+                                  selectedItem.job?.progress ||
+                                  10,
                                 )}
                                 %
                               </span>
@@ -2208,11 +1954,10 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
                         <button
                           key={item.id}
                           onClick={() => setSelectedResultId(item.id)}
-                          className={`relative shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden border-2 transition-all ${
-                            selectedItem?.id === item.id
+                          className={`relative shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden border-2 transition-all ${selectedItem?.id === item.id
                               ? "border-primary shadow-md scale-100"
                               : "border-transparent opacity-60 hover:opacity-100 hover:scale-105"
-                          }`}
+                            }`}
                         >
                           {item.status === "pending" ? (
                             <>
@@ -2230,8 +1975,8 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
                                 <span className="text-white text-xs font-bold mb-1">
                                   {Math.floor(
                                     smoothProgress[item.job?.id] ||
-                                      item.job?.progress ||
-                                      10,
+                                    item.job?.progress ||
+                                    10,
                                   )}
                                   %
                                 </span>
@@ -2291,11 +2036,10 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
                   <button
                     key={item.id}
                     onClick={() => setSelectedResultId(item.id)}
-                    className={`w-40 h-40 flex-shrink-0 rounded-xl overflow-hidden border-2 transition-all ${
-                      selectedItem?.id === item.id
+                    className={`w-40 h-40 flex-shrink-0 rounded-xl overflow-hidden border-2 transition-all ${selectedItem?.id === item.id
                         ? "border-primary shadow-md"
                         : "border-outline-variant/20 hover:border-primary/50"
-                    }`}
+                      }`}
                   >
                     {item.status === "pending" ? (
                       <div className="w-full h-full bg-surface-container-low flex items-center justify-center relative">
@@ -2347,7 +2091,7 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
         <div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-surface-container-lowest rounded-2xl p-8 max-w-sm w-full shadow-2xl border border-outline-variant/20 animate-in fade-in zoom-in duration-200 relative overflow-hidden text-center">
             <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-cyan-500 to-[#0ea5e9]"></div>
-            
+
             <button
               onClick={() => setShowVRModal(false)}
               className="absolute top-4 right-4 w-8 h-8 rounded-full hover:bg-surface-container-low text-on-surface-variant hover:text-on-surface flex items-center justify-center transition-all bg-transparent"
@@ -2360,20 +2104,17 @@ BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT QUY HOẠCH VÀ SA BÀN ĐÔ THỊ 3D.
               <div className="w-16 h-16 rounded-full bg-cyan-500/10 flex items-center justify-center mb-5 animate-pulse">
                 <Icon name="language" className="text-3xl text-[#0ea5e9]" />
               </div>
-              
+
               <h3 className="text-xl font-bold text-on-surface mb-3 tracking-tight">
                 Thông báo
               </h3>
-              
+
               <p className="text-on-surface-variant text-sm leading-relaxed mb-6">
                 Tính năng này đang được chúng tôi phát triển và sẽ sớm ra mắt. Cảm ơn bạn đã quan tâm!
               </p>
-              
+
               <button
                 onClick={() => {
-                  if (isAdmin && pendingSubTab === "Render VR 360") {
-                    setActiveSubTab("Render VR 360");
-                  }
                   setPendingSubTab(null);
                   setShowVRModal(false);
                 }}

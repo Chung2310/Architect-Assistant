@@ -58,6 +58,9 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
   const colorTone = String(input.colorTone || "Không có");
   const context = String(input.context || "Không có");
   const buildingStyle = String(input.buildingStyle || "Không có");
+  const cameraAngle = String(input.cameraAngle || "");
+  const customCameraAngle = String(input.customCameraAngle || "");
+  const cameraAngleStyle = String(input.cameraAngleStyle || "");
   const images = (input.images as InlineImageInput[] | undefined) || [];
   const referenceImages = (input.referenceImages as InlineImageInput[] | undefined) || [];
 
@@ -69,12 +72,17 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
   }
 
   let textPrompt = `Mô tả ý tưởng: ${description}\n`;
-  let systemInstruction = "";
+  let systemInstruction: string;
   let responseSchema: Record<string, unknown>;
   let thinkingLevel: "medium" | "high" = "medium";
 
+  const selectedAngle = customCameraAngle || cameraAngle;
+
   if (activeSubTabKey.includes("render ngoai that")) {
     textPrompt += `Style ảnh: ${style}\nTone màu: ${colorTone}\nBối cảnh: ${context}\nÁnh sáng: ${lighting}\n`;
+    if (selectedAngle) {
+      textPrompt += `Góc chụp: ${selectedAngle}\n`;
+    }
     systemInstruction = [
       "Bạn là chuyên gia biên soạn prompt render ngoại thất cho iGen.",
       "Tất cả phân tích và prompt cuối cùng phải viết bằng tiếng Việt rõ ràng, ngắn gọn, hữu dụng.",
@@ -102,6 +110,9 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     );
   } else if (activeSubTabKey.includes("render noi that")) {
     textPrompt += `Style ảnh: ${style}\nChức năng phòng: ${roomType}\nPhong cách nội thất: ${interiorStyle}\nÁnh sáng: ${lighting}\nTone màu: ${colorTone}\n`;
+    if (selectedAngle) {
+      textPrompt += `Góc chụp: ${selectedAngle}\n`;
+    }
     systemInstruction = [
       "Bạn là chuyên gia biên soạn prompt render nội thất cao cấp.",
       "Tất cả đầu ra phải bằng tiếng Việt, nhấn mạnh công năng phòng, vật liệu, bố cục và không khí ánh sáng.",
@@ -130,6 +141,9 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     );
   } else if (activeSubTabKey === "floorplan to 3d") {
     textPrompt += `Style render: ${style}\nLoại phòng: ${roomType}\nPhong cách: ${interiorStyle}\nGiữ đúng bố cục mặt bằng, tường, cửa, nội thất theo floorplan.\n`;
+    if (cameraAngleStyle) {
+      textPrompt += `Style góc chụp: ${cameraAngleStyle}\n`;
+    }
     systemInstruction = [
       "Bạn là chuyên gia chuyển mặt bằng thành không gian 3D.",
       "Mục tiêu là dựng lại không gian từ floorplan thật chính xác, không được phá vỡ bố cục.",
@@ -155,6 +169,9 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     );
   } else if (activeSubTabKey === "floorplan to 3d floorplan") {
     textPrompt += `Loại ảnh: floorplan 2D kỹ thuật.\nStyle công trình: ${buildingStyle}\nPhong cách: ${interiorStyle}\nKhông được biến floorplan thành ảnh nội thất thông thường.\n`;
+    if (cameraAngleStyle) {
+      textPrompt += `Style góc chụp: ${cameraAngleStyle}\n`;
+    }
     systemInstruction = [
       "Bạn là chuyên gia phân tích floorplan 2D và tái dựng thành không gian 3D chính xác.",
       "Mặt bằng là sự thật tuyệt đối: tường, cửa, thang, vách và nhãn phòng phải được tôn trọng.",
@@ -180,6 +197,9 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     );
   } else {
     textPrompt += `Style ảnh: ${style}\nTone màu: ${colorTone}\nBối cảnh: ${context}\nÁnh sáng: ${lighting}\n`;
+    if (selectedAngle) {
+      textPrompt += `Góc chụp: ${selectedAngle}\n`;
+    }
     systemInstruction = [
       "Bạn là chuyên gia biên soạn prompt masterplan 3D.",
       "Trả về JSON ngắn gọn và prompt cuối có thể render được ngay.",
@@ -227,8 +247,8 @@ function buildRenderEditPrompt(input: Record<string, unknown>): PromptTemplatePa
   const images = (input.images as InlineImageInput[] | undefined) || [];
   const parts: Array<Record<string, unknown>> = [...imageParts(images)];
 
-  let textPrompt = `Mô tả thay đổi: ${description}\n${cropInfo}\n`;
-  let systemInstruction = "";
+  const textPrompt = `Mô tả thay đổi: ${description}\n${cropInfo}\n`;
+  let systemInstruction: string;
   const config: Record<string, unknown> = {
     temperature: 0.4,
     responseMimeType: "application/json",
@@ -576,7 +596,7 @@ Yêu cầu người dùng: ${String(input.userAction || "")}`,
       const toolName = String(input.toolName || "");
       const selectedStyle = String(input.selectedStyle || "Không có");
       let systemInstruction = "";
-      let prompt = "";
+      let prompt: string;
 
       if (toolName === "Presentation Board") {
         systemInstruction =
