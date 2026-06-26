@@ -2341,7 +2341,7 @@ function buildRenderTabPrompt(input) {
   }
   let textPrompt = `M\xF4 t\u1EA3 \xFD t\u01B0\u1EDFng: ${description}
 `;
-  let systemInstruction = "";
+  let systemInstruction;
   let responseSchema;
   let thinkingLevel = "medium";
   const selectedAngle = customCameraAngle || cameraAngle;
@@ -2536,10 +2536,10 @@ function buildRenderEditPrompt(input) {
   const cropInfo = String(input.cropInfo || "");
   const images = input.images || [];
   const parts = [...imageParts2(images)];
-  let textPrompt = `M\xF4 t\u1EA3 thay \u0111\u1ED5i: ${description}
+  const textPrompt = `M\xF4 t\u1EA3 thay \u0111\u1ED5i: ${description}
 ${cropInfo}
 `;
-  let systemInstruction = "";
+  let systemInstruction;
   const config = {
     temperature: 0.4,
     responseMimeType: "application/json"
@@ -2878,7 +2878,7 @@ Y\xEAu c\u1EA7u ng\u01B0\u1EDDi d\xF9ng: ${String(input.userAction || "")}`
       const toolName = String(input.toolName || "");
       const selectedStyle = String(input.selectedStyle || "Kh\xF4ng c\xF3");
       let systemInstruction = "";
-      let prompt = "";
+      let prompt;
       if (toolName === "Presentation Board") {
         systemInstruction = "B\u1EA1n l\xE0 chuy\xEAn gia thi\u1EBFt k\u1EBF \u0111\u1ED3 h\u1ECDa ki\u1EBFn tr\xFAc b\u1EADc th\u1EA7y. T\u1EA5t c\u1EA3 ch\u1EEF v\xE0 ch\xFA th\xEDch xu\u1EA5t hi\u1EC7n trong \u1EA3nh ph\u1EA3i b\u1EB1ng ti\u1EBFng Vi\u1EC7t r\xF5 r\xE0ng, tr\xECnh b\xE0y nh\u01B0 m\u1ED9t b\u1EA3ng thuy\u1EBFt tr\xECnh ki\u1EBFn tr\xFAc cao c\u1EA5p.";
         prompt = `T\u1EA1o m\u1ED9t b\u1EA3ng thuy\u1EBFt tr\xECnh ki\u1EBFn tr\xFAc ho\xE0n ch\u1EC9nh theo phong c\xE1ch ${selectedStyle}. \u1EA2nh ch\xEDnh l\xE0 c\xF4ng tr\xECnh tham kh\u1EA3o, xung quanh c\xF3 c\xE1c s\u01A1 \u0111\u1ED3 ph\xE2n t\xEDch, m\u1EB7t b\u1EB1ng, chi ti\u1EBFt v\u1EADt li\u1EC7u v\xE0 ch\xFA th\xEDch ti\u1EBFng Vi\u1EC7t s\u1EAFc n\xE9t. B\u1ED1 c\u1EE5c s\u1EA1ch, c\xE2n \u0111\u1ED1i, tr\xECnh b\xE0y nh\u01B0 poster ki\u1EBFn tr\xFAc chuy\xEAn nghi\u1EC7p.`;

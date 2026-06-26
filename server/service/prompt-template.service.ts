@@ -72,7 +72,7 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
   }
 
   let textPrompt = `Mô tả ý tưởng: ${description}\n`;
-  let systemInstruction = "";
+  let systemInstruction: string;
   let responseSchema: Record<string, unknown>;
   let thinkingLevel: "medium" | "high" = "medium";
 
@@ -247,8 +247,8 @@ function buildRenderEditPrompt(input: Record<string, unknown>): PromptTemplatePa
   const images = (input.images as InlineImageInput[] | undefined) || [];
   const parts: Array<Record<string, unknown>> = [...imageParts(images)];
 
-  let textPrompt = `Mô tả thay đổi: ${description}\n${cropInfo}\n`;
-  let systemInstruction = "";
+  const textPrompt = `Mô tả thay đổi: ${description}\n${cropInfo}\n`;
+  let systemInstruction: string;
   const config: Record<string, unknown> = {
     temperature: 0.4,
     responseMimeType: "application/json",
@@ -596,7 +596,7 @@ Yêu cầu người dùng: ${String(input.userAction || "")}`,
       const toolName = String(input.toolName || "");
       const selectedStyle = String(input.selectedStyle || "Không có");
       let systemInstruction = "";
-      let prompt = "";
+      let prompt: string;
 
       if (toolName === "Presentation Board") {
         systemInstruction =
