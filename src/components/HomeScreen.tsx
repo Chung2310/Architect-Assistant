@@ -1,6 +1,7 @@
 import React from 'react';
 import { Icon } from './Icon';
 import { motion } from 'motion/react';
+import { toast } from 'sonner';
 
 interface ToolCardProps {
   title: string;
@@ -10,17 +11,19 @@ interface ToolCardProps {
   slug: string;
   onClick: () => void;
   index: number;
+  isLocked?: boolean;
 }
 
-const ToolCard: React.FC<ToolCardProps> = ({ title, description, image, icon, slug, onClick, index }) => (
-  <motion.div 
+const ToolCard: React.FC<ToolCardProps> = ({ title, description, image, icon, slug, onClick, index, isLocked }) => (
+  <motion.div
     initial={{ opacity: 0, y: 16 }}
     animate={{ opacity: 1, y: 0 }}
     transition={{ duration: 0.4, delay: index * 0.08, ease: [0.16, 1, 0.3, 1] }}
-    whileHover={{ y: -6, scale: 1.015 }}
-    whileTap={{ scale: 0.99 }}
+    whileHover={isLocked ? {} : { y: -6, scale: 1.015 }}
+    whileTap={isLocked ? {} : { scale: 0.99 }}
     onClick={onClick}
-    className="group bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer"
+    className={`group bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer ${isLocked ? 'opacity-55 grayscale-[20%] hover:opacity-70' : ''
+      }`}
   >
     <div className="h-[240px] relative overflow-hidden">
       <img className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out" src={image} alt={title} referrerPolicy="no-referrer" />
@@ -28,10 +31,15 @@ const ToolCard: React.FC<ToolCardProps> = ({ title, description, image, icon, sl
       <div className="absolute top-6 left-6 w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-xl flex items-center justify-center border border-white/30 transition-transform duration-300 group-hover:rotate-6">
         <Icon name={icon} className="text-white" />
       </div>
+      {isLocked && (
+        <div className="absolute top-6 right-6 w-10 h-10 rounded-xl bg-black/60 backdrop-blur-md flex items-center justify-center border border-white/10">
+          <Icon name="lock" className="text-white text-sm animate-pulse" />
+        </div>
+      )}
     </div>
     <div className="p-8">
       <div className="text-[11px] font-mono font-medium text-primary/80 mb-3 bg-primary/10 inline-block px-2.5 py-1 rounded-md tracking-wider transition-colors duration-300 group-hover:bg-primary/20 group-hover:text-primary">
-        {slug}
+        {isLocked ? "COMING SOON" : slug}
       </div>
       <h3 className="text-xl font-semibold mb-3 text-on-surface">
         <span className="text-primary font-bold">iGen</span> {title}
@@ -40,8 +48,8 @@ const ToolCard: React.FC<ToolCardProps> = ({ title, description, image, icon, sl
         {description}
       </p>
       <button className="inline-flex items-center gap-2 text-primary font-bold text-xs tracking-wider group-hover:gap-4 transition-all uppercase bg-transparent border-0 cursor-pointer">
-        SỬ DỤNG TÍNH NĂNG 
-        <Icon name="arrow_forward" className="text-sm" />
+        {isLocked ? "ĐANG PHÁT TRIỂN" : "SỬ DỤNG TÍNH NĂNG"}
+        <Icon name={isLocked ? "construction" : "arrow_forward"} className="text-sm" />
       </button>
     </div>
   </motion.div>
@@ -101,29 +109,37 @@ export const HomeScreen: React.FC<{ onNavigate: (screen: string) => void }> = ({
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto">
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: -12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: 'easeOut' }}
         className="mb-12"
       >
-        <h2 className="text-[2.75rem] font-bold text-on-surface leading-tight tracking-tight mb-2">Chào buổi sáng, Kiến trúc sư</h2>
-        <p className="text-lg text-on-surface-variant max-w-2xl font-body">Hôm nay iGen AI có thể giúp gì cho bản vẽ của bạn?</p>
       </motion.div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
-        {tools.map((tool, index) => (
-          <ToolCard 
-            key={tool.id}
-            title={tool.title}
-            description={tool.description}
-            image={tool.image}
-            icon={tool.icon}
-            slug={tool.slug}
-            index={index}
-            onClick={() => onNavigate(tool.slug)}
-          />
-        ))}
+        {tools.map((tool, index) => {
+          const isLocked = tool.id !== 'rendering';
+          return (
+            <ToolCard
+              key={tool.id}
+              title={tool.title}
+              description={tool.description}
+              image={tool.image}
+              icon={tool.icon}
+              slug={tool.slug}
+              index={index}
+              isLocked={isLocked}
+              onClick={() => {
+                if (isLocked) {
+                  toast.info("Tính năng này đang được phát triển và sẽ sớm ra mắt!");
+                } else {
+                  onNavigate(tool.slug);
+                }
+              }}
+            />
+          );
+        })}
       </div>
     </div>
   );

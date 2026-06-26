@@ -63,10 +63,10 @@ interface RenderTabContentProps {
   isAdmin: boolean;
 }
 
-export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin }) => {
+export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _isAdmin }) => {
   const [activeSubTab, setActiveSubTab] = useState("Render Ngoại Thất");
   const [numImages, setNumImages] = useState(1);
-  const [pendingSubTab, setPendingSubTab] = useState<string | null>(null);
+
   const [inputImages, setInputImages] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
