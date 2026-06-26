@@ -472,7 +472,7 @@ export const VirtualStaging: React.FC = () => {
     }
   };
 
-  const categories = [
+  const _categories = [
     'SOFA', 'BÀN TRÀ', 'KỆ TV', 'KỆ TRANG TRÍ', 'TRANH DECOR', 'THẢM TRẢI SÀN', 
     'ĐÈN CHÙM', 'ĐÈN SÀN', 'CÂY CẢNH', 'RÈM CỬA', 'DECOR TƯỜNG', 'LOA/ÂM THANH', 
     'ĐỒNG HỒ TREO TƯỜNG', 'TƯỢNG DECOR', 'CỬA SỔ', 'CỬA RA VÀO'

@@ -291,9 +291,9 @@ export const geminiService = {
       // Chọn model Gemini native dựa trên model được yêu cầu:
       // - nano-banana-2 / igen-image-flash / gemini-3.1-flash-image → Flash (nhanh hơn, rẻ hơn)
       // - Các model khác → Pro (chất lượng cao hơn)
-      const isFlashVariant = 
-        modelName === "nano-banana-2" || 
-        modelName === "igen-image-flash" || 
+      const isFlashVariant =
+        modelName === "nano-banana-2" ||
+        modelName === "igen-image-flash" ||
         modelName === "gemini-3.1-flash-image";
 
       const IMAGE_GEN_MODEL = isFlashVariant ? "gemini-3.1-flash-image" : "gemini-3-pro-image";
@@ -319,7 +319,7 @@ export const geminiService = {
           contents: finalPromptText,
           config: imageConfigForSdk,
         });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         const errStr = err?.message || JSON.stringify(err) || "";
         const statusCode = err?.status || err?.statusCode || 0;
@@ -327,7 +327,6 @@ export const geminiService = {
         throw err;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const parts = response.candidates?.[0]?.content?.parts || [];
       const imageParts = parts.filter((p: { inlineData?: { data?: string; mimeType?: string } }) => p.inlineData?.data);
       if (imageParts.length === 0) {

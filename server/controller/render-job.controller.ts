@@ -212,7 +212,8 @@ export const renderJobController = {
           for (let i = 0; i < numImages; i++) {
             const taskResult = await piapiService.createImageTask(finalPrompt, piapiModel, {
               aspectRatio: aspect,
-              numImages: 1 // Generate 1 image per call
+              numImages: 1, // Generate 1 image per call
+              image: (inputImageUrls && inputImageUrls.length > 0) ? inputImageUrls[0] : undefined
             });
             taskIds.push(taskResult.taskId);
           }

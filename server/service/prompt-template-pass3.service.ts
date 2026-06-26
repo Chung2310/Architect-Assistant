@@ -33,10 +33,10 @@ export function resolvePass3PromptTemplate(
             parts: [
               ...imageParts((input.images as InlineImageInput[] | undefined) || []),
               {
-                text: `Bạn là chuyên gia ghép nhân vật vào bối cảnh kiến trúc theo phong cách siêu thực.
+                text: `Bạn là chuyên gia ghép nhân vật vào bối cảnh kiến trúc theo cách siêu thực.
 Nhiệm vụ:
 - Giữ nguyên khuôn mặt, vóc dáng, quần áo và nhận diện của chủ thể tham khảo.
-- Nếu yêu cầu người dùng để trống, tự suy luận vị trí và tư thế phù hợp với ảnh nền.
+- Nếu yêu cầu người dùng trống, tự suy luận vị trí và tư thế phù hợp với ảnh nền.
 - Đồng bộ tuyệt đối ánh sáng, màu môi trường, đổ bóng tiếp xúc và phối cảnh.
 - Cho phép vi chỉnh rất nhẹ vật thể nền nếu cần để tạo tiếp xúc vật lý hợp lý.
 - Không để chủ thể bị dán lên ảnh, lơ lửng, sai tỷ lệ hoặc lệch hướng sáng.
@@ -55,7 +55,8 @@ Yêu cầu người dùng: ${String(input.userAction || "")}`,
       const toolName = String(input.toolName || "");
       const selectedStyle = String(input.selectedStyle || "Không có");
       let systemInstruction = "";
-      let prompt = "";
+      const projectName = String(input.projectName || "ARCHITECTURAL PRESENTATION");
+      let prompt = `Tạo một advanced architectural presentation board khổ dọc 3:4 cho công trình tham khảo theo phong cách ${selectedStyle}. Có tiêu đề ${projectName}, bố cục 3 cột dày thông tin, massing evolution, axonometric, nội thất, mặt bằng, mặt đứng và footer đồ án.`;
 
       if (toolName === "Presentation Board") {
         systemInstruction =
@@ -67,9 +68,6 @@ Yêu cầu người dùng: ${String(input.userAction || "")}`,
         prompt = `Tạo một competition board landscape 16:9 cho công trình tham khảo theo phong cách ${selectedStyle}. Trung tâm là exploded axonometric, xung quanh có sơ đồ massing, mặt cắt, context map và các text block ngắn, bố cục theo lưới Swiss Grid nghiêm ngặt.`;
       } else if (toolName === "Interior Moodboard") {
         prompt = `Tạo một interior moodboard landscape cao cấp cho không gian tham khảo theo phong cách ${selectedStyle}. Phải có hero render, material swatches, isometric cutaway và vài furniture cutout nổi trên nền, bố cục catalogue hiện đại.`;
-      } else {
-        const projectName = String(input.projectName || "ARCHITECTURAL PRESENTATION");
-        prompt = `Tạo một advanced architectural presentation board khổ dọc 3:4 cho công trình tham khảo theo phong cách ${selectedStyle}. Có tiêu đề ${projectName}, bố cục 3 cột dày thông tin, massing evolution, axonometric, nội thất, mặt bằng, mặt đứng và footer đồ án.`;
       }
 
       return {

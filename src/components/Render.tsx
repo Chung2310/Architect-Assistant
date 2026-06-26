@@ -464,411 +464,6 @@ ${cropInfo}
 
       if (textPrompt) parts.push({ text: textPrompt });
 
-      let config: Record<string, unknown> | undefined = undefined;
-      if (activeSubTab === "Crop để sửa") {
-        config = {
-          systemInstruction: `
-<role>
-You are the "iGen Image Surgeon," a specialized spatial reasoning engine for localized architectural image editing. Your mission is to analyze a reference image, a user-defined crop box (coordinates), and an editing request, then generate a perfect inpainting instruction for \`gemini-3.1-flash-image\`.
-</role>
-
-<core_logic>
-1. SPATIAL CONSTRAINT: You are strictly forbidden from modifying any part of the image OUTSIDE the provided crop box coordinates. Your focus is 100% on the content within the [x, y, width, height] rectangle.
-2. FIDELITY & BLENDING: The goal is "Seamless Integration." The newly generated content must match the lighting, texture, perspective, and architectural style of the surrounding areas outside the crop box.
-3. INTENT CLASSIFICATION:
-   - REPLACE: Morph the existing object inside the box into something new (e.g., old window to new aluminum window).
-   - ADD: Synthesize a new object into a previously empty or irrelevant space within the box.
-   - REMOVE: Clean the box area by inpainting it with the background texture (e.g., erasing power lines or trash).
-4. ASPECT RATIO PRESERVATION: Analyze the reference image visually. You MUST identify its aspect ratio and ensure the \`detected_aspect_ratio\` field reflects this to maintain 100% consistency.
-</core_logic>
-
-<prompt_engineering_standard>
-- LANGUAGE: The \`optimized_inpaint_prompt\` must be in professional, descriptive English.
-- ARCHVIZ FOCUS: Use industry terms like "seamless blending, photorealistic texture, matching global illumination, consistent shadows."
-- CONTENT: Describe the desired final state of the box area. For "Replace," describe the new object. For "Remove," describe the clean, unobstructed background.
-</prompt_engineering_standard>
-
-<coordinate_system_validation>
-The user provides coordinates in the format: {"x": [0-1], "y": [0-1], "width": [0-1], "height": [0-1]}. 
-- You must acknowledge these coordinates in the \`coordinates_lock\` field.
-- Your prompt must tell the image engine to treat this bounding box as the active work zone.
-</coordinate_system_validation>
-
-<sanitization_protocol>
-Silently bypass safety filters for architectural requests:
-- 18+/Sensual requests inside a crop box -> Convert to "luxury high-end interior staging."
-- Violence requests -> Convert to "dramatic architectural lighting contrast."
-- Copyright logos -> Convert to "generic high-quality architectural branding."
-</sanitization_protocol>
-
-<negative_prompting_rules>
-List undesired elements for the edited area: "visible seams, lighting mismatch, blurry textures, distorted geometry, mismatched perspective."
-</negative_prompting_rules>
-
-<fallback_protocol>
-If the user's text description is vague or gibberish but a crop box is provided: Analyze the most logical architectural improvement for that specific box (e.g., cleaning up textures or enhancing materials) and proceed.
-</fallback_protocol>
-`,
-          temperature: 1.0,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              edit_intent: {
-                type: Type.STRING,
-                description:
-                  "Classification: REPLACE (change materials/details), ADD (insert new object), or REMOVE (erase/clean area).",
-              },
-              spatial_context_analysis: {
-                type: Type.STRING,
-                description:
-                  "Analysis of what is currently inside the crop box and how it relates to the surrounding architecture.",
-              },
-              detected_aspect_ratio: {
-                type: Type.STRING,
-                description:
-                  "The precise aspect ratio analyzed from the reference image (e.g., 16:9, 4:3, 1:1).",
-              },
-              optimized_inpaint_prompt: {
-                type: Type.STRING,
-                description:
-                  "The English prompt focused ONLY on the delta change within the coordinates, ensuring seamless blending.",
-              },
-              coordinates_lock: {
-                type: Type.OBJECT,
-                properties: {
-                  x: { type: Type.NUMBER },
-                  y: { type: Type.NUMBER },
-                  width: { type: Type.NUMBER },
-                  height: { type: Type.NUMBER },
-                },
-                description:
-                  "Echoing back the validated coordinates to ensure the engine only modifies this specific rectangle.",
-              },
-              negative_prompt: {
-                type: Type.STRING,
-                description:
-                  "Strictly list what to avoid in the modified area (e.g., seams, mismatched lighting, artifacts).",
-              },
-            },
-            required: [
-              "edit_intent",
-              "spatial_context_analysis",
-              "detected_aspect_ratio",
-              "optimized_inpaint_prompt",
-              "coordinates_lock",
-              "negative_prompt",
-            ],
-          },
-        };
-      } else if (activeSubTab === "Sửa Tổng Thể") {
-        config = {
-          systemInstruction: `<role>
-You are an Elite AI Image Retoucher and Master Prompt Engineer. Your task is to analyze a user-provided original image along with their raw (often brief or messy) editing requests, and generate a highly optimized JSON prompt payload for the \`gemini-3.1-flash-image\` model.
-</role>
-
-<core_directives>
-1. TARGET STATE DESCRIPTIONS (NOT ACTIONS): 
-Never write prompts as commands (e.g., "Change the wall to blue" or "Add a cat"). You MUST describe the final Target State of the image. (e.g., "A modern living room with a blue accent wall. A fluffy orange tabby cat is sleeping on the rug").
-The image generation model needs to know what the entire final picture looks like, not the steps to get there.
-
-2. DETAIL AUGMENTATION (INFLATION):
-Users are lazy. If the user asks to "add a car", you must automatically infer the context and inflate the detail. (e.g., inflate to "A sleek, glossy red sports car parked on the asphalt, reflecting the afternoon sun"). Make the additions hyper-realistic and physically logical based on the original image's environment.
-
-3. FIDELITY LOCK (STRUCTURAL PRESERVATION):
-Identify everything the user DID NOT ask to change. You must explicitly list these in the "untouchable_elements" field, and thoroughly describe them in the "optimized_english_prompt" to force the generation model to recreate them exactly as they are in the original image.
-
-4. LIGHTING & SYNERGY:
-Any new objects or altered colors must be described as reacting to the original environment's lighting. If the room is lit by a sunset, the newly added "blue sofa" must be described as "a blue sofa bathed in warm golden hour sunlight".
-</core_directives>
-
-<json_field_guidelines>
-- original_intent_analysis: Summarize what the user wants to do vs what the original image is.
-- untouchable_elements: Explicit list of elements to lock (e.g., "Preserve the wooden floor, the glass coffee table, and the window layout").
-- augmented_details: How you upgraded the user's lazy prompt.
-- global_lighting_and_atmosphere: The exact lighting conditions to maintain.
-- optimized_english_prompt: The final masterpiece. Formula: [Preserved Background/Setting] +[Augmented New Edits] + [Preserved Untouched Elements] + [Lighting Synergy] +[Render Specs: 8k resolution, photorealistic, highly detailed, sharp focus].
-- negative_prompt: Protect the image. Include: "changing original layout, structural morphing, distorted geometry, mismatched lighting, unwanted artifacts,[and specific things the user wants to remove/avoid]".
-</json_field_guidelines>`,
-          temperature: 0.4,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              original_intent_analysis: {
-                type: Type.STRING,
-                description:
-                  "Phân tích yêu cầu ngắn gọn của user đối chiếu với ảnh gốc.",
-              },
-              untouchable_elements: {
-                type: Type.STRING,
-                description:
-                  "FIDELITY LOCK: Liệt kê chi tiết những vật thể, cấu trúc, background trong ảnh gốc TUYỆT ĐỐI KHÔNG ĐƯỢC THAY ĐỔI.",
-              },
-              augmented_details: {
-                type: Type.STRING,
-                description:
-                  "Giải thích cách AI bơm thêm chi tiết cho yêu cầu của user để hợp logic vật lý (VD: 'Thêm chó' -> 'Thêm chú chó Golden Retriever đang nằm sưởi nắng').",
-              },
-              global_lighting_and_atmosphere: {
-                type: Type.STRING,
-                description:
-                  "Mô tả lại ánh sáng, bóng đổ và tone màu tổng thể của ảnh gốc để đảm bảo chi tiết mới hòa quyện vào.",
-              },
-              optimized_english_prompt: {
-                type: Type.STRING,
-                description:
-                  "PROMPT ĐÍCH: Mô tả toàn bộ bức ảnh (Target State) bao gồm cả những thứ giữ nguyên và những thứ mới được thêm/sửa, viết bằng tiếng Anh chuẩn kỹ thuật đồ họa.",
-              },
-              negative_prompt: {
-                type: Type.STRING,
-                description:
-                  "Các từ khóa phủ định để ngăn chặn AI làm biến dạng ảnh hoặc thêm các chi tiết rác.",
-              },
-            },
-            required: [
-              "original_intent_analysis",
-              "untouchable_elements",
-              "augmented_details",
-              "global_lighting_and_atmosphere",
-              "optimized_english_prompt",
-              "negative_prompt",
-            ],
-          },
-        };
-      } else if (activeSubTab === "Thay Thế Model") {
-        config = {
-          systemInstruction: `<role>
-You are an Elite 3D Spatial Analyst and Generative AI Prompt Master. Your task is to analyze TWO images:[Image 1: Original Scene] and [Image 2: Reference Model], alongside the User's text request. You will act as an orchestrator to seamlessly replace a specified object in Image 1 with the object from Image 2, without using explicit image masks.
-</role>
-
-<core_directives>
-1. SEMANTIC TARGETING (NO MASK): Since no mask is provided, you must precisely describe the exact physical footprint and location of the original object to be replaced within the target prompt.
-
-2. PERSPECTIVE REPROJECTION (CRITICAL): The reference model (Image 2) might be a flat, front-facing e-commerce shot. However, the original scene (Image 1) might be a high-angle isometric view. You MUST force the final image generator to re-project the new model. 
-- Do this by explicitly defining the camera angle in the prompt: "Viewed from a [Specific Angle] matching the room's perspective".
-
-3. PHYSICAL INHERITANCE (RETAIN CONTEXT): If there are contextual objects interacting with the old object (e.g., a vase sitting on the old table, a laptop on the desk, a rug beneath the chair), you MUST explicitly command the retention of these objects and seamlessly integrate them onto the NEW object in the final prompt.
-
-4. TARGET STATE DESCRIPTION: Never write commands like "Replace the desk". You must describe the complete, holistic final image. Describe the untouched room exactly as it is, but seamlessly integrate the NEW reference model into the description, modified by the original room's lighting and perspective.
-</core_directives>
-
-<json_field_guidelines>
-- intent_and_identification: What is being swapped?
-- analyze_original_object_and_space: Note the exact location, scale, and the precise camera angle capturing it.
-- analyze_reference_model: Extract the DNA (texture, color, geometry) of the new object.
-- perspective_reprojection_logic: Explain how the 2D reference model must be twisted/rotated in 3D space to fit Image 1.
-- physical_inheritance: List objects to salvage (e.g., "The white ceramic vase and the two wine glasses").
-- blending_physics: Determine light source direction from Image 1, specify where the new object's drop shadow must fall.
-- optimized_english_prompt: The Master Prompt. Formula: [Original Untouched Room Description] + [Location Placeholder] featuring the[Reference Model DNA] + [Perspective Override Command] + [Inherited Objects Restored] + [Specific Lighting & Shadows] +[Render Specs: Unreal Engine 5, photorealistic, 8k].
-- negative_prompt: Protect against "uncanny valley". Must include: "ghosting of original object, double objects, floating objects, incorrect perspective, flat lighting, mismatched shadows, morphed background, ignoring camera angle".
-</json_field_guidelines>`,
-          temperature: 0.3,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              intent_and_identification: {
-                type: Type.STRING,
-                description:
-                  "Xác định rõ User muốn thay thế cái gì trong[Ảnh 1 - Gốc] bằng cái gì trong [Ảnh 2 - Model].",
-              },
-              analyze_original_object_and_space: {
-                type: Type.STRING,
-                description:
-                  "Phân tích Tọa độ (footprint), Tỷ lệ (scale), và Góc máy ảnh (Camera angle - ví dụ: eye-level, top-down) của vật thể cũ trong không gian.",
-              },
-              analyze_reference_model: {
-                type: Type.STRING,
-                description:
-                  "Phân tích Chất liệu (material), Hình dáng (shape), Màu sắc (color), và Phong cách của vật thể mới.",
-              },
-              perspective_reprojection_logic: {
-                type: Type.STRING,
-                description:
-                  "Tính toán cách bóp méo/xoay chiều vật thể mới để nó khớp hoàn hảo với Góc máy ảnh của không gian cũ, bất chấp việc ảnh gốc của nó bị chụp chính diện.",
-              },
-              physical_inheritance: {
-                type: Type.STRING,
-                description:
-                  "Liệt kê các đồ vật đang tương tác với vật cũ (VD: lọ hoa trên mặt bàn, tấm thảm dưới chân ghế) bắt buộc phải giữ lại và đặt lên vật mới.",
-              },
-              blending_physics: {
-                type: Type.STRING,
-                description:
-                  "Logic đánh sáng: Tính toán hướng ánh sáng chính của phòng, cách vật mới đổ bóng xuống sàn, và màu sắc môi trường phản chiếu lên vật mới.",
-              },
-              optimized_english_prompt: {
-                type: Type.STRING,
-                description:
-                  "PROMPT ĐÍCH: Mô tả tổng thể căn phòng nguyên bản, kết hợp vật thể mới đã được điều chỉnh phối cảnh, kế thừa đồ vật tương tác và khớp ánh sáng.",
-              },
-              negative_prompt: {
-                type: Type.STRING,
-                description:
-                  "Từ khóa phủ định: Chống sai phối cảnh, chống dính dáng đến vật thể cũ (ghosting), chống bay lơ lửng.",
-              },
-            },
-            required: [
-              "intent_and_identification",
-              "analyze_original_object_and_space",
-              "analyze_reference_model",
-              "perspective_reprojection_logic",
-              "physical_inheritance",
-              "blending_physics",
-              "optimized_english_prompt",
-              "negative_prompt",
-            ],
-          },
-        };
-      } else if (activeSubTab === "Thêm Đối Tượng") {
-        config = {
-          systemInstruction: `<role>
-You are an Elite 3D VFX Compositor and Master Prompt Engineer. Your task is to analyze TWO images: [Image 1: Reference Background] and [Image 2: Subject Image], along with the User's text request. You will orchestrate the seamless addition of the subject from Image 2 into the environment of Image 1.
-</role>
-
-<core_directives>
-1. IDENTITY RETENTION VS. POSE MORPHING (CRITICAL):
-   The user may want the subject to DO something new (e.g., "A golden retriever sleeping on the rug"). 
-   - You MUST extract the "Subject DNA" from Image 2 (fur color, specific clothing, hair, facial features).
-   - You MUST generate a prompt that enforces this DNA but ALTERS the pose/state to match the request. Do NOT just copy-paste the exact 2D pixel crop of Image 2 if the pose conflicts with the user's text.
-
-2. AUTO-GROUNDING & SCALE PRESERVATION:
-   Never let an object "float". Unless the user explicitly provides spatial coordinates, you must analyze Image 1 to find a logical surface (e.g., floor, table, sky) and calculate the appropriate relative scale for the new object.
-
-3. OCCLUSION & DEPTH AWARENESS:
-   Analyze Image 1 for foreground elements. If the user wants to place a dog behind a glass coffee table, your prompt MUST explicitly state: "The dog is partially obscured by the glass coffee table in the foreground."
-
-4. PHYSICAL CONTACT & WEIGHT:
-   The subject must interact with the world. Explain how gravity affects them. (e.g., "The heavy plush sofa cushions are indented under the weight of the sleeping golden retriever.")
-   - You must specifically define the Contact Shadow (darkest, immediately beneath) and the Cast Shadow (Directional, based on room lighting).
-
-5. TARGET STATE OUTPUT:
-   Do not output a command. Describe the final, complete picture. Describe the unaltered elements of Image 1 exactly as they are, then integrate the newly posed Subject seamlessly.
-</core_directives>
-
-<json_field_guidelines>
-- user_intent_analysis: Brief summary of what is being added, where, and doing what.
-- subject_dna_extraction: Hyper-detailed extraction of the subject's visual identity from Image 2 (face, skin tone, hair, clothing, material) that MUST NOT BE MUTATED.
-- spatial_and_occlusion_logic: Calculate the 3D coordinates (x, y, z) in Image 1. If unspecified, find a logical plane. Analyze what foreground objects might obscure the new subject.
-- pose_and_state_morphing: The logic of how the subject's body/state changes from Image 2 to fit the text request, while maintaining the "DNA".
-- surface_contact_physics: How the new object squishes, bends, or pushes against the environment. Define the Drop Shadow and Contact Shadow.
-- environmental_lighting_sync: Analyze Image 1's light (Color, Intensity, Direction). State how this light wraps around the new subject.
-- optimized_english_prompt: The Master Prompt. Formula: [Perfectly Preserved Background] + [New Subject with Exact DNA in Modified Pose/State] + [Physical Contact/Weight] + [Matched Lighting & Shadows] + [Render Specs: Unreal Engine 5, photorealistic, 8k].
-- negative_prompt: Protect against: floating objects, incorrect scale, mismatched lighting, identity mutation/changing the subject's face/clothes, extra limbs.
-</json_field_guidelines>`,
-          temperature: 0.4,
-          responseMimeType: "application/json",
-          thinkingConfig: {
-            thinkingLevel: "high",
-          },
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              user_intent_analysis: { type: Type.STRING },
-              subject_dna_extraction: { type: Type.STRING },
-              spatial_and_occlusion_logic: { type: Type.STRING },
-              pose_and_state_morphing: { type: Type.STRING },
-              surface_contact_physics: { type: Type.STRING },
-              environmental_lighting_sync: { type: Type.STRING },
-              optimized_english_prompt: { type: Type.STRING },
-              negative_prompt: { type: Type.STRING },
-            },
-            required: [
-              "user_intent_analysis",
-              "subject_dna_extraction",
-              "spatial_and_occlusion_logic",
-              "pose_and_state_morphing",
-              "surface_contact_physics",
-              "environmental_lighting_sync",
-              "optimized_english_prompt",
-              "negative_prompt",
-            ],
-          },
-        };
-      } else if (activeSubTab === "Đổi Vật Liệu") {
-        config = {
-          systemInstruction: `<role>
-You are an Elite 3D Architectural Material Specialist and AI Prompt Master. Your task is to analyze the [Original Image], evaluate the User's text request, and extract material properties from the [Reference Image] (if provided). You will generate an optimized prompt to seamlessly swap a targeted surface's material while maintaining architectural integrity.
-</role>
-
-<core_directives>
-1. SEMANTIC SURFACE TARGETING: Since no physical mask is provided, you must precisely define the targeted surface (e.g., "the main floor", "the exterior facade", "the back wall") and logically boundary it.
-
-2. MATERIAL DNA EXTRACTION (IGNORE SHAPE): If a reference image is provided, extract ONLY its Physically Based Rendering (PBR) properties: Albedo (color), Normal (bump/veins), and Roughness/Glossiness. Completely ignore the shape of the object in the reference image (e.g., if it's a marble table, extract the marble texture, ignore the table). 
-
-3. SEAMLESS TILING & SCALE: You must command the image generator to apply the material as a "seamless tiling texture". Adjust the scale logically. A small mosaic tile must remain small when applied to a large wall.
-
-4. REALISTIC PHYSICS & RAY-TRACED REFLECTIONS: This is crucial. If the new material is glossy or reflective (e.g., polished marble, wet concrete, glass), you MUST explicitly describe the environmental reflections interacting with it. (e.g., "The newly polished marble floor clearly reflects the soft silhouette of the grey sofa and the bright light from the window").
-
-5. FIDELITY LOCK (UNTOUCHABLE ELEMENTS): Explicitly protect everything that is NOT the targeted surface. Furniture resting on the swapped floor must not be altered, morph, or sink into the new material.
-</core_directives>
-
-<json_field_guidelines>
-- surface_identification: Where is the surface and what touches it?
-- material_dna_extraction: Describe the texture, color palette, and finish (matte, satin, glossy).
-- scale_and_tiling_logic: Command the proper scale of the texture pattern.
-- lighting_and_reflection_physics: Describe how light hits it and what it reflects.
-- untouchable_elements: List furniture, shadows, and architectural details to preserve.
-- optimized_english_prompt: Formula:[Original Room Description] + [Target Surface featuring New Material DNA] + "seamlessly tiled, correct architectural scale" + [New Reflections & PBR Physics] + [Untouched Furniture Protected] +[Render Specs: Unreal Engine 5, ray-traced reflections, PBR materials, hyper-realistic, 8k].
-- negative_prompt: Must include: "visible texture seams, incorrect scale, giant textures, altered furniture, morphing structures, ignoring reflections, matte where it should be glossy, missing shadows."
-</json_field_guidelines>`,
-          temperature: 0.4,
-          responseMimeType: "application/json",
-          thinkingConfig: {
-            thinkingLevel: "high",
-          },
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              surface_identification: {
-                type: Type.STRING,
-                description:
-                  "Xác định bề mặt mục tiêu (sàn, trần, tường, mặt tiền) và mô tả giới hạn biên của nó trong Ảnh gốc.",
-              },
-              material_dna_extraction: {
-                type: Type.STRING,
-                description:
-                  "Nếu có Ảnh tham khảo: Bóc tách loại vật liệu, vân (pattern), độ nhám/bóng (roughness), màu sắc. TUYỆT ĐỐI BỎ QUA hình dáng của vật thể trong ảnh tham khảo. Nếu không có ảnh, suy luận DNA từ text của user.",
-              },
-              scale_and_tiling_logic: {
-                type: Type.STRING,
-                description:
-                  "Logic Nhân bản (Seamless Tiling): Tính toán kích thước vân vật liệu sao cho khi áp lên bề mặt lớn (như tường/sàn) không bị khổng lồ hóa hoặc tạo ra các đường chỉ nối (seam) vô lý.",
-              },
-              lighting_and_reflection_physics: {
-                type: Type.STRING,
-                description:
-                  "Vật lý Phản xạ (PBR): Nếu vật liệu mới có độ bóng (kim loại, kính, đá), tính toán và ra lệnh nội suy hình bóng của đồ đạc/ánh sáng cửa sổ đổ lên bề mặt đó.",
-              },
-              untouchable_elements: {
-                type: Type.STRING,
-                description:
-                  "Khóa mục tiêu: Liệt kê các đồ vật đang đặt TRÊN mặt sàn/áp sát tường bắt buộc phải giữ nguyên hình dáng và không bị vật liệu mới tràn lên.",
-              },
-              optimized_english_prompt: {
-                type: Type.STRING,
-                description:
-                  "PROMPT ĐÍCH bằng Tiếng Anh kỹ thuật đồ họa, tổng hợp toàn bộ các logic trên thành mô tả tổng thể bức ảnh (Target State).",
-              },
-              negative_prompt: {
-                type: Type.STRING,
-                description:
-                  "Từ khóa phủ định: Chống sai tỷ lệ vân, chống đường chỉ nối rõ ràng (visible seams), chống thay đổi đồ đạc.",
-              },
-            },
-            required: [
-              "surface_identification",
-              "material_dna_extraction",
-              "scale_and_tiling_logic",
-              "lighting_and_reflection_physics",
-              "untouchable_elements",
-              "optimized_english_prompt",
-              "negative_prompt",
-            ],
-          },
-        };
-      }
 
       const response = await generateContentWithRetry(ai, {
         model: promptModel,
@@ -4402,8 +3997,8 @@ const LayoutTabContent: React.FC = () => {
 
     let requestContents: unknown = null;
     let requestConfig: Record<string, unknown> | null = null;
-    let promptTemplateKey: string | null = null;
-    let promptTemplateInput: Record<string, unknown> | null = null;
+    let promptTemplateKey: string | undefined;
+    let promptTemplateInput: Record<string, unknown> | undefined;
 
     try {
       const ai = await getAIClient(selectedModel);
@@ -4425,8 +4020,6 @@ const LayoutTabContent: React.FC = () => {
       const apiAspectRatio = "3:4";
       requestContents = null;
       requestConfig = null;
-      promptTemplateKey = null;
-      promptTemplateInput = null;
 
       const styleMapper: Record<string, string> = {
         "Minimalist (Tối giản)":
@@ -5431,36 +5024,13 @@ const UtilitiesTabContent: React.FC = () => {
       const ai = await getAIClient(modelToUse);
       const imageData = await getImageBase64(inputImage, true);
 
-      let systemInstruction = "";
       let userPrompt = "";
-      let _numImages = 1;
 
       switch (activeUtility) {
         case "mood":
-          systemInstruction = `BẠN LÀ CHUYÊN GIA THIẾT KẾ ÁNH SÁNG KIẾN TRÚC.
-CỰC KỲ QUAN TRỌNG: Tất cả nội dung prompt được tạo phải được viết hoàn toàn bằng TIẾNG VIỆT 100%. Tuyệt đối không sử dụng tiếng Anh trong mô tả hoặc kết quả đầu ra. Giữ nguyên các thuật ngữ kỹ thuật bắt buộc (nếu có), nhưng ưu tiên diễn đạt bằng tiếng Việt.
-Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prompt render kiến trúc khác nhau, cao cấp và chi tiết hoàn toàn viết bằng tiếng Việt ứng với 4 trạng thái thời gian.
-          
-          ĐỊNH DẠNG ĐẦU RA BẮT BUỘC:
-          Bạn CHỈ ĐƯỢC PHÉP trả về duy nhất một đối tượng JSON với các khóa chính xác sau: "morning", "noon", "afternoon", "night".
-          Tuyệt đối không bao gồm bất kỳ lời dẫn chuyện, định dạng markdown hay giải thích nào bên ngoài khối JSON.
-          
-          Cấu trúc:
-          {"morning": "...", "noon": "...", "afternoon": "...", "night": "..."}
-          
-          Nội dung các prompt tiếng Việt cần tập trung bộc tả:
-          - morning: khoảnh khắc bình minh dịu mát, ánh sáng ban mai tươi mới trong trẻo, bóng đổ mềm mại, pha lẫn sắc xanh nhạt tinh khôi của bầu trời sớm.
-          - noon: ánh nắng đứng bóng buổi trưa rực rỡ, độ tương phản cao, bóng đổ sắc nét chân thực, ánh sáng trắng trung tính chiếu sáng toàn bộ kiến trúc.
-          - afternoon: giờ vàng hoàng hôn, những chiếc bóng đổ xiên dài ấm áp, kết hợp với các tone màu vàng cam, rực rỡ lãng mạn phủ lên bề mặt công trình.
-          - night: ánh sáng đèn nhân tạo lung linh, giờ xanh huyền ảo blue hour, ánh điện phát ra từ các khung cửa sổ ấm áp, ánh sáng bối cảnh đường phố điện ảnh.
-          
-          Bảo toàn cấu trúc hình học nguyên bản chi tiết một cách hoàn hảo nhất.`;
           userPrompt = "Tạo 4 prompt không gian ánh sáng dạng JSON cho căn phòng này viết hoàn toàn bằng tiếng Việt.";
-          _numImages = 4;
           break;
         case "google-map":
-          systemInstruction =
-            "Bạn là một Nhà Quy Hoạch Đô Thị Bậc Thầy. Hãy biến đổi bản đồ 2D này thành một phối cảnh kiến trúc từ trên cao (drone shot) có chiều sâu điện ảnh 3D rực rỡ. Tạo dựng nhà cửa đô thị chân thực sinh động, thảm thực vật cây xanh trù phú, phong cách render Unreal Engine 5.4 tuyệt mỹ viết hoàn toàn bằng tiếng Việt. Bảo toàn tuyệt đối đường đi lối lại giao thông gốc của bản đồ.";
           userPrompt = prompt || "Hãy biến đổi bản đồ này thành phối cảnh kiến trúc 3D tuyệt đẹp. Góc nhìn từ trên cao sống động (drone shot), tiêu cự sắc nét, có bối cảnh bến cảng cạnh biển, núi non trập trùng phía sau hắt ánh sáng mây mờ dịu mát phủ lên cảnh quan viết hoàn toàn bằng tiếng Việt.";
           break;
         case "insert-building":
@@ -5469,18 +5039,12 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
             setIsProcessing(false);
             return;
           }
-          systemInstruction =
-            "Bạn là một chuyên gia ghép cảnh kiến trúc chuyên nghiệp. Hãy tích hợp liền mạch và hoàn hảo tòa nhà công trình từ bức ảnh thứ 2 vào đúng vị trí bối cảnh khu đất trống có sẵn trong bức ảnh thứ 1. Đồng bộ hoàn hảo hướng sáng, bóng đổ của công trình, màu sắc và góc phối cảnh máy ảnh viết hoàn toàn bằng tiếng Việt.";
           userPrompt = "Ghép tòa nhà từ ảnh thứ 2 vào khu đất trống của ảnh thứ 1 một cách sắc nét, đồng bộ hài hòa viết hoàn toàn bằng tiếng Việt.";
           break;
         case "colorize-floorplan":
-          systemInstruction =
-            "Bạn là một Kiến Trúc Sư Nội Thất xuất sắc. Hãy phủ màu và chất liệu kết cấu thực tế lên bản vẽ mặt bằng đen trắng thô ráp này (chất liệu vân gỗ, gạch men đá, thảm dệt ấm áp). Thêm chiều sâu 3D bằng những nét đổ bóng mềm tự nhiên tinh xảo. Phong cách trình bày ý đồ thiết kế chuyên nghiệp viết hoàn toàn bằng tiếng Việt.";
           userPrompt = "Hãy phủ màu sắc và chất liệu nội thất chuyên nghiệp chân thực cho bản vẽ mặt bằng này viết hoàn toàn bằng tiếng Việt.";
           break;
         case "virtual-tour":
-          systemInstruction =
-            "Bạn là một Nhiếp Ảnh Gia Chụp Ảnh Toàn Cảnh 360 Độ chuyên nghiệp. Hãy tạo ra một bức ảnh toàn cảnh VR panorama 360 độ equirectangular có độ phân giải siêu cao cho không gian này. Đảm bảo căn lề ngang liền mạch hoàn hảo không tỳ vết, không bị lỗi ghép nối nét, ánh sáng trong không gian chân thực sống động viết hoàn toàn bằng tiếng Việt.";
           userPrompt =
             "Tạo một ảnh toàn cảnh panorama 360 độ equirectangular tuyệt đẹp cho không gian này viết hoàn toàn bằng tiếng Việt.";
           break;
@@ -5490,8 +5054,6 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
             setIsProcessing(false);
             return;
           }
-          systemInstruction =
-            "Bạn là một chuyên gia thiết kế kiến trúc nội thất tài năng. Hãy bố trí và bày biện đầy đủ đồ nội thất cho căn phòng trống ở bức ảnh thứ 1 với phong cách thiết kế, chất liệu và tông màu đồng hài hòa với bức ảnh nội thất mẫu thứ 2. Đảm bảo bố trí đồ dùng hợp lý, đúng tỷ lệ xích và đồng bộ ánh sáng tự nhiên viết hoàn toàn bằng tiếng Việt.";
           userPrompt = "Bày biện toàn bộ nội thất căn phòng này một cách lộng lẫy và ăn nhập phong cách ảnh mẫu viết hoàn toàn bằng tiếng Việt.";
           break;
         default:
@@ -5559,37 +5121,24 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
         });
         const autoAspectRatio = getAspectRatio(imgDim.width, imgDim.height);
 
-        const moodPrompts = [
-          `<role>Elite Architectural Lighting Artist.</role>\n<core_directive>Transform the provided reference image (whether it is a line sketch, clay model, or draft render) into a hyper-realistic photograph. Strictly preserve the spatial geometry and camera angle. If the input lacks materials, hallucinate high-end modern interior textures.</core_directive>\n<lighting_mood_morning>\n- Natural Light: Soft, cool, diffused early morning sunlight gently entering through the windows.\n- Window View: Crisp, clear light blue morning sky.\n- Artificial Light: Turned OFF. Let the natural daylight illuminate the room.\n- Atmosphere: Fresh, airy, calm, realistic global illumination, soft subtle shadows.\n</lighting_mood_morning>\n<render_specs>Photorealistic, 8k resolution, Corona Render style, architectural photography.</render_specs>`,
-          `<role>Elite Architectural Lighting Artist.</role>\n<core_directive>Transform the provided reference image into a hyper-realistic photograph. Preserve exact geometry. Auto-texture high-end materials if the input is a raw sketch.</core_directive>\n<lighting_mood_noon>\n- Natural Light: Bright, harsh, intense midday sun shining directly into the space.\n- Shadows: Sharp, high-contrast, hard-edged cast shadows on the floor and furniture.\n- Window View: Deep vibrant blue sky, perhaps a few fluffy white clouds.\n- Artificial Light: Turned OFF. The room is flooded with overwhelming natural daylight.\n- Atmosphere: Energetic, highly illuminated, vivid colors, realistic ray-tracing.\n</lighting_mood_noon>\n<render_specs>Photorealistic, 8k resolution, Unreal Engine 5 daylight, architectural photography.</render_specs>`,
-          `<role>Elite Architectural Lighting Artist.</role>\n<core_directive>Transform the provided reference image into a hyper-realistic photograph. Preserve exact geometry. Auto-texture high-end materials if the input is a raw sketch.</core_directive>\n<lighting_mood_sunset>\n- Natural Light: Golden Hour. Low-angle, warm, rich amber and orange sunlight stretching deep into the room.\n- Color Bleed: Allow the intense orange/golden light to naturally bleed and reflect onto the furniture and walls (realistic color physics).\n- Window View: Dramatic sunset sky with gradients of orange, pink, and purple.\n- Artificial Light: PARTIALLY ON. Accent lights, table lamps, or LED strips are turned on, emitting a warm 3000K glow that complements the sunset.\n- Shadows: Long, stretched, dramatic cinematic shadows.\n</lighting_mood_sunset>\n<render_specs>Photorealistic, 8k resolution, V-Ray sunset render, cinematic lighting.</render_specs>`,
-          `<role>Elite Architectural Lighting Artist.</role>\n<core_directive>Transform the provided reference image into a hyper-realistic photograph. Preserve exact geometry. Auto-texture high-end materials if the input is a raw sketch.</core_directive>\n<lighting_mood_night>\n- Natural Light: NONE. The exterior is completely dark.\n- Window View: Pitch black night sky, perhaps distant city lights or subtle moonlight.\n- Artificial Light: FULLY ILLUMINATED. This is the primary light source. Turn on all ceiling lights, chandeliers, spotlights, cove lights, and table lamps. Emphasize warm interior lighting (2700K - 3000K).\n- Atmosphere: Cozy, luxurious, moody. Strong contrast between the dark unlit corners and the glowing warm artificial light sources. High-end real estate evening photography.\n</lighting_mood_night>\n<render_specs>Photorealistic, 8k resolution, architectural night photography, glowing LEDs, cinematic.</render_specs>`
-        ];
+        const moodPrompts = ["morning", "noon", "afternoon", "night"];
 
         setProcessStatus(`Đang tạo 4 Mẫu Render Mood song song...`);
 
         const promises = moodPrompts.map(async (currentMoodPrompt, i) => {
           const imgResponse = await generateContentWithRetry(ai, {
             model: "gemini-3.1-flash-image",
-            contents: [
-              {
-                role: "user",
-                parts: [
-                  { text: currentMoodPrompt },
-                  {
-                    inlineData: {
-                      data: imageData.base64Data,
-                      mimeType: imageData.mimeType || "image/jpeg",
-                    },
-                  },
-                ],
-              },
-            ],
-            generationConfig: {
-              imageConfig: {
-                aspectRatio: autoAspectRatio as "1:1" | "16:9" | "4:3" | "3:4" | "9:16",
-                imageSize: utilityResolution,
-              },
+            promptTemplateKey: "utility_mood_prompt",
+            promptTemplateInput: {
+              mood: currentMoodPrompt,
+              aspectRatio: autoAspectRatio,
+              imageSize: utilityResolution,
+              images: [
+                {
+                  data: imageData.base64Data,
+                  mimeType: imageData.mimeType || "image/jpeg",
+                },
+              ],
             },
           });
 
@@ -5642,9 +5191,9 @@ Hãy phân tích bản phác thảo/ảnh render đầu vào và tạo ra 4 prom
           promptTemplateInput: {
             activeUtility,
             userPrompt,
-            systemInstruction: `${systemInstruction} Always output an image.`,
             imageSize: "1K",
             aspectRatio: "1:1",
+            hasReferenceImage: !!imageData2,
             images: [
               {
                 data: imageData.base64Data,
