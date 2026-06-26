@@ -609,10 +609,10 @@ var userService = {
     if (!user) throw new Error("Kh\xF4ng t\xECm th\u1EA5y t\xE0i kho\u1EA3n.");
     return user;
   },
-  async updateApiKey(userId, apiKey) {
+  async updateApiKey(userId, _apiKey) {
     const user = await UserModel.findByIdAndUpdate(
       userId,
-      { apiKey, hasSetupApiKey: true },
+      { apiKey: "", hasSetupApiKey: true },
       { new: true }
     ).select("-password");
     if (!user) throw new Error("Kh\xF4ng t\xECm th\u1EA5y t\xE0i kho\u1EA3n.");
@@ -1383,17 +1383,53 @@ var piapiService = {
 
 // server/service/gemini.service.ts
 var import_genai = require("@google/genai");
+function extractTextFromContents(contents) {
+  const contentsArray = Array.isArray(contents) ? contents : contents && typeof contents === "object" && "parts" in contents ? [contents] : [];
+  let promptText = "";
+  for (const content of contentsArray) {
+    if (content && typeof content === "object" && "parts" in content) {
+      const parts = content.parts;
+      if (Array.isArray(parts)) {
+        for (const part of parts) {
+          if (typeof part?.text === "string") {
+            promptText += part.text + "\n";
+          }
+        }
+      }
+    }
+  }
+  return promptText.trim();
+}
+function summarizeContents(contents) {
+  if (typeof contents === "string") {
+    return `string:${contents.slice(0, 120)}`;
+  }
+  if (!Array.isArray(contents)) {
+    return "non-array";
+  }
+  return contents.map((content, index) => {
+    if (!content || typeof content !== "object" || !("parts" in content)) {
+      return `item${index}:no-parts`;
+    }
+    const parts = content.parts || [];
+    const partSummary = parts.map((part) => {
+      if (typeof part?.text === "string") return "text";
+      if (part?.inlineData) return "inlineData";
+      if (part?.fileData) return "fileData";
+      return "other";
+    });
+    return `item${index}:${partSummary.join(",")}`;
+  }).join(" | ");
+}
 var geminiService = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async generate(params, userApiKey) {
+  async generate(params, _userApiKey) {
     const modelName = params.model || "";
+    const systemInstruction = params.systemInstruction;
     const isImageModel = modelName.includes("image-preview") || modelName.includes("imagen") || modelName.includes("generateImages") || modelName.includes("banana");
     const isVideoModel = modelName.includes("veo");
     const isGeminiNativeImageModel = modelName === "nano-banana-2" || modelName === "igen-image-flash" || modelName === "gemini-3-pro-image" || modelName === "gemini-3.1-flash-image" || modelName.startsWith("imagen-");
-    let apiKey = userApiKey && userApiKey.trim().length > 15 ? userApiKey.trim() : "";
-    if (!apiKey) {
-      apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
-    }
+    let apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
     const isValidGeminiKey = (key) => key.startsWith("AIza") || key.startsWith("AQ.");
     if (apiKey && !isValidGeminiKey(apiKey)) {
       logger.warn(`[Gemini Service] API key format invalid (does not start with 'AIza' or 'AQ.'). Trying env fallback.`);
@@ -1406,6 +1442,9 @@ var geminiService = {
     }
     logger.info(`[Gemini Service] Using API key prefix: ${apiKey ? apiKey.substring(0, 10) + "..." : "None"} (Length: ${apiKey.length}, Valid: ${apiKey ? isValidGeminiKey(apiKey) : false})`);
     const piapiKey = process.env.PIAPI_API_KEY;
+    logger.info(
+      `[Gemini Service] Request summary - model: ${modelName}, hasSystemInstruction: ${!!systemInstruction}, contents: ${summarizeContents(params.contents)}`
+    );
     if (piapiKey && (isImageModel || isVideoModel) && !isGeminiNativeImageModel) {
       const { contents, generationConfig, config: reqConfig } = params;
       if (isImageModel) {
@@ -1434,6 +1473,11 @@ var geminiService = {
           }
         }
         promptText = promptText.trim();
+        if (systemInstruction) {
+          promptText = `${String(systemInstruction).trim()}
+
+${promptText}`.trim();
+        }
         let aspectRatio = "1:1";
         const mergedConfig = { ...generationConfig || {}, ...reqConfig || {} };
         const imageConfig = mergedConfig?.imageConfig || {};
@@ -1446,7 +1490,7 @@ var geminiService = {
           logger.info(`[Gemini Service] Uploading input image to Cloudinary...`);
           uploadedImageUrl = await cloudinaryService.uploadMedia(fileStr, "temp_staging");
         }
-        logger.info(`[Gemini Service] Generating image via PiAPI. Model: ${targetModel}, Aspect: ${aspectRatio}`);
+        logger.info(`[Gemini Service] Provider: PiAPI image. Model: ${targetModel}, Aspect: ${aspectRatio}`);
         const piapiRes = await piapiService.generateImage(promptText, targetModel, {
           aspectRatio,
           image: uploadedImageUrl || void 0
@@ -1506,11 +1550,16 @@ var geminiService = {
           }
         }
         promptText = promptText.trim();
+        if (systemInstruction) {
+          promptText = `${String(systemInstruction).trim()}
+
+${promptText}`.trim();
+        }
         const mergedConfig = { ...generationConfig || {}, ...reqConfig || {} };
         const videoConfig = mergedConfig?.videoConfig || mergedConfig?.imageConfig || {};
         const aspectRatio = videoConfig.aspectRatio || mergedConfig.aspectRatio || "16:9";
         const durationSeconds = videoConfig.durationSeconds || mergedConfig.durationSeconds || 5;
-        logger.info(`[Gemini Service] Generating video via PiAPI. Model: ${piapiVideoModel}, Aspect: ${aspectRatio}, Duration: ${durationSeconds}s`);
+        logger.info(`[Gemini Service] Provider: PiAPI video. Model: ${piapiVideoModel}, Aspect: ${aspectRatio}, Duration: ${durationSeconds}s`);
         const piapiVideoRes = await piapiService.generateVideo(
           promptText,
           piapiVideoModel,
@@ -1545,19 +1594,8 @@ var geminiService = {
         throw new Error("API Key kh\xF4ng h\u1EE3p l\u1EC7 ho\u1EB7c kh\xF4ng c\xF3 quy\u1EC1n truy c\u1EADp.");
       }
       const ai2 = new import_genai.GoogleGenAI({ apiKey });
-      logger.info(`[Gemini Service] Calling Google SDK for Gemini Image model: ${modelName}`);
-      let promptText = "";
-      const contentsArray = Array.isArray(params.contents) ? params.contents : params.contents && params.contents.parts ? [{ parts: params.contents.parts }] : [];
-      for (const content of contentsArray) {
-        if (content.parts && Array.isArray(content.parts)) {
-          for (const part of content.parts) {
-            if (part.text) {
-              promptText += part.text + "\n";
-            }
-          }
-        }
-      }
-      promptText = promptText.trim();
+      logger.info(`[Gemini Service] Provider: Gemini native image. Requested model: ${modelName}`);
+      const promptText = extractTextFromContents(params.contents);
       const imageConfig = params.config?.imageConfig || params.generationConfig?.imageConfig || {};
       const aspectRatio = imageConfig.aspectRatio || "1:1";
       const isFlashVariant = modelName === "nano-banana-2" || modelName === "igen-image-flash" || modelName === "gemini-3.1-flash-image";
@@ -1565,109 +1603,32 @@ var geminiService = {
       logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL} (variant: ${isFlashVariant ? "flash" : "pro"}), aspect: ${aspectRatio}`);
       const finalPromptText = aspectRatio && aspectRatio !== "1:1" ? `${promptText}
 [Aspect ratio: ${aspectRatio}]` : promptText;
+      const imageConfigForSdk = {
+        responseModalities: ["TEXT", "IMAGE"]
+      };
+      if (systemInstruction) {
+        imageConfigForSdk.systemInstruction = systemInstruction;
+      }
       let response2;
-      let usePiapiFallback = false;
-      let apiErrorMsg = "";
       try {
         response2 = await ai2.models.generateContent({
           model: IMAGE_GEN_MODEL,
           contents: finalPromptText,
-          config: {
-            responseModalities: ["TEXT", "IMAGE"]
-          }
+          config: imageConfigForSdk
         });
       } catch (err) {
         const errStr = err?.message || JSON.stringify(err) || "";
         const statusCode = err?.status || err?.statusCode || 0;
-        logger.warn(`[Gemini Service] Native Image generation failed (Status: ${statusCode}, Msg: ${errStr}).`);
-        if (statusCode === 429 || errStr.includes("429") || errStr.toLowerCase().includes("quota") || errStr.toLowerCase().includes("exhausted") || statusCode === 403 || errStr.includes("403") || statusCode === 401 || errStr.includes("401")) {
-          logger.info(`[Gemini Service] Quota exceeded/billing issue or permission error. Falling back to PiAPI...`);
-          usePiapiFallback = true;
-          apiErrorMsg = errStr;
-        } else {
-          throw err;
-        }
+        logger.error(`[Gemini Service] Native Image generation failed (Status: ${statusCode}, Msg: ${errStr}).`);
+        throw err;
       }
-      let imageParts = [];
-      if (!usePiapiFallback && response2) {
-        const parts = response2.candidates?.[0]?.content?.parts || [];
-        imageParts = parts.filter((p) => p.inlineData?.data);
-        if (imageParts.length === 0) {
-          logger.warn(`[Gemini Service] Gemini Native returned success but no images. Falling back to PiAPI...`);
-          usePiapiFallback = true;
-        }
-      }
-      if (usePiapiFallback) {
-        if (!piapiKey) {
-          throw new Error(`L\u1ED7i API Gemini (${apiErrorMsg || "429 Quota Exceeded"}). Kh\xF4ng th\u1EC3 t\u1EF1 \u0111\u1ED9ng chuy\u1EC3n sang PiAPI do ch\u01B0a c\u1EA5u h\xECnh PIAPI_API_KEY.`);
-        }
-        let targetModel = "nano-banana-2";
-        if (IMAGE_GEN_MODEL === "gemini-3-pro-image") {
-          targetModel = "nano-banana-pro";
-        }
-        let inputImageBase64 = "";
-        let inputImageMimeType = "";
-        for (const content of contentsArray) {
-          if (content.parts && Array.isArray(content.parts)) {
-            for (const part of content.parts) {
-              if (part.inlineData && part.inlineData.data) {
-                inputImageBase64 = part.inlineData.data;
-                inputImageMimeType = part.inlineData.mimeType || "image/jpeg";
-              }
-            }
-          }
-        }
-        let uploadedImageUrl = "";
-        if (inputImageBase64) {
-          const fileStr = `data:${inputImageMimeType};base64,${inputImageBase64}`;
-          logger.info(`[Gemini Service Fallback] Uploading input image to Cloudinary...`);
-          try {
-            uploadedImageUrl = await cloudinaryService.uploadMedia(fileStr, "temp_staging");
-          } catch (uploadErr) {
-            logger.error(`[Gemini Service Fallback] Cloudinary upload failed: ${uploadErr}`);
-          }
-        }
-        logger.info(`[Gemini Service Fallback] Generating image via PiAPI. Model: ${targetModel}, Aspect: ${aspectRatio}`);
-        const piapiRes = await piapiService.generateImage(promptText, targetModel, {
-          aspectRatio,
-          image: uploadedImageUrl || void 0
-        });
-        const imgFetchRes = await fetch(piapiRes.url);
-        if (!imgFetchRes.ok) {
-          throw new Error(`Failed to download generated image from PiAPI fallback: ${imgFetchRes.status}`);
-        }
-        const arrayBuffer = await imgFetchRes.arrayBuffer();
-        const base64 = Buffer.from(arrayBuffer).toString("base64");
-        const mimeType = imgFetchRes.headers.get("content-type") || "image/png";
-        return {
-          generatedImages: [
-            {
-              image: {
-                imageBytes: base64,
-                mimeType
-              }
-            }
-          ],
-          candidates: [
-            {
-              content: {
-                parts: [
-                  {
-                    inlineData: {
-                      data: base64,
-                      mimeType
-                    }
-                  }
-                ],
-                role: "model"
-              },
-              finishReason: "STOP"
-            }
-          ]
-        };
+      const parts = response2.candidates?.[0]?.content?.parts || [];
+      const imageParts3 = parts.filter((p) => p.inlineData?.data);
+      if (imageParts3.length === 0) {
+        throw new Error("Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c d\u1EEF li\u1EC7u \u1EA3nh t\u1EEB m\xF4 h\xECnh native c\u1EE7a Gemini.");
       }
       return {
-        generatedImages: imageParts.map((p) => ({
+        generatedImages: imageParts3.map((p) => ({
           image: {
             imageBytes: p.inlineData.data,
             mimeType: p.inlineData.mimeType || "image/jpeg"
@@ -1681,7 +1642,7 @@ var geminiService = {
       throw new Error("API Key kh\xF4ng h\u1EE3p l\u1EC7 ho\u1EB7c kh\xF4ng c\xF3 quy\u1EC1n truy c\u1EADp.");
     }
     const ai = new import_genai.GoogleGenAI({ apiKey });
-    logger.info(`[Gemini Service] Calling Google SDK for text model: ${modelName}`);
+    logger.info(`[Gemini Service] Provider: Gemini text. Model: ${modelName}`);
     const rawConfig = params.config || params.generationConfig || {};
     const sanitizedConfig = { ...rawConfig };
     const isThinkingModel = modelName.toLowerCase().includes("thinking");
@@ -1692,6 +1653,9 @@ var geminiService = {
       if ("thinking_config" in sanitizedConfig) {
         delete sanitizedConfig.thinking_config;
       }
+    }
+    if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
+      sanitizedConfig.systemInstruction = systemInstruction;
     }
     const response = await ai.models.generateContent({
       model: modelName,
@@ -1920,8 +1884,9 @@ var renderJobController = {
           for (let i = 0; i < numImages; i++) {
             const taskResult = await piapiService.createImageTask(finalPrompt, piapiModel, {
               aspectRatio: aspect,
-              numImages: 1
+              numImages: 1,
               // Generate 1 image per call
+              image: inputImageUrls && inputImageUrls.length > 0 ? inputImageUrls[0] : void 0
             });
             taskIds.push(taskResult.taskId);
           }
@@ -2204,21 +2169,816 @@ var import_express6 = require("express");
 
 // server/controller/gemini.controller.ts
 var import_joi6 = __toESM(require("joi"), 1);
+
+// server/service/prompt-template-pass3.service.ts
+function imageParts(images = []) {
+  return images.map((image) => ({
+    inlineData: {
+      data: image.data,
+      mimeType: image.mimeType || "image/jpeg"
+    }
+  }));
+}
+function resolvePass3PromptTemplate(templateKey, input) {
+  switch (templateKey) {
+    case "sync_character_composite_prompt":
+      return {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              ...imageParts(input.images || []),
+              {
+                text: `B\u1EA1n l\xE0 chuy\xEAn gia gh\xE9p nh\xE2n v\u1EADt v\xE0o b\u1ED1i c\u1EA3nh ki\u1EBFn tr\xFAc theo c\xE1ch si\xEAu th\u1EF1c.
+Nhi\u1EC7m v\u1EE5:
+- Gi\u1EEF nguy\xEAn khu\xF4n m\u1EB7t, v\xF3c d\xE1ng, qu\u1EA7n \xE1o v\xE0 nh\u1EADn di\u1EC7n c\u1EE7a ch\u1EE7 th\u1EC3 tham kh\u1EA3o.
+- N\u1EBFu y\xEAu c\u1EA7u ng\u01B0\u1EDDi d\xF9ng tr\u1ED1ng, t\u1EF1 suy lu\u1EADn v\u1ECB tr\xED v\xE0 t\u01B0 th\u1EBF ph\xF9 h\u1EE3p v\u1EDBi \u1EA3nh n\u1EC1n.
+- \u0110\u1ED3ng b\u1ED9 tuy\u1EC7t \u0111\u1ED1i \xE1nh s\xE1ng, m\xE0u m\xF4i tr\u01B0\u1EDDng, \u0111\u1ED5 b\xF3ng ti\u1EBFp x\xFAc v\xE0 ph\u1ED1i c\u1EA3nh.
+- Cho ph\xE9p vi ch\u1EC9nh r\u1EA5t nh\u1EB9 v\u1EADt th\u1EC3 n\u1EC1n n\u1EBFu c\u1EA7n \u0111\u1EC3 t\u1EA1o ti\u1EBFp x\xFAc v\u1EADt l\xFD h\u1EE3p l\xFD.
+- Kh\xF4ng \u0111\u1EC3 ch\u1EE7 th\u1EC3 b\u1ECB d\xE1n l\xEAn \u1EA3nh, l\u01A1 l\u1EEDng, sai t\u1EF7 l\u1EC7 ho\u1EB7c l\u1EC7ch h\u01B0\u1EDBng s\xE1ng.
+
+Y\xEAu c\u1EA7u ng\u01B0\u1EDDi d\xF9ng: ${String(input.userAction || "")}`
+              }
+            ]
+          }
+        ],
+        config: {
+          imageConfig: input.imageConfig
+        }
+      };
+    case "utility_layout_prompt": {
+      const toolName = String(input.toolName || "");
+      const selectedStyle = String(input.selectedStyle || "Kh\xF4ng c\xF3");
+      let systemInstruction = "";
+      const projectName = String(input.projectName || "ARCHITECTURAL PRESENTATION");
+      let prompt = `T\u1EA1o m\u1ED9t advanced architectural presentation board kh\u1ED5 d\u1ECDc 3:4 cho c\xF4ng tr\xECnh tham kh\u1EA3o theo phong c\xE1ch ${selectedStyle}. C\xF3 ti\xEAu \u0111\u1EC1 ${projectName}, b\u1ED1 c\u1EE5c 3 c\u1ED9t d\xE0y th\xF4ng tin, massing evolution, axonometric, n\u1ED9i th\u1EA5t, m\u1EB7t b\u1EB1ng, m\u1EB7t \u0111\u1EE9ng v\xE0 footer \u0111\u1ED3 \xE1n.`;
+      if (toolName === "Presentation Board") {
+        systemInstruction = "B\u1EA1n l\xE0 chuy\xEAn gia thi\u1EBFt k\u1EBF \u0111\u1ED3 h\u1ECDa ki\u1EBFn tr\xFAc b\u1EADc th\u1EA7y. T\u1EA5t c\u1EA3 ch\u1EEF v\xE0 ch\xFA th\xEDch xu\u1EA5t hi\u1EC7n trong \u1EA3nh ph\u1EA3i b\u1EB1ng ti\u1EBFng Vi\u1EC7t r\xF5 r\xE0ng, tr\xECnh b\xE0y nh\u01B0 m\u1ED9t b\u1EA3ng thuy\u1EBFt tr\xECnh ki\u1EBFn tr\xFAc cao c\u1EA5p.";
+        prompt = `T\u1EA1o m\u1ED9t b\u1EA3ng thuy\u1EBFt tr\xECnh ki\u1EBFn tr\xFAc ho\xE0n ch\u1EC9nh theo phong c\xE1ch ${selectedStyle}. \u1EA2nh ch\xEDnh l\xE0 c\xF4ng tr\xECnh tham kh\u1EA3o, xung quanh c\xF3 c\xE1c s\u01A1 \u0111\u1ED3 ph\xE2n t\xEDch, m\u1EB7t b\u1EB1ng, chi ti\u1EBFt v\u1EADt li\u1EC7u v\xE0 ch\xFA th\xEDch ti\u1EBFng Vi\u1EC7t s\u1EAFc n\xE9t. B\u1ED1 c\u1EE5c s\u1EA1ch, c\xE2n \u0111\u1ED1i, tr\xECnh b\xE0y nh\u01B0 poster ki\u1EBFn tr\xFAc chuy\xEAn nghi\u1EC7p.`;
+      } else if (toolName === "Overall") {
+        prompt = `Bi\u1EBFn c\xF4ng tr\xECnh tham kh\u1EA3o th\xE0nh m\u1ED9t b\u1EA3ng tr\xECnh b\xE0y t\u1ED5ng th\u1EC3 landscape 16:9 theo phong c\xE1ch ${selectedStyle}. \u1EA2nh ph\u1EA3i ph\u1EE7 k\xEDn n\u1EC1n, c\xF3 ti\xEAu \u0111\u1EC1 ki\u1EBFn tr\xFAc sang tr\u1ECDng, hai inset ph\xE2n t\xEDch nh\u1ECF, b\u1ED1 c\u1EE5c editorial cao c\u1EA5p, \u0111\u1ED3ng b\u1ED9 th\u1EA9m m\u1EF9.`;
+      } else if (toolName === "Layout") {
+        prompt = `T\u1EA1o m\u1ED9t competition board landscape 16:9 cho c\xF4ng tr\xECnh tham kh\u1EA3o theo phong c\xE1ch ${selectedStyle}. Trung t\xE2m l\xE0 exploded axonometric, xung quanh c\xF3 s\u01A1 \u0111\u1ED3 massing, m\u1EB7t c\u1EAFt, context map v\xE0 c\xE1c text block ng\u1EAFn, b\u1ED1 c\u1EE5c theo l\u01B0\u1EDBi Swiss Grid nghi\xEAm ng\u1EB7t.`;
+      } else if (toolName === "Interior Moodboard") {
+        prompt = `T\u1EA1o m\u1ED9t interior moodboard landscape cao c\u1EA5p cho kh\xF4ng gian tham kh\u1EA3o theo phong c\xE1ch ${selectedStyle}. Ph\u1EA3i c\xF3 hero render, material swatches, isometric cutaway v\xE0 v\xE0i furniture cutout n\u1ED5i tr\xEAn n\u1EC1n, b\u1ED1 c\u1EE5c catalogue hi\u1EC7n \u0111\u1EA1i.`;
+      }
+      return {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              ...imageParts(input.images || []),
+              { text: prompt }
+            ]
+          }
+        ],
+        systemInstruction: systemInstruction || void 0,
+        config: {
+          ...input.requestConfig
+        }
+      };
+    }
+    case "utility_process_prompt":
+      return {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              ...imageParts(input.images || []),
+              { text: String(input.userPrompt || "") }
+            ]
+          }
+        ],
+        systemInstruction: String(input.systemInstruction || ""),
+        generationConfig: {
+          imageConfig: {
+            aspectRatio: String(input.aspectRatio || "1:1"),
+            imageSize: String(input.imageSize || "1K")
+          }
+        }
+      };
+    case "virtual_staging_prompt": {
+      const mode = String(input.mode || "virtual");
+      const roomType = String(input.roomType || "");
+      const style = String(input.style || "");
+      const requestNotes = String(input.requestNotes || "");
+      const extraPrompt = String(input.extraPrompt || "");
+      const shapesDescription = String(input.shapesDescription || "");
+      const basePrompt = mode === "virtual" ? `B\u1EA1n l\xE0 chuy\xEAn gia thi\u1EBFt k\u1EBF n\u1ED9i th\u1EA5t v\xE0 d\xE0n d\u1EF1ng kh\xF4ng gian. H\xE3y th\u1EF1c hi\u1EC7n virtual staging cho c\u0103n ph\xF2ng tr\u1ED1ng n\xE0y theo phong c\xE1ch ${style}, c\xF4ng n\u0103ng ${roomType}. B\u1ED5 sung n\u1ED9i th\u1EA5t cao c\u1EA5p, \xE1nh s\xE1ng chuy\xEAn nghi\u1EC7p v\xE0 v\u1EADt li\u1EC7u ch\xE2n th\u1EF1c, nh\u01B0ng ph\u1EA3i gi\u1EEF chu\u1EA9n h\xECnh h\u1ECDc kh\xF4ng gian g\u1ED1c.` : shapesDescription ? "B\u1EA1n l\xE0 chuy\xEAn gia c\u1EA3i t\u1EA1o n\u1ED9i th\u1EA5t ch\xEDnh x\xE1c theo v\xF9ng ch\u1ECDn. Ch\u1EC9 \u0111\u01B0\u1EE3c ch\u1EC9nh s\u1EEDa b\xEAn trong c\xE1c marker \u0111\xE3 \u0111\xE1nh d\u1EA5u, m\u1ECDi khu v\u1EF1c ngo\xE0i marker ph\u1EA3i gi\u1EEF nguy\xEAn 1:1 so v\u1EDBi \u1EA3nh g\u1ED1c." : "B\u1EA1n l\xE0 chuy\xEAn gia c\u1EA3i t\u1EA1o n\u1ED9i th\u1EA5t. H\xE3y c\u1EA3i t\u1EA1o kh\xF4ng gian theo ghi ch\xFA ng\u01B0\u1EDDi d\xF9ng nh\u01B0ng ph\u1EA3i gi\u1EEF nguy\xEAn layout, c\u1EA5u tr\xFAc ki\u1EBFn tr\xFAc v\xE0 c\xE1c \u0111\u1ED3 v\u1EADt kh\xF4ng \u0111\u01B0\u1EE3c y\xEAu c\u1EA7u thay \u0111\u1ED5i.";
+      return {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              ...imageParts(input.images || []),
+              {
+                text: `${basePrompt}
+${shapesDescription}
+Ghi ch\xFA ng\u01B0\u1EDDi d\xF9ng: ${requestNotes || "Kh\xF4ng c\xF3"}
+Y\xEAu c\u1EA7u b\u1ED5 sung: ${extraPrompt || "Kh\xF4ng c\xF3"}`
+              }
+            ]
+          }
+        ],
+        systemInstruction: [
+          "T\u1EA5t c\u1EA3 suy lu\u1EADn ph\u1EA3i \u01B0u ti\xEAn b\u1EA3o to\xE0n ph\u1ED1i c\u1EA3nh, t\u1EF7 l\u1EC7, c\u1EA5u tr\xFAc kh\xF4ng gian v\xE0 \xE1nh s\xE1ng th\u1EF1c t\u1EBF.",
+          "N\u1EBFu l\xE0 ch\u1EC9nh s\u1EEDa ch\u1ECDn v\xF9ng, tuy\u1EC7t \u0111\u1ED1i kh\xF4ng l\xE0m thay \u0111\u1ED5i \u0111\u1ED3 v\u1EADt, c\xE2y xanh, v\u1EADt d\u1EE5ng hay chi ti\u1EBFt ngo\xE0i v\xF9ng \u0111\xE1nh d\u1EA5u.",
+          "\u0110\u1EA7u ra ph\u1EA3i l\xE0 \u1EA3nh n\u1ED9i th\u1EA5t ch\xE2n th\u1EF1c, s\u1EA1ch l\u1ED7i, kh\xF4ng m\xE9o h\xECnh, kh\xF4ng th\xEAm v\u1EADt th\u1EC3 v\xF4 l\xFD."
+        ].join(" ")
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+// server/service/prompt-template.service.ts
+function normalizeKey(value) {
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+function imageParts2(images = []) {
+  return images.map((image) => ({
+    inlineData: {
+      data: image.data,
+      mimeType: image.mimeType || "image/jpeg"
+    }
+  }));
+}
+function objectSchema(properties, required) {
+  return {
+    type: "OBJECT",
+    properties,
+    required
+  };
+}
+function stringField(description) {
+  return { type: "STRING", description };
+}
+function numberField() {
+  return { type: "NUMBER" };
+}
+function buildRenderTabPrompt(input) {
+  const activeSubTab = String(input.activeSubTab || "");
+  const activeSubTabKey = normalizeKey(activeSubTab);
+  const description = String(input.description || "Kh\xF4ng c\xF3");
+  const style = String(input.style || "Kh\xF4ng c\xF3");
+  const roomType = String(input.roomType || "Kh\xF4ng c\xF3");
+  const interiorStyle = String(input.interiorStyle || "Kh\xF4ng c\xF3");
+  const lighting = String(input.lighting || "Kh\xF4ng c\xF3");
+  const colorTone = String(input.colorTone || "Kh\xF4ng c\xF3");
+  const context = String(input.context || "Kh\xF4ng c\xF3");
+  const buildingStyle = String(input.buildingStyle || "Kh\xF4ng c\xF3");
+  const cameraAngle = String(input.cameraAngle || "");
+  const customCameraAngle = String(input.customCameraAngle || "");
+  const cameraAngleStyle = String(input.cameraAngleStyle || "");
+  const images = input.images || [];
+  const referenceImages = input.referenceImages || [];
+  const parts = [];
+  parts.push(...imageParts2(images));
+  if (referenceImages.length > 0) {
+    parts.push({ text: "\u1EA2nh tham kh\u1EA3o phong c\xE1ch:" });
+    parts.push(...imageParts2(referenceImages));
+  }
+  let textPrompt = `M\xF4 t\u1EA3 \xFD t\u01B0\u1EDFng: ${description}
+`;
+  let systemInstruction;
+  let responseSchema;
+  let thinkingLevel = "medium";
+  const selectedAngle = customCameraAngle || cameraAngle;
+  if (activeSubTabKey.includes("render ngoai that")) {
+    textPrompt += `Style \u1EA3nh: ${style}
+Tone m\xE0u: ${colorTone}
+B\u1ED1i c\u1EA3nh: ${context}
+\xC1nh s\xE1ng: ${lighting}
+`;
+    if (selectedAngle) {
+      textPrompt += `G\xF3c ch\u1EE5p: ${selectedAngle}
+`;
+    }
+    systemInstruction = [
+      "B\u1EA1n l\xE0 chuy\xEAn gia bi\xEAn so\u1EA1n prompt render ngo\u1EA1i th\u1EA5t cho iGen.",
+      "T\u1EA5t c\u1EA3 ph\xE2n t\xEDch v\xE0 prompt cu\u1ED1i c\xF9ng ph\u1EA3i vi\u1EBFt b\u1EB1ng ti\u1EBFng Vi\u1EC7t r\xF5 r\xE0ng, ng\u1EAFn g\u1ECDn, h\u1EEFu d\u1EE5ng.",
+      "N\u1EBFu c\xF3 \u1EA3nh tham kh\u1EA3o, ph\u1EA3i b\u1EA3o t\u1ED3n h\xECnh kh\u1ED1i, b\u1ED1 c\u1EE5c, g\xF3c m\xE1y v\xE0 logic c\u1EA5u tr\xFAc c\u1EE7a c\xF4ng tr\xECnh.",
+      "N\u1EBFu kh\xF4ng c\xF3 \u1EA3nh, \u0111\u01B0\u1EE3c ph\xE9p s\xE1ng t\u1EA1o nh\u01B0ng v\u1EABn ph\u1EA3i h\u1EE3p l\xFD v\u1EC1 ki\u1EBFn tr\xFAc.",
+      "H\xE3y tr\u1EA3 v\u1EC1 JSON g\u1ED3m ph\u1EA7n ph\xE2n t\xEDch ng\u1EAFn g\u1ECDn v\xE0 prompt render cu\u1ED1i c\xF9ng t\u1ED1i \u01B0u, tr\xE1nh l\u1EB7p l\u1EA1i, tr\xE1nh l\xFD thuy\u1EBFt th\u1EEBa."
+    ].join(" ");
+    responseSchema = objectSchema(
+      {
+        trang_thai_dau_vao_phat_hien: stringField("X\xE1c \u0111\u1ECBnh \u0111ang c\xF3 \u1EA3nh tham kh\u1EA3o hay ch\u1EC9 c\xF3 v\u0103n b\u1EA3n."),
+        phong_cach_va_tone_kien_truc: stringField("T\u1ED5ng h\u1EE3p phong c\xE1ch ki\u1EBFn tr\xFAc v\xE0 tone m\xE0u."),
+        anh_sang_va_moi_truong: stringField("Ph\xE2n t\xEDch \xE1nh s\xE1ng, th\u1EDDi ti\u1EBFt, b\u1ED1i c\u1EA3nh."),
+        goc_may_anh_va_bo_cuc: stringField("Quy t\u1EAFc g\xF3c m\xE1y v\xE0 b\u1ED1 c\u1EE5c c\u1EA7n gi\u1EEF."),
+        prompt_tieng_viet_toi_uu: stringField("Prompt render cu\u1ED1i c\xF9ng b\u1EB1ng ti\u1EBFng Vi\u1EC7t."),
+        prompt_phu_dinh: stringField("C\xE1c l\u1ED7i c\u1EA7n tr\xE1nh khi render.")
+      },
+      [
+        "trang_thai_dau_vao_phat_hien",
+        "phong_cach_va_tone_kien_truc",
+        "anh_sang_va_moi_truong",
+        "goc_may_anh_va_bo_cuc",
+        "prompt_tieng_viet_toi_uu",
+        "prompt_phu_dinh"
+      ]
+    );
+  } else if (activeSubTabKey.includes("render noi that")) {
+    textPrompt += `Style \u1EA3nh: ${style}
+Ch\u1EE9c n\u0103ng ph\xF2ng: ${roomType}
+Phong c\xE1ch n\u1ED9i th\u1EA5t: ${interiorStyle}
+\xC1nh s\xE1ng: ${lighting}
+Tone m\xE0u: ${colorTone}
+`;
+    if (selectedAngle) {
+      textPrompt += `G\xF3c ch\u1EE5p: ${selectedAngle}
+`;
+    }
+    systemInstruction = [
+      "B\u1EA1n l\xE0 chuy\xEAn gia bi\xEAn so\u1EA1n prompt render n\u1ED9i th\u1EA5t cao c\u1EA5p.",
+      "T\u1EA5t c\u1EA3 \u0111\u1EA7u ra ph\u1EA3i b\u1EB1ng ti\u1EBFng Vi\u1EC7t, nh\u1EA5n m\u1EA1nh c\xF4ng n\u0103ng ph\xF2ng, v\u1EADt li\u1EC7u, b\u1ED1 c\u1EE5c v\xE0 kh\xF4ng kh\xED \xE1nh s\xE1ng.",
+      "N\u1EBFu c\xF3 \u1EA3nh g\u1ED1c, ph\u1EA3i gi\u1EEF b\u1ED1 c\u1EE5c v\xE0 t\u1EF7 l\u1EC7 khung h\xECnh; n\u1EBFu kh\xF4ng c\xF3 \u1EA3nh, \u0111\u01B0\u1EE3c ph\xE9p suy lu\u1EADn h\u1EE3p l\xFD.",
+      "Tr\u1EA3 v\u1EC1 JSON ng\u1EAFn g\u1ECDn, \u0111\xFAng tr\u1ECDng t\xE2m, t\u1EADp trung v\xE0o prompt cu\u1ED1i d\xF9ng \u0111\u01B0\u1EE3c ngay."
+    ].join(" ");
+    responseSchema = objectSchema(
+      {
+        phan_tich_y_dinh_goc: stringField("T\xF3m t\u1EAFt \xFD \u0111\u1ECBnh ng\u01B0\u1EDDi d\xF9ng."),
+        chuc_nang_phong_suy_luan: stringField("Suy lu\u1EADn c\xF4ng n\u0103ng ph\xF2ng."),
+        phong_cach_noi_that_va_anh_sang: stringField("T\u1ED5ng h\u1EE3p phong c\xE1ch, v\u1EADt li\u1EC7u, \xE1nh s\xE1ng."),
+        danh_sach_noi_that_va_vat_lieu: stringField("Nh\u1EEFng th\xE0nh ph\u1EA7n n\u1ED9i th\u1EA5t c\u1EA7n c\xF3."),
+        logic_camera_va_ty_le_khung_hinh: stringField("Quy t\u1EAFc g\xF3c ch\u1EE5p v\xE0 t\u1EF7 l\u1EC7 khung h\xECnh."),
+        prompt_tieng_viet_toi_uu: stringField("Prompt render cu\u1ED1i c\xF9ng b\u1EB1ng ti\u1EBFng Vi\u1EC7t."),
+        prompt_phu_dinh: stringField("C\xE1c l\u1ED7i c\u1EA7n tr\xE1nh.")
+      },
+      [
+        "phan_tich_y_dinh_goc",
+        "chuc_nang_phong_suy_luan",
+        "phong_cach_noi_that_va_anh_sang",
+        "danh_sach_noi_that_va_vat_lieu",
+        "logic_camera_va_ty_le_khung_hinh",
+        "prompt_tieng_viet_toi_uu",
+        "prompt_phu_dinh"
+      ]
+    );
+  } else if (activeSubTabKey === "floorplan to 3d") {
+    textPrompt += `Style render: ${style}
+Lo\u1EA1i ph\xF2ng: ${roomType}
+Phong c\xE1ch: ${interiorStyle}
+Gi\u1EEF \u0111\xFAng b\u1ED1 c\u1EE5c m\u1EB7t b\u1EB1ng, t\u01B0\u1EDDng, c\u1EEDa, n\u1ED9i th\u1EA5t theo floorplan.
+`;
+    if (cameraAngleStyle) {
+      textPrompt += `Style g\xF3c ch\u1EE5p: ${cameraAngleStyle}
+`;
+    }
+    systemInstruction = [
+      "B\u1EA1n l\xE0 chuy\xEAn gia chuy\u1EC3n m\u1EB7t b\u1EB1ng th\xE0nh kh\xF4ng gian 3D.",
+      "M\u1EE5c ti\xEAu l\xE0 d\u1EF1ng l\u1EA1i kh\xF4ng gian t\u1EEB floorplan th\u1EADt ch\xEDnh x\xE1c, kh\xF4ng \u0111\u01B0\u1EE3c ph\xE1 v\u1EE1 b\u1ED1 c\u1EE5c.",
+      "T\u1EA5t c\u1EA3 \u0111\u1EA7u ra ph\u1EA3i b\u1EB1ng ti\u1EBFng Vi\u1EC7t v\xE0 t\u1EADp trung v\xE0o prompt cu\u1ED1i kh\u1EA3 thi cho image model."
+    ].join(" ");
+    responseSchema = objectSchema(
+      {
+        phan_tich_mat_bang: stringField("T\xF3m t\u1EAFt nh\u1EADn di\u1EC7n m\u1EB7t b\u1EB1ng."),
+        logic_phong_cach_va_tham_khao: stringField("T\u1ED5ng h\u1EE3p phong c\xE1ch c\u1EA7n \xE1p d\u1EE5ng."),
+        logic_che_do_render_va_camera: stringField("L\u1EF1a ch\u1ECDn g\xF3c ch\u1EE5p v\xE0 ch\u1EBF \u0111\u1ED9 render."),
+        so_do_bo_tri_noi_that: stringField("Nguy\xEAn t\u1EAFc b\u1ED1 tr\xED n\u1ED9i th\u1EA5t c\u1EA7n gi\u1EEF."),
+        prompt_tieng_viet_toi_uu: stringField("Prompt render cu\u1ED1i c\xF9ng."),
+        prompt_phu_dinh: stringField("C\xE1c l\u1ED7i c\u1EA7n tr\xE1nh.")
+      },
+      [
+        "phan_tich_mat_bang",
+        "logic_phong_cach_va_tham_khao",
+        "logic_che_do_render_va_camera",
+        "so_do_bo_tri_noi_that",
+        "prompt_tieng_viet_toi_uu",
+        "prompt_phu_dinh"
+      ]
+    );
+  } else if (activeSubTabKey === "floorplan to 3d floorplan") {
+    textPrompt += `Lo\u1EA1i \u1EA3nh: floorplan 2D k\u1EF9 thu\u1EADt.
+Style c\xF4ng tr\xECnh: ${buildingStyle}
+Phong c\xE1ch: ${interiorStyle}
+Kh\xF4ng \u0111\u01B0\u1EE3c bi\u1EBFn floorplan th\xE0nh \u1EA3nh n\u1ED9i th\u1EA5t th\xF4ng th\u01B0\u1EDDng.
+`;
+    if (cameraAngleStyle) {
+      textPrompt += `Style g\xF3c ch\u1EE5p: ${cameraAngleStyle}
+`;
+    }
+    systemInstruction = [
+      "B\u1EA1n l\xE0 chuy\xEAn gia ph\xE2n t\xEDch floorplan 2D v\xE0 t\xE1i d\u1EF1ng th\xE0nh kh\xF4ng gian 3D ch\xEDnh x\xE1c.",
+      "M\u1EB7t b\u1EB1ng l\xE0 s\u1EF1 th\u1EADt tuy\u1EC7t \u0111\u1ED1i: t\u01B0\u1EDDng, c\u1EEDa, thang, v\xE1ch v\xE0 nh\xE3n ph\xF2ng ph\u1EA3i \u0111\u01B0\u1EE3c t\xF4n tr\u1ECDng.",
+      "T\u1EA5t c\u1EA3 \u0111\u1EA7u ra b\u1EB1ng ti\u1EBFng Vi\u1EC7t, \u01B0u ti\xEAn prompt cu\u1ED1i d\xF9ng \u0111\u01B0\u1EE3c ngay."
+    ].join(" ");
+    responseSchema = objectSchema(
+      {
+        phan_tich_khoa_goc_ghi_hinh: stringField("T\xF3m t\u1EAFt c\xE1ch kh\xF3a logic floorplan."),
+        logic_phong_cach_va_cong_trinh: stringField("T\u1ED5ng h\u1EE3p phong c\xE1ch v\xE0 logic c\xF4ng tr\xECnh."),
+        quyet_dinh_cat_tuong: stringField("M\xF4 t\u1EA3 chi\u1EBFn l\u01B0\u1EE3c c\u1EAFt t\u01B0\u1EDDng n\u1EBFu c\u1EA7n."),
+        thiet_lap_anh_sang_va_studio: stringField("Thi\u1EBFt l\u1EADp \xE1nh s\xE1ng v\xE0 c\xE1ch tr\xECnh b\xE0y."),
+        prompt_tieng_viet_toi_uu: stringField("Prompt cu\u1ED1i c\xF9ng."),
+        prompt_phu_dinh: stringField("C\xE1c l\u1ED7i c\u1EA7n tr\xE1nh.")
+      },
+      [
+        "phan_tich_khoa_goc_ghi_hinh",
+        "logic_phong_cach_va_cong_trinh",
+        "quyet_dinh_cat_tuong",
+        "thiet_lap_anh_sang_va_studio",
+        "prompt_tieng_viet_toi_uu",
+        "prompt_phu_dinh"
+      ]
+    );
+  } else {
+    textPrompt += `Style \u1EA3nh: ${style}
+Tone m\xE0u: ${colorTone}
+B\u1ED1i c\u1EA3nh: ${context}
+\xC1nh s\xE1ng: ${lighting}
+`;
+    if (selectedAngle) {
+      textPrompt += `G\xF3c ch\u1EE5p: ${selectedAngle}
+`;
+    }
+    systemInstruction = [
+      "B\u1EA1n l\xE0 chuy\xEAn gia bi\xEAn so\u1EA1n prompt masterplan 3D.",
+      "Tr\u1EA3 v\u1EC1 JSON ng\u1EAFn g\u1ECDn v\xE0 prompt cu\u1ED1i c\xF3 th\u1EC3 render \u0111\u01B0\u1EE3c ngay."
+    ].join(" ");
+    thinkingLevel = "high";
+    responseSchema = objectSchema(
+      {
+        masterplan_analysis: stringField("T\xF3m t\u1EAFt m\u1EB7t b\u1EB1ng t\u1ED5ng th\u1EC3."),
+        massing_and_zoning_logic: stringField("Logic ph\xE2n khu v\xE0 h\xECnh kh\u1ED1i."),
+        camera_and_scale_logic: stringField("Logic g\xF3c nh\xECn v\xE0 t\u1EF7 l\u1EC7."),
+        style_lighting_and_context: stringField("T\u1ED5ng h\u1EE3p phong c\xE1ch, \xE1nh s\xE1ng, b\u1ED1i c\u1EA3nh."),
+        optimized_english_prompt: stringField("Prompt cu\u1ED1i c\xF9ng."),
+        negative_prompt: stringField("C\xE1c l\u1ED7i c\u1EA7n tr\xE1nh.")
+      },
+      [
+        "masterplan_analysis",
+        "massing_and_zoning_logic",
+        "camera_and_scale_logic",
+        "style_lighting_and_context",
+        "optimized_english_prompt",
+        "negative_prompt"
+      ]
+    );
+  }
+  parts.push({ text: textPrompt.trim() });
+  return {
+    contents: [{ role: "user", parts }],
+    systemInstruction,
+    generationConfig: {
+      temperature: 0.7,
+      responseMimeType: "application/json",
+      responseSchema,
+      thinkingConfig: { thinkingLevel }
+    }
+  };
+}
+function buildRenderEditPrompt(input) {
+  const activeSubTab = String(input.activeSubTab || "");
+  const activeSubTabKey = normalizeKey(activeSubTab);
+  const description = String(input.description || "Kh\xF4ng c\xF3");
+  const cropInfo = String(input.cropInfo || "");
+  const images = input.images || [];
+  const parts = [...imageParts2(images)];
+  const textPrompt = `M\xF4 t\u1EA3 thay \u0111\u1ED5i: ${description}
+${cropInfo}
+`;
+  let systemInstruction;
+  const config = {
+    temperature: 0.4,
+    responseMimeType: "application/json"
+  };
+  if (activeSubTabKey.includes("crop")) {
+    systemInstruction = [
+      "B\u1EA1n l\xE0 chuy\xEAn gia t\u1EA1o inpaint prompt cho ki\u1EBFn tr\xFAc.",
+      "Ch\u1EC9 \u0111\u01B0\u1EE3c ph\xE9p s\u1EEDa trong v\xF9ng \u0111\u01B0\u1EE3c ch\u1EC9 \u0111\u1ECBnh, ph\u1EA7n c\xF2n l\u1EA1i ph\u1EA3i gi\u1EEF nguy\xEAn b\u1ED1 c\u1EE5c, ch\u1EA5t li\u1EC7u, \xE1nh s\xE1ng v\xE0 perspective.",
+      "Tr\u1EA3 v\u1EC1 JSON v\u1EDBi \xFD \u0111\u1ECBnh s\u1EEDa, ph\xE2n t\xEDch b\u1ED1i c\u1EA3nh, aspect ratio, prompt inpaint cu\u1ED1i c\xF9ng v\xE0 negative prompt."
+    ].join(" ");
+    config.responseSchema = objectSchema(
+      {
+        edit_intent: stringField("Ph\xE2n lo\u1EA1i replace, add ho\u1EB7c remove."),
+        spatial_context_analysis: stringField("T\xF3m t\u1EAFt b\u1ED1i c\u1EA3nh trong v\xF9ng s\u1EEDa."),
+        detected_aspect_ratio: stringField("Aspect ratio suy ra t\u1EEB \u1EA3nh."),
+        optimized_inpaint_prompt: stringField("Prompt inpaint b\u1EB1ng ti\u1EBFng Anh."),
+        coordinates_lock: {
+          type: "OBJECT",
+          properties: {
+            x: numberField(),
+            y: numberField(),
+            width: numberField(),
+            height: numberField()
+          }
+        },
+        negative_prompt: stringField("Nh\u1EEFng l\u1ED7i c\u1EA7n tr\xE1nh.")
+      },
+      [
+        "edit_intent",
+        "spatial_context_analysis",
+        "detected_aspect_ratio",
+        "optimized_inpaint_prompt",
+        "coordinates_lock",
+        "negative_prompt"
+      ]
+    );
+  } else if (activeSubTabKey.includes("tong the")) {
+    systemInstruction = [
+      "B\u1EA1n l\xE0 chuy\xEAn gia retouch v\xE0 t\xE1i bi\xEAn so\u1EA1n prompt edit \u1EA3nh.",
+      "Kh\xF4ng \u0111\u01B0\u1EE3c vi\u1EBFt prompt d\u1EA1ng ra l\u1EC7nh t\u1EEBng b\u01B0\u1EDBc; ph\u1EA3i m\xF4 t\u1EA3 tr\u1EA1ng th\xE1i cu\u1ED1i c\u1EE7a \u1EA3nh.",
+      "Ph\u1EA3i x\xE1c \u0111\u1ECBnh nh\u1EEFng th\xE0nh ph\u1EA7n c\u1EA7n kh\xF3a \u0111\u1EC3 gi\u1EEF nguy\xEAn c\u1EA5u tr\xFAc."
+    ].join(" ");
+    config.responseSchema = objectSchema(
+      {
+        original_intent_analysis: stringField("T\xF3m t\u1EAFt y\xEAu c\u1EA7u c\u1EE7a ng\u01B0\u1EDDi d\xF9ng."),
+        untouchable_elements: stringField("Nh\u1EEFng th\xE0nh ph\u1EA7n ph\u1EA3i gi\u1EEF nguy\xEAn."),
+        augmented_details: stringField("Chi ti\u1EBFt \u0111\u01B0\u1EE3c b\u1ED5 sung \u0111\u1EC3 prompt \u0111\u1EA7y \u0111\u1EE7."),
+        global_lighting_and_atmosphere: stringField("\xC1nh s\xE1ng v\xE0 kh\xF4ng kh\xED c\u1EA7n gi\u1EEF."),
+        optimized_english_prompt: stringField("Prompt edit cu\u1ED1i c\xF9ng."),
+        negative_prompt: stringField("Nh\u1EEFng l\u1ED7i c\u1EA7n tr\xE1nh.")
+      },
+      [
+        "original_intent_analysis",
+        "untouchable_elements",
+        "augmented_details",
+        "global_lighting_and_atmosphere",
+        "optimized_english_prompt",
+        "negative_prompt"
+      ]
+    );
+  } else if (activeSubTabKey.includes("thay the model")) {
+    systemInstruction = [
+      "B\u1EA1n l\xE0 chuy\xEAn gia thay th\u1EBF v\u1EADt th\u1EC3 trong \u1EA3nh b\u1EB1ng v\u1EADt th\u1EC3 tham kh\u1EA3o.",
+      "Ph\u1EA3i gi\u1EEF \u0111\xFAng perspective, scale, \xE1nh s\xE1ng v\xE0 c\xE1c v\u1EADt th\u1EC3 t\u01B0\u01A1ng t\xE1c li\xEAn quan."
+    ].join(" ");
+    config.temperature = 0.3;
+    config.responseSchema = objectSchema(
+      {
+        intent_and_identification: stringField("V\u1EADt c\u0169 c\u1EA7n thay v\xE0 v\u1EADt m\u1EDBi c\u1EA7n \u0111\u01B0a v\xE0o."),
+        analyze_original_object_and_space: stringField("V\u1ECB tr\xED, scale, perspective c\u1EE7a v\u1EADt c\u0169."),
+        analyze_reference_model: stringField("DNA c\u1EE7a v\u1EADt th\u1EC3 tham kh\u1EA3o."),
+        perspective_reprojection_logic: stringField("Logic xoay \u0111\u1ED5i perspective."),
+        physical_inheritance: stringField("Nh\u1EEFng v\u1EADt ph\u1EA9m t\u01B0\u01A1ng t\xE1c c\u1EA7n gi\u1EEF."),
+        blending_physics: stringField("Logic \xE1nh s\xE1ng v\xE0 \u0111\u1ED5 b\xF3ng."),
+        optimized_english_prompt: stringField("Prompt cu\u1ED1i c\xF9ng."),
+        negative_prompt: stringField("Nh\u1EEFng l\u1ED7i c\u1EA7n tr\xE1nh.")
+      },
+      [
+        "intent_and_identification",
+        "analyze_original_object_and_space",
+        "analyze_reference_model",
+        "perspective_reprojection_logic",
+        "physical_inheritance",
+        "blending_physics",
+        "optimized_english_prompt",
+        "negative_prompt"
+      ]
+    );
+  } else if (activeSubTabKey.includes("them doi tuong")) {
+    systemInstruction = [
+      "B\u1EA1n l\xE0 chuy\xEAn gia compositing \u0111\u1ED1i t\u01B0\u1EE3ng v\xE0o \u1EA3nh ki\u1EBFn tr\xFAc.",
+      "Ph\u1EA3i gi\u1EEF DNA c\u1EE7a \u0111\u1ED1i t\u01B0\u1EE3ng tham kh\u1EA3o nh\u01B0ng cho ph\xE9p \u0111\u1ED5i pose, scale v\xE0 v\u1ECB tr\xED cho h\u1EE3p c\u1EA3nh."
+    ].join(" ");
+    config.responseSchema = objectSchema(
+      {
+        user_intent_analysis: stringField("Ng\u01B0\u1EDDi d\xF9ng mu\u1ED1n th\xEAm g\xEC, \u1EDF \u0111\xE2u."),
+        subject_dna_extraction: stringField("DNA th\u1ECB gi\xE1c c\u1EE7a \u0111\u1ED1i t\u01B0\u1EE3ng."),
+        spatial_and_occlusion_logic: stringField("V\u1ECB tr\xED, layer tr\u01B0\u1EDBc sau, scale."),
+        pose_and_state_morphing: stringField("Logic \u0111\u1ED5i t\u01B0 th\u1EBF c\u1EE7a \u0111\u1ED1i t\u01B0\u1EE3ng."),
+        surface_contact_physics: stringField("Ti\u1EBFp x\xFAc, tr\u1ECDng l\u01B0\u1EE3ng, contact shadow."),
+        environmental_lighting_sync: stringField("\u0110\u1ED3ng b\u1ED9 \xE1nh s\xE1ng."),
+        optimized_english_prompt: stringField("Prompt cu\u1ED1i c\xF9ng."),
+        negative_prompt: stringField("Nh\u1EEFng l\u1ED7i c\u1EA7n tr\xE1nh.")
+      },
+      [
+        "user_intent_analysis",
+        "subject_dna_extraction",
+        "spatial_and_occlusion_logic",
+        "pose_and_state_morphing",
+        "surface_contact_physics",
+        "environmental_lighting_sync",
+        "optimized_english_prompt",
+        "negative_prompt"
+      ]
+    );
+    config.thinkingConfig = { thinkingLevel: "high" };
+  } else {
+    systemInstruction = [
+      "B\u1EA1n l\xE0 chuy\xEAn gia \u0111\u1ED5i v\u1EADt li\u1EC7u ki\u1EBFn tr\xFAc trong \u1EA3nh.",
+      "Ch\u1EC9 thay \u0111\u1ED5i b\u1EC1 m\u1EB7t m\u1EE5c ti\xEAu, gi\u1EEF nguy\xEAn to\xE0n b\u1ED9 n\u1ED9i th\u1EA5t v\xE0 c\u1EA5u tr\xFAc kh\xE1c."
+    ].join(" ");
+    config.responseSchema = objectSchema(
+      {
+        surface_identification: stringField("B\u1EC1 m\u1EB7t m\u1EE5c ti\xEAu c\u1EA7n \u0111\u1ED5i v\u1EADt li\u1EC7u."),
+        material_dna_extraction: stringField("DNA v\u1EADt li\u1EC7u c\u1EA7n \xE1p d\u1EE5ng."),
+        scale_and_tiling_logic: stringField("Logic scale v\xE0 seamless tiling."),
+        lighting_and_reflection_physics: stringField("\xC1nh s\xE1ng, ph\u1EA3n x\u1EA1, ph\u1EA3n chi\u1EBFu."),
+        untouchable_elements: stringField("Th\xE0nh ph\u1EA7n ph\u1EA3i gi\u1EEF nguy\xEAn."),
+        optimized_english_prompt: stringField("Prompt cu\u1ED1i c\xF9ng."),
+        negative_prompt: stringField("Nh\u1EEFng l\u1ED7i c\u1EA7n tr\xE1nh.")
+      },
+      [
+        "surface_identification",
+        "material_dna_extraction",
+        "scale_and_tiling_logic",
+        "lighting_and_reflection_physics",
+        "untouchable_elements",
+        "optimized_english_prompt",
+        "negative_prompt"
+      ]
+    );
+    config.thinkingConfig = { thinkingLevel: "high" };
+  }
+  parts.push({ text: textPrompt.trim() });
+  return {
+    contents: [{ role: "user", parts }],
+    config,
+    systemInstruction
+  };
+}
+function buildEnhancePrompt(input) {
+  const activeSubTab = String(input.activeSubTab || "");
+  const activeSubTabKey = normalizeKey(activeSubTab);
+  const customPrompt = String(input.customPrompt || "Kh\xF4ng c\xF3");
+  const contextOption = String(input.contextOption || "Kh\xF4ng c\xF3");
+  const lightingOption = String(input.lightingOption || "Kh\xF4ng c\xF3");
+  const interiorRoomType = String(input.interiorRoomType || "Kh\xF4ng c\xF3");
+  const interiorStyle = String(input.interiorStyle || "Kh\xF4ng c\xF3");
+  const interiorLighting = String(input.interiorLighting || "Kh\xF4ng c\xF3");
+  const images = input.images || [];
+  const parts = [...imageParts2(images)];
+  const textPrompt = activeSubTabKey.includes("ngoai that") ? `M\u1EE5c ti\xEAu: C\u1EA3i thi\u1EC7n ch\u1EA5t l\u01B0\u1EE3ng render ngo\u1EA1i th\u1EA5t.
+Y\xEAu c\u1EA7u b\u1ED5 sung: ${customPrompt}
+B\u1ED1i c\u1EA3nh: ${contextOption}
+\xC1nh s\xE1ng: ${lightingOption}` : `M\u1EE5c ti\xEAu: C\u1EA3i thi\u1EC7n ch\u1EA5t l\u01B0\u1EE3ng render n\u1ED9i th\u1EA5t.
+Y\xEAu c\u1EA7u b\u1ED5 sung: ${customPrompt}
+Lo\u1EA1i ph\xF2ng: ${interiorRoomType}
+Phong c\xE1ch: ${interiorStyle}
+\xC1nh s\xE1ng: ${interiorLighting}`;
+  parts.push({ text: textPrompt });
+  return {
+    contents: [{ role: "user", parts }],
+    systemInstruction: [
+      "B\u1EA1n l\xE0 chuy\xEAn gia n\xE2ng c\u1EA5p prompt render iGen.",
+      "B\u1EA3o t\u1ED3n tuy\u1EC7t \u0111\u1ED1i c\u1EA5u tr\xFAc, b\u1ED1 c\u1EE5c, g\xF3c m\xE1y v\xE0 logic h\xECnh h\u1ECDc c\u1EE7a \u1EA3nh \u0111\u1EA7u v\xE0o.",
+      "Ch\u1EC9 n\xE2ng c\u1EA5p v\u1EADt li\u1EC7u, \xE1nh s\xE1ng, kh\xF4ng kh\xED, \u0111\u1ED9 s\u1EAFc n\xE9t v\xE0 gi\xE1 tr\u1ECB tr\xECnh b\xE0y.",
+      "Tr\u1EA3 v\u1EC1 JSON ng\u1EAFn g\u1ECDn b\u1EB1ng ti\u1EBFng Vi\u1EC7t v\u1EDBi ph\xE2n t\xEDch, optimized_english_prompt v\xE0 negative_prompt."
+    ].join(" "),
+    generationConfig: {
+      temperature: 0.7,
+      responseMimeType: "application/json"
+    }
+  };
+}
+function buildUpscalePrompt(input) {
+  const images = input.images || [];
+  return {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          ...imageParts2(images),
+          { text: "Analyze this image and generate the upscaling prompt." }
+        ]
+      }
+    ],
+    systemInstruction: [
+      "You are an elite image restoration analyst for architectural imagery.",
+      "Describe exactly what exists in the blurry image and do not hallucinate new subjects or layout changes.",
+      "Return JSON with analysis, optimized upscale prompt, and negative prompt.",
+      "The optimized prompt must end with: ultra-sharp, highly detailed, 2K resolution, crystal clear, noise-free, high-fidelity restoration, crisp edges, masterpiece."
+    ].join(" "),
+    generationConfig: {
+      temperature: 0.6,
+      responseMimeType: "application/json",
+      thinkingConfig: { thinkingLevel: "medium" },
+      responseSchema: objectSchema(
+        {
+          image_content_analysis: stringField("Deep analysis of visible content."),
+          optimized_upscale_prompt: stringField("English upscale prompt."),
+          negative_prompt: stringField("Upscale artifacts to avoid.")
+        },
+        [
+          "image_content_analysis",
+          "optimized_upscale_prompt",
+          "negative_prompt"
+        ]
+      )
+    }
+  };
+}
+function buildSyncAnalyzePrompt(input) {
+  const activeSubTab = String(input.activeSubTab || "");
+  const activeSubTabKey = normalizeKey(activeSubTab);
+  const images = input.images || [];
+  if (activeSubTabKey.includes("dong bo cong trinh")) {
+    return {
+      contents: [
+        {
+          role: "user",
+          parts: [
+            ...imageParts2(images),
+            { text: "Vui l\xF2ng ph\xE2n t\xEDch kh\xF4ng gian v\xE0 t\u1EA1o 30 g\xF3c ch\u1EE5p theo c\u1EA5u tr\xFAc JSON \u0111\xE3 quy \u0111\u1ECBnh." }
+          ]
+        }
+      ],
+      systemInstruction: [
+        "B\u1EA1n l\xE0 t\u1ED5ng \u0111\u1EA1o di\u1EC5n ngh\u1EC7 thu\u1EADt v\xE0 ki\u1EBFn tr\xFAc s\u01B0 kh\xF4ng gian c\u1EE7a iGen.",
+        "H\xE3y ph\xE2n t\xEDch 1 \u1EA3nh ki\u1EBFn tr\xFAc tham kh\u1EA3o v\xE0 t\u1EA1o ch\xEDnh x\xE1c 30 g\xF3c ch\u1EE5p \u0111\u1ED3ng b\u1ED9 v\u1EDBi nhau.",
+        "T\u1EA5t c\u1EA3 \u0111\u1EA7u ra ph\u1EA3i b\u1EB1ng ti\u1EBFng Vi\u1EC7t r\xF5 r\xE0ng, nh\u1EA5t qu\xE1n, h\u1EEFu d\u1EE5ng.",
+        "Ph\u1EA3i tr\u1EA3 v\u1EC1 JSON v\u1EDBi mental_blueprint v\xE0 categories/shots."
+      ].join(" "),
+      config: {
+        temperature: 0.7,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            mental_blueprint: stringField("Ph\xE1c th\u1EA3o tinh th\u1EA7n c\u1EE7a kh\xF4ng gian."),
+            categories: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  category_name: stringField("T\xEAn nh\xF3m g\xF3c ch\u1EE5p."),
+                  shots: {
+                    type: "ARRAY",
+                    items: {
+                      type: "OBJECT",
+                      properties: {
+                        display_title_vi: stringField("Ti\xEAu \u0111\u1EC1 hi\u1EC3n th\u1ECB."),
+                        hidden_api_prompt_en: stringField("Prompt render cho shot.")
+                      },
+                      required: ["display_title_vi", "hidden_api_prompt_en"]
+                    }
+                  }
+                },
+                required: ["category_name", "shots"]
+              }
+            }
+          },
+          required: ["mental_blueprint", "categories"]
+        }
+      }
+    };
+  }
+  return {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          ...imageParts2(images),
+          {
+            text: "H\xE3y ph\xE2n t\xEDch b\u1EE9c \u1EA3nh nh\xE2n v\u1EADt n\xE0y v\xE0 \u0111\u01B0a ra c\xE1c g\u1EE3i \xFD v\u1EC1 c\xE1c g\xF3c m\xE1y v\xE0 t\u01B0 th\u1EBF kh\xE1c nhau \u0111\u1EC3 l\xE0m n\u1ED5i b\u1EADt nh\xE2n v\u1EADt."
+          }
+        ]
+      }
+    ],
+    config: {
+      responseMimeType: "application/json"
+    }
+  };
+}
+function resolvePromptTemplate(templateKey, input) {
+  const pass3Template = resolvePass3PromptTemplate(templateKey, input);
+  if (pass3Template) {
+    return pass3Template;
+  }
+  switch (templateKey) {
+    case "render_tab_prompt":
+      return buildRenderTabPrompt(input);
+    case "render_edit_prompt":
+      return buildRenderEditPrompt(input);
+    case "enhance_render_prompt":
+      return buildEnhancePrompt(input);
+    case "upscale_prompt":
+      return buildUpscalePrompt(input);
+    case "sync_analyze_prompt":
+      return buildSyncAnalyzePrompt(input);
+    case "sync_character_composite_prompt":
+      return {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              ...imageParts2(input.images || []),
+              {
+                text: `B\u1EA1n l\xE0 chuy\xEAn gia gh\xE9p nh\xE2n v\u1EADt v\xE0o b\u1ED1i c\u1EA3nh ki\u1EBFn tr\xFAc theo c\xE1ch si\xEAu th\u1EF1c.
+Nhi\u1EC7m v\u1EE5:
+- Gi\u1EEF nguy\xEAn khu\xF4n m\u1EB7t, v\xF3c d\xE1ng, qu\u1EA7n \xE1o v\xE0 nh\u1EADn di\u1EC7n c\u1EE7a ch\u1EE7 th\u1EC3 tham kh\u1EA3o.
+- N\u1EBFu y\xEAu c\u1EA7u ng\u01B0\u1EDDi d\xF9ng tr\u1ED1ng, t\u1EF1 suy lu\u1EADn v\u1ECB tr\xED v\xE0 t\u01B0 th\u1EBF ph\xF9 h\u1EE3p v\u1EDBi \u1EA3nh n\u1EC1n.
+- \u0110\u1ED3ng b\u1ED9 tuy\u1EC7t \u0111\u1ED1i \xE1nh s\xE1ng, m\xE0u m\xF4i tr\u01B0\u1EDDng, \u0111\u1ED5 b\xF3ng ti\u1EBFp x\xFAc v\xE0 ph\u1ED1i c\u1EA3nh.
+- Cho ph\xE9p vi ch\u1EC9nh r\u1EA5t nh\u1EB9 v\u1EADt th\u1EC3 n\u1EC1n n\u1EBFu c\u1EA7n \u0111\u1EC3 t\u1EA1o ti\u1EBFp x\xFAc v\u1EADt l\xFD h\u1EE3p l\xFD.
+- Kh\xF4ng \u0111\u1EC3 ch\u1EE7 th\u1EC3 b\u1ECB d\xE1n l\xEAn \u1EA3nh, l\u01A1 l\u1EEDng, sai t\u1EF7 l\u1EC7 ho\u1EB7c l\u1EC7ch h\u01B0\u1EDBng s\xE1ng.
+
+Y\xEAu c\u1EA7u ng\u01B0\u1EDDi d\xF9ng: ${String(input.userAction || "")}`
+              }
+            ]
+          }
+        ],
+        config: {
+          imageConfig: input.imageConfig
+        }
+      };
+    case "utility_layout_prompt": {
+      const toolName = String(input.toolName || "");
+      const selectedStyle = String(input.selectedStyle || "Kh\xF4ng c\xF3");
+      let systemInstruction = "";
+      let prompt;
+      if (toolName === "Presentation Board") {
+        systemInstruction = "B\u1EA1n l\xE0 chuy\xEAn gia thi\u1EBFt k\u1EBF \u0111\u1ED3 h\u1ECDa ki\u1EBFn tr\xFAc b\u1EADc th\u1EA7y. T\u1EA5t c\u1EA3 ch\u1EEF v\xE0 ch\xFA th\xEDch xu\u1EA5t hi\u1EC7n trong \u1EA3nh ph\u1EA3i b\u1EB1ng ti\u1EBFng Vi\u1EC7t r\xF5 r\xE0ng, tr\xECnh b\xE0y nh\u01B0 m\u1ED9t b\u1EA3ng thuy\u1EBFt tr\xECnh ki\u1EBFn tr\xFAc cao c\u1EA5p.";
+        prompt = `T\u1EA1o m\u1ED9t b\u1EA3ng thuy\u1EBFt tr\xECnh ki\u1EBFn tr\xFAc ho\xE0n ch\u1EC9nh theo phong c\xE1ch ${selectedStyle}. \u1EA2nh ch\xEDnh l\xE0 c\xF4ng tr\xECnh tham kh\u1EA3o, xung quanh c\xF3 c\xE1c s\u01A1 \u0111\u1ED3 ph\xE2n t\xEDch, m\u1EB7t b\u1EB1ng, chi ti\u1EBFt v\u1EADt li\u1EC7u v\xE0 ch\xFA th\xEDch ti\u1EBFng Vi\u1EC7t s\u1EAFc n\xE9t. B\u1ED1 c\u1EE5c s\u1EA1ch, c\xE2n \u0111\u1ED1i, tr\xECnh b\xE0y nh\u01B0 poster ki\u1EBFn tr\xFAc chuy\xEAn nghi\u1EC7p.`;
+      } else if (toolName === "Overall") {
+        prompt = `Bi\u1EBFn c\xF4ng tr\xECnh tham kh\u1EA3o th\xE0nh m\u1ED9t b\u1EA3ng tr\xECnh b\xE0y t\u1ED5ng th\u1EC3 landscape 16:9 theo phong c\xE1ch ${selectedStyle}. \u1EA2nh ph\u1EA3i ph\u1EE7 k\xEDn n\u1EC1n, c\xF3 ti\xEAu \u0111\u1EC1 ki\u1EBFn tr\xFAc sang tr\u1ECDng, hai inset ph\xE2n t\xEDch nh\u1ECF, b\u1ED1 c\u1EE5c editorial cao c\u1EA5p, \u0111\u1ED3ng b\u1ED9 th\u1EA9m m\u1EF9.`;
+      } else if (toolName === "Layout") {
+        prompt = `T\u1EA1o m\u1ED9t competition board landscape 16:9 cho c\xF4ng tr\xECnh tham kh\u1EA3o theo phong c\xE1ch ${selectedStyle}. Trung t\xE2m l\xE0 exploded axonometric, xung quanh c\xF3 s\u01A1 \u0111\u1ED3 massing, m\u1EB7t c\u1EAFt, context map v\xE0 c\xE1c text block ng\u1EAFn, b\u1ED1 c\u1EE5c theo l\u01B0\u1EDBi Swiss Grid nghi\xEAm ng\u1EB7t.`;
+      } else if (toolName === "Interior Moodboard") {
+        prompt = `T\u1EA1o m\u1ED9t interior moodboard landscape cao c\u1EA5p cho kh\xF4ng gian tham kh\u1EA3o theo phong c\xE1ch ${selectedStyle}. Ph\u1EA3i c\xF3 hero render, material swatches, isometric cutaway v\xE0 v\xE0i furniture cutout n\u1ED5i tr\xEAn n\u1EC1n, b\u1ED1 c\u1EE5c catalogue hi\u1EC7n \u0111\u1EA1i.`;
+      } else {
+        const projectName = String(input.projectName || "ARCHITECTURAL PRESENTATION");
+        prompt = `T\u1EA1o m\u1ED9t advanced architectural presentation board kh\u1ED5 d\u1ECDc 3:4 cho c\xF4ng tr\xECnh tham kh\u1EA3o theo phong c\xE1ch ${selectedStyle}. C\xF3 ti\xEAu \u0111\u1EC1 ${projectName}, b\u1ED1 c\u1EE5c 3 c\u1ED9t d\xE0y th\xF4ng tin, massing evolution, axonometric, n\u1ED9i th\u1EA5t, m\u1EB7t b\u1EB1ng, m\u1EB7t \u0111\u1EE9ng v\xE0 footer \u0111\u1ED3 \xE1n.`;
+      }
+      return {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              ...imageParts2(input.images || []),
+              { text: prompt }
+            ]
+          }
+        ],
+        systemInstruction: systemInstruction || void 0,
+        config: {
+          ...input.requestConfig
+        }
+      };
+    }
+    case "utility_process_prompt": {
+      const userPrompt = String(input.userPrompt || "");
+      const systemInstruction = String(input.systemInstruction || "");
+      return {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              ...imageParts2(input.images || []),
+              { text: userPrompt }
+            ]
+          }
+        ],
+        systemInstruction,
+        generationConfig: {
+          imageConfig: {
+            aspectRatio: String(input.aspectRatio || "1:1"),
+            imageSize: String(input.imageSize || "1K")
+          }
+        }
+      };
+    }
+    case "virtual_staging_prompt": {
+      const mode = String(input.mode || "virtual");
+      const roomType = String(input.roomType || "");
+      const style = String(input.style || "");
+      const requestNotes = String(input.requestNotes || "");
+      const extraPrompt = String(input.extraPrompt || "");
+      const shapesDescription = String(input.shapesDescription || "");
+      const basePrompt = mode === "virtual" ? `B\u1EA1n l\xE0 chuy\xEAn gia thi\u1EBFt k\u1EBF n\u1ED9i th\u1EA5t v\xE0 d\xE0n d\u1EF1ng kh\xF4ng gian. H\xE3y th\u1EF1c hi\u1EC7n virtual staging cho c\u0103n ph\xF2ng tr\u1ED1ng n\xE0y theo phong c\xE1ch ${style}, c\xF4ng n\u0103ng ${roomType}. B\u1ED5 sung n\u1ED9i th\u1EA5t cao c\u1EA5p, \xE1nh s\xE1ng chuy\xEAn nghi\u1EC7p v\xE0 v\u1EADt li\u1EC7u ch\xE2n th\u1EF1c, nh\u01B0ng ph\u1EA3i gi\u1EEF chu\u1EA9n h\xECnh h\u1ECDc kh\xF4ng gian g\u1ED1c.` : shapesDescription ? "B\u1EA1n l\xE0 chuy\xEAn gia c\u1EA3i t\u1EA1o n\u1ED9i th\u1EA5t ch\xEDnh x\xE1c theo v\xF9ng ch\u1ECDn. Ch\u1EC9 \u0111\u01B0\u1EE3c ch\u1EC9nh s\u1EEDa b\xEAn trong c\xE1c marker \u0111\xE3 \u0111\xE1nh d\u1EA5u, m\u1ECDi khu v\u1EF1c ngo\xE0i marker ph\u1EA3i gi\u1EEF nguy\xEAn 1:1 so v\u1EDBi \u1EA3nh g\u1ED1c." : "B\u1EA1n l\xE0 chuy\xEAn gia c\u1EA3i t\u1EA1o n\u1ED9i th\u1EA5t. H\xE3y c\u1EA3i t\u1EA1o kh\xF4ng gian theo ghi ch\xFA ng\u01B0\u1EDDi d\xF9ng nh\u01B0ng ph\u1EA3i gi\u1EEF nguy\xEAn layout, c\u1EA5u tr\xFAc ki\u1EBFn tr\xFAc v\xE0 c\xE1c \u0111\u1ED3 v\u1EADt kh\xF4ng \u0111\u01B0\u1EE3c y\xEAu c\u1EA7u thay \u0111\u1ED5i.";
+      return {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              ...imageParts2(input.images || []),
+              {
+                text: `${basePrompt}
+${shapesDescription}
+Ghi ch\xFA ng\u01B0\u1EDDi d\xF9ng: ${requestNotes || "Kh\xF4ng c\xF3"}
+Y\xEAu c\u1EA7u b\u1ED5 sung: ${extraPrompt || "Kh\xF4ng c\xF3"}`
+              }
+            ]
+          }
+        ],
+        systemInstruction: [
+          "T\u1EA5t c\u1EA3 suy lu\u1EADn ph\u1EA3i \u01B0u ti\xEAn b\u1EA3o to\xE0n ph\u1ED1i c\u1EA3nh, t\u1EF7 l\u1EC7, c\u1EA5u tr\xFAc kh\xF4ng gian v\xE0 \xE1nh s\xE1ng th\u1EF1c t\u1EBF.",
+          "N\u1EBFu l\xE0 ch\u1EC9nh s\u1EEDa ch\u1ECDn v\xF9ng, tuy\u1EC7t \u0111\u1ED1i kh\xF4ng l\xE0m thay \u0111\u1ED5i \u0111\u1ED3 v\u1EADt, c\xE2y xanh, v\u1EADt d\u1EE5ng hay chi ti\u1EBFt ngo\xE0i v\xF9ng \u0111\xE1nh d\u1EA5u.",
+          "\u0110\u1EA7u ra ph\u1EA3i l\xE0 \u1EA3nh n\u1ED9i th\u1EA5t ch\xE2n th\u1EF1c, s\u1EA1ch l\u1ED7i, kh\xF4ng m\xE9o h\xECnh, kh\xF4ng th\xEAm v\u1EADt th\u1EC3 v\xF4 l\xFD."
+        ].join(" ")
+      };
+    }
+    default:
+      throw new Error(`Unknown prompt template key: ${templateKey}`);
+  }
+}
+
+// server/controller/gemini.controller.ts
 var generateSchema = import_joi6.default.object({
   params: import_joi6.default.object({
     model: import_joi6.default.string().required().messages({
       "any.required": "T\xEAn model l\xE0 b\u1EAFt bu\u1ED9c.",
       "string.base": "T\xEAn model ph\u1EA3i l\xE0 chu\u1ED7i k\xFD t\u1EF1."
     }),
-    contents: import_joi6.default.any().required().messages({
-      "any.required": "D\u1EEF li\u1EC7u contents l\xE0 b\u1EAFt bu\u1ED9c."
-    }),
+    contents: import_joi6.default.any().optional(),
     config: import_joi6.default.object().optional(),
     generationConfig: import_joi6.default.object().optional(),
-    systemInstruction: import_joi6.default.any().optional()
-  }).required().messages({
-    "any.required": "Tham s\u1ED1 params l\xE0 b\u1EAFt bu\u1ED9c."
-  })
+    systemInstruction: import_joi6.default.any().optional(),
+    promptTemplateKey: import_joi6.default.string().optional(),
+    promptTemplateInput: import_joi6.default.object().optional()
+  }).required()
 });
 var geminiController = {
   async generate(req, res) {
@@ -2229,31 +2989,51 @@ var geminiController = {
     }
     try {
       const { params } = req.body;
+      if (!params.contents && !params.promptTemplateKey) {
+        res.status(400).json({
+          success: false,
+          message: "C\u1EA7n cung c\u1EA5p `contents` ho\u1EB7c `promptTemplateKey`."
+        });
+        return;
+      }
+      let finalParams = params;
+      if (params.promptTemplateKey) {
+        const resolved = resolvePromptTemplate(
+          params.promptTemplateKey,
+          params.promptTemplateInput || {}
+        );
+        finalParams = {
+          ...params,
+          ...resolved
+        };
+      }
       const userApiKey = req.headers["x-user-api-key"] || req.headers["X-User-Api-Key"] || req.body.userApiKey || "";
-      logger.info(`[Gemini Controller] Handling generate request for model: ${params?.model}, hasUserKey: ${!!userApiKey}`);
-      const response = await geminiService.generate(params, userApiKey);
-      return res.status(200).json({
+      logger.info(
+        `[Gemini Controller] Handling generate request for model: ${finalParams?.model}, hasUserKey: ${!!userApiKey}, template: ${params?.promptTemplateKey || "none"}`
+      );
+      const response = await geminiService.generate(finalParams, userApiKey);
+      res.status(200).json({
         success: true,
         data: response
       });
     } catch (err) {
-      const error2 = err;
-      logger.error(`[Gemini Controller] Error: ${error2.message}`);
-      const statusCode = error2.status || 500;
-      let errMsg = error2.message || "L\u1ED7i x\u1EED l\xFD y\xEAu c\u1EA7u AI.";
+      const errorObj = err;
+      logger.error(`[Gemini Controller] Error: ${errorObj.message}`);
+      const statusCode = errorObj.status || 500;
+      let errMsg = errorObj.message || "L\u1ED7i x\u1EED l\xFD y\xEAu c\u1EA7u AI.";
       if (statusCode === 403) {
-        errMsg = "D\u1EF1 \xE1n Google Cloud c\u1EE7a b\u1EA1n b\u1ECB t\u1EEB ch\u1ED1i truy c\u1EADp API Gemini. Vui l\xF2ng ki\u1EC3m tra l\u1EA1i API Key ho\u1EB7c li\xEAn h\u1EC7 h\u1ED7 tr\u1EE3.";
+        errMsg = "D\u1EF1 \xE1n Google Cloud c\u1EE7a b\u1EA1n b\u1ECB t\u1EEB ch\u1ED1i truy c\u1EADp API Gemini.";
       } else if (statusCode === 400) {
-        errMsg = "Tham s\u1ED1 y\xEAu c\u1EA7u kh\xF4ng h\u1EE3p l\u1EC7 ho\u1EB7c b\u1ECB t\u1EEB ch\u1ED1i b\u1EDFi quy t\u1EAFc an to\xE0n c\u1EE7a Google AI.";
+        errMsg = "Tham s\u1ED1 y\xEAu c\u1EA7u kh\xF4ng h\u1EE3p l\u1EC7 ho\u1EB7c b\u1ECB t\u1EEB ch\u1ED1i b\u1EDFi quy t\u1EAFc an to\xE0n.";
       } else if (statusCode === 429) {
-        errMsg = "Y\xEAu c\u1EA7u v\u01B0\u1EE3t qu\xE1 gi\u1EDBi h\u1EA1n t\u1EA7n su\u1EA5t (Rate Limit) c\u1EE7a API Key. Vui l\xF2ng th\u1EED l\u1EA1i sau.";
+        errMsg = "Y\xEAu c\u1EA7u v\u01B0\u1EE3t qu\xE1 gi\u1EDBi h\u1EA1n t\u1EA7n su\u1EA5t c\u1EE7a API Key.";
       } else if (statusCode === 503) {
-        errMsg = "D\u1ECBch v\u1EE5 AI c\u1EE7a Gemini hi\u1EC7n \u0111ang qu\xE1 t\u1EA3i ho\u1EB7c t\u1EA1m th\u1EDDi kh\xF4ng kh\u1EA3 d\u1EE5ng. Vui l\xF2ng th\u1EED l\u1EA1i sau.";
+        errMsg = "D\u1ECBch v\u1EE5 AI c\u1EE7a Gemini hi\u1EC7n \u0111ang qu\xE1 t\u1EA3i ho\u1EB7c t\u1EA1m th\u1EDDi kh\xF4ng kh\u1EA3 d\u1EE5ng.";
       }
-      return res.status(statusCode).json({
+      res.status(statusCode).json({
         success: false,
         message: errMsg,
-        details: error2.message
+        details: errorObj.message
       });
     }
   }

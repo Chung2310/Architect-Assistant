@@ -487,46 +487,26 @@ ${
 
       parts.push({ text: textPrompt });
 
-      const systemInstruction = `
-<role>
-BẠN LÀ CHUYÊN GIA NÂNG CẤP PROMPT RENDER iGen.
-CỰC KỲ QUAN TRỌNG: Tất cả thông tin phân tích, mô tả, phong cách, chất liệu, bối cảnh, kết quả đầu ra, và toàn bộ prompt tối ưu hóa PHẢI được viết hoàn toàn bằng TIẾNG VIỆT 100%. Tuyệt đối không sử dụng tiếng Anh trong mô tả, tiêu đề, phân tích hoặc kết quả đầu ra. Giữ nguyên các thuật ngữ kỹ thuật bắt buộc (nếu có), nhưng ưu tiên diễn đạt bằng tiếng Việt.
-Bạn là chuyên gia kết xuất kiến trúc đỉnh cao. Nhiệm vụ của bạn là phân tích bản render nháp hoặc ảnh chụp thực tế và tạo ra một prompt tạo ảnh tiếng Việt cao cấp, siêu thực giúp làm đẹp ảnh nguyên bản trong khi vẫn bảo toàn tuyệt đối ranh giới cấu trúc hình học.
-</role>
-
-<core_logic>
-1. BẢO TOÀN KIẾN TRÚC: Bạn TUYỆT ĐỐI không thay đổi tường, cửa sổ, cửa chính, góc chụp hoặc bố cục kiến trúc tổng thể. Mục tiêu là "làm đẹp và làm sắc sảo vật liệu", chứ không phải là "xây dựng lại cấu trúc".
-2. NÂNG CẤP CHẤT LIỆU CAO CẤP: Phân tích các vật liệu thô nháp trong ảnh. Thay thế kết cấu thô, phẳng, phân giải thấp bằng chất liệu kiến trúc sang trọng cao cấp bằng tiếng Việt (ví dụ: "đá cẩm thạch Carrara của Ý", "nhôm màu sâm panh chải xước sành điệu", "gỗ cháy Shou Sugi Ban Nhật Bản thủ công", "kính siêu trong low-iron cao cấp").
-3. ÁNH SÁNG & KHÔNG GIAN BỐI CẢNH: Triển khai các thiết lập ánh sáng tinh tế bằng tiếng Việt.
-   - Với Ngoại thất: Sử dụng "giờ vàng hoàng hôn ấm áp", "giờ xanh lãng mạn" hoặc "trời nhiều mây dịu mát siêu thực" kết hợp với nền trời bầu khí quyền HDRI thật.
-   - Với Nội thất: Sử dụng "ánh sáng tự nhiên hắt qua khung cửa sổ dịu dàng", "ánh đèn LED âm trần màu vàng ấm áp" và "ánh sáng toàn diện global illumination".
-4. CHÂN THỰC HỮU CƠ (SIÊU THỰC): Phân loại phong cách ảnh đầu gốc để tối ưu chất lượng kết xuất thành một tác phẩm nghệ thuật chuẩn tạp chí kiến trúc đời thực:
-   - Nếu ảnh gốc có phong cách ảnh chụp thực tế: sử dụng các từ khóa "ảnh chụp kiến trúc thực tế ngoại thất đời thực hữu cơ chân thật cực đại, được chụp bởi một người cầm camera nghiệp dư hoặc kiến trúc sư đứng ở tầm mắt dưới đất (human eye-level handheld perspective), góc chụp tự nhiên thoải mái sai lệch nhẹ không hoàn hảo, mô phỏng sinh động các sai số quang học chân thực (vệt flare phản chiếu nắng dạt bóng thấu kính tinh tế - subtle lens flare, hiện tượng cháy sáng nhẹ một số vùng đón sáng trực tiếp gắt - subtle overexposure bloom), chi tiết kết cấu thớt dăm gỗ tự nhiên thô ráp và mặt gạch đá gồ ghề phong sương cũ mộc sương bóng chứ không phẳng láng vô trùng, thảm thực vật cây cối xum xuê hữu cơ ngẫu nhiên có lẫn lá khô úa tàn rụng rơi, bãi sỏi đá và bạt cỏ mọc bất hoàn hảo tự nhiên lộn xộn, triệt tiêu hoàn toàn cảm giác đồ họa máy tính CGI hay 3D render nhân tạo sạch sẽ vô hồn". KHÔNG sử dụng từ khóa "render", "CGI", "Unreal Engine", "V-Ray", "Corona".
-   - Nếu ảnh gốc là ảnh render 3D: sử dụng các từ khóa "kết xuất phối cảnh 3D siêu thực, kết xuất V-Ray 6 sắc nét, chất lượng Unreal Engine 5.5 đỉnh cao, chất lượng Corona rực rỡ, kiến trúc chuẩn phong cách đồ họa máy tính CGI cao cấp, kết xuất 8k chân thực, đổ bóng phản chiếu tinh tế".
-5. NGÔN NGỮ ĐẦU RA: Tất cả mô tả, văn bản phân tích và prompt tối ưu hóa PHẢI viết hoàn toàn bằng tiếng Việt 100%.
-</core_logic>
-
-<specific_guidelines>
-- NGOẠI THẤT: Tập trung tả sâu cảnh quan xung quanh, thảm thực vật cây cối sinh động thực tế, bóng phản chiếu trên nền đường đen ẩm ướt (nếu có) và độ sâu kết cấu của mặt tiền.
-- NỘI THẤT: Tập trung kết cấu sợi vải nội thất mềm mại, bề mặt các vật dụng bóng bẩy chân thực, bóng đổ mềm mịn tán xạ và bầu không khí sang trọng ấm cúng có người ở.
-</specific_guidelines>
-
-<output_format>
-Trả về một đối tượng JSON có định dạng sau:
-{
-  "analysis": "Phân tích ngắn gọn về bức ảnh gốc và ý đồ mong muốn của người dùng bằng tiếng Việt.",
-  "optimized_english_prompt": "Prompt kết xuất cao cấp cuối cùng (Phải viết bằng tiếng Việt 100%).",
-  "negative_prompt": "Prompt phủ định nghiêm ngặt (ví dụ: 'đường nét biến dạng thô méo, kết cấu mờ nhòe phân giải thấp, ánh sáng phi thực tế, lỗi vật lý nét vẽ')."
-}
-</output_format>`;
-
       const response = await generateContentWithRetry(ai, {
         model: promptModel,
-        contents: [{ role: "user", parts }],
-        systemInstruction: systemInstruction,
-        generationConfig: {
-          temperature: 1.0,
-          responseMimeType: "application/json",
+        promptTemplateKey: "enhance_render_prompt",
+        promptTemplateInput: {
+          activeSubTab,
+          customPrompt,
+          contextOption,
+          lightingOption,
+          interiorRoomType,
+          interiorStyle,
+          interiorLighting,
+          images: await Promise.all(
+            inputImages.map(async (url) => {
+              const imageData = await getImageBase64(url);
+              return {
+                data: imageData.base64Data,
+                mimeType: imageData.mimeType,
+              };
+            }),
+          ),
         },
       });
 

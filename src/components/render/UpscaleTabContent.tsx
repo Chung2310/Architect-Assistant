@@ -3,7 +3,6 @@ import { Icon } from "../Icon";
 import { useAuth } from "../../context/useAuth";
 import { apiClient } from "../../services/apiClient";
 import { toast } from "sonner";
-import { Type } from "@google/genai";
 import { convertPdfToImage } from "../../lib/pdfUtils";
 import { ImageLibraryModal } from "./ImageLibraryModal";
 import { uploadMedia, getAIClient, checkUserCredits, generateContentWithRetry, getImageBase64, cacheImage, scaleToResolution } from "../../lib/renderUtils";
@@ -249,83 +248,18 @@ export const UpscaleTabContent: React.FC = () => {
 
       const promptAi = await getAIClient("gemini-2.5-flash");
 
-      const generationConfigText = {
-        temperature: 1.0,
-        responseMimeType: "application/json",
-        thinkingConfig: {
-          thinkingLevel: "medium",
-        },
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            image_content_analysis: {
-              type: Type.STRING,
-              description:
-                "Deeply analyze the low-resolution input image. Identify every visible subject, color, lighting, and layout with 100% accuracy.",
-            },
-            optimized_upscale_prompt: {
-              type: Type.STRING,
-              description:
-                "The English prompt to reconstruct the image. Must describe the exact content and append 2K high-fidelity enhancement keywords.",
-            },
-            negative_prompt: {
-              type: Type.STRING,
-              description:
-                "Strict negative prompt avoiding blur, noise, pixelation, and hallucination.",
-            },
-          },
-          required: [
-            "image_content_analysis",
-            "optimized_upscale_prompt",
-            "negative_prompt",
-          ],
-        },
-      };
-
-      const systemInstructionText = `<role>
-You are the "iGen Image Enhancer", an elite spatial and visual analyzer. Your objective is to examine a low-resolution, blurry, or pixelated Reference Image and generate a precise reconstruction prompt for \`gemini-3.1-flash-image\` to upscale it to crisp 2K resolution.
-</role>
-
-<core_directives>
-1. ZERO HALLUCINATION: You MUST describe exactly what is in the blurry image. Do NOT invent new subjects, change the time of day, or alter the structural layout. Your goal is restoration, not alteration.
-2. UPSCALE ENHANCEMENT KEYWORDS: After accurately describing the image's content, you MUST append these exact enhancement keywords to the \`optimized_upscale_prompt\`: "ultra-sharp, highly detailed, 2K resolution, crystal clear, noise-free, high-fidelity restoration, crisp edges, masterpiece".
-</core_directives>
-
-<content_translation_protocol>
-- If the image contains text, logos, or signs that are readable, preserve them exactly in double quotes (e.g., a sign saying "Cà Phê").
-- Translate all visual descriptions into professional, descriptive English to maximize the rendering engine's output quality.
-</content_translation_protocol>
-
-<negative_prompting_rules>
-For the \`negative_prompt\` field, strictly list upscale-related artifacts:
-"blurry, pixelated, jpeg artifacts, noise, low resolution, out of focus, structural changes, mutated subjects, hallucinated details, distorted geometry, chromatic aberration".
-</negative_prompting_rules>
-
-<fallback_protocol>
-If the image is too blurry to identify specific details, describe the general shapes, colors, and lighting composition, and emphasize "ultra-sharp abstract/general enhancement".
-</fallback_protocol>`;
-
       console.log("Analyzing image to generate upscale prompt...");
       const textResponse = await generateContentWithRetry(promptAi, {
         model: "gemini-2.5-flash",
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                inlineData: {
-                  data: base64Data,
-                  mimeType: mimeType,
-                },
-              },
-              {
-                text: "Analyze this image and generate the upscaling prompt.",
-              },
-            ],
-          },
-        ],
-        systemInstruction: systemInstructionText,
-        generationConfig: generationConfigText,
+        promptTemplateKey: "upscale_prompt",
+        promptTemplateInput: {
+          images: [
+            {
+              data: base64Data,
+              mimeType: mimeType,
+            },
+          ],
+        },
       });
 
       const textResult =

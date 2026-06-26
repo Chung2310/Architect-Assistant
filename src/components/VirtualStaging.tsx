@@ -15,6 +15,191 @@ interface Shape {
   label?: string;
 }
 
+type ComparisonOverlayProps = {
+  isPanning: boolean;
+  sliderPos: number;
+  zoomScale: number;
+  onContinueEdit: () => void;
+  onDownload: () => void;
+};
+
+const ComparisonOverlay: React.FC<ComparisonOverlayProps> = ({
+  isPanning,
+  sliderPos,
+  zoomScale,
+  onContinueEdit,
+  onDownload,
+}) => (
+  <>
+    <div
+      className="absolute bottom-24 left-1/2 -translate-x-1/2 z-40 opacity-0 group-hover/slider:opacity-100 transition-opacity bg-white/90 backdrop-blur-md px-3 py-1 rounded-full border border-[#FF5722]/20 shadow-xl pointer-events-none whitespace-nowrap"
+      style={{
+        left: `${sliderPos}%`,
+        display: isPanning ? 'none' : 'block',
+      }}
+    >
+      <span className="text-[#FF5722] text-[9px] font-black uppercase tracking-widest italic">
+        {CLEAN_UI_TEXT.compare}
+      </span>
+    </div>
+
+    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-6 z-40 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0">
+      <div className="bg-[#2C2C2C]/90 backdrop-blur-md px-6 py-2.5 rounded-2xl flex items-center gap-6 border border-white/5 shadow-2xl">
+        <div className="flex items-center gap-2">
+          <span className="bg-[#444444] text-white text-[9px] px-1.5 py-0.5 rounded font-black uppercase">Cuộn</span>
+          <span className="text-white/60 text-[10px] font-bold uppercase tracking-widest whitespace-nowrap">{CLEAN_UI_TEXT.zoom}</span>
+        </div>
+        <div className="w-px h-4 bg-white/10" />
+        <div className="flex items-center gap-2">
+          <span className="bg-[#444444] text-white text-[9px] px-1.5 py-0.5 rounded font-black uppercase">{CLEAN_UI_TEXT.drag}</span>
+          <span className="text-white/60 text-[10px] font-bold uppercase tracking-widest whitespace-nowrap">{CLEAN_UI_TEXT.move}</span>
+        </div>
+        <div className="w-px h-4 bg-white/10" />
+        <span className="text-[#FF5722] text-[10px] font-black tracking-widest">{Math.round(zoomScale * 100)}%</span>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onContinueEdit}
+          className="bg-[#FF5722] hover:bg-[#F4511E] text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl hover:-translate-y-1 active:scale-95 shadow-[#FF5722]/20 whitespace-nowrap"
+        >
+          {CLEAN_UI_TEXT.continueEdit}
+        </button>
+        <button
+          onClick={onDownload}
+          className="bg-black text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl hover:-translate-y-1 active:scale-95 border border-white/10 whitespace-nowrap"
+        >
+          {CLEAN_UI_TEXT.downloadResult}
+        </button>
+      </div>
+    </div>
+  </>
+);
+
+type HistoryPanelProps = {
+  generatedResults: string[];
+  uploadedImage: string | null;
+  onClear: () => void;
+  onPreview: (img: string) => void;
+  onDownload: (img: string, index: number) => void;
+  onDelete: (img: string, index: number) => void;
+};
+
+const HistoryPanel: React.FC<HistoryPanelProps> = ({
+  generatedResults,
+  uploadedImage,
+  onClear,
+  onPreview,
+  onDownload,
+  onDelete,
+}) => (
+  <div className="bg-surface-container-lowest rounded-3xl border border-outline-variant/20 p-8 shadow-sm flex flex-col">
+    <div className="flex items-center justify-between mb-6">
+      <h3 className="text-on-surface font-bold text-base">{CLEAN_UI_TEXT.history}</h3>
+      <button
+        onClick={onClear}
+        className="flex items-center gap-1.5 text-error text-xs font-bold hover:bg-error/5 px-3 py-1.5 rounded-lg transition-colors group"
+      >
+        <Icon name="delete" className="text-[18px] group-hover:scale-110 transition-transform" />
+        {CLEAN_UI_TEXT.clearAll}
+      </button>
+    </div>
+
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+      {generatedResults.slice(0, 20).map((img, i) => (
+        <div
+          key={i}
+          onClick={() => onPreview(img)}
+          className={`aspect-square rounded-2xl overflow-hidden border group relative cursor-pointer shadow-sm hover:shadow-md transition-all ${uploadedImage === img ? 'border-[#00BCD4] border-2 scale-[1.02]' : 'border-outline-variant/20'}`}
+        >
+          <img
+            src={img}
+            alt={`Result ${i}`}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+            referrerPolicy="no-referrer"
+          />
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onPreview(img);
+              }}
+              className="w-9 h-9 bg-white rounded-full flex items-center justify-center text-on-surface hover:bg-primary hover:text-white transition-all shadow-lg"
+            >
+              <Icon name="visibility" className="text-[20px]" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDownload(img, i);
+              }}
+              className="w-9 h-9 bg-white rounded-full flex items-center justify-center text-on-surface hover:bg-primary hover:text-white transition-all shadow-lg"
+            >
+              <Icon name="download" className="text-[20px]" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(img, i);
+              }}
+              className="w-9 h-9 bg-white rounded-full flex items-center justify-center text-error hover:bg-error hover:text-white transition-all shadow-lg"
+            >
+              <Icon name="delete" className="text-[20px]" />
+            </button>
+          </div>
+        </div>
+      ))}
+      {generatedResults.length === 0 && [1, 2, 3, 4, 5].map(i => (
+        <div key={i} className="aspect-square rounded-2xl bg-surface-container-low/30 border border-outline-variant/10 flex items-center justify-center">
+          <Icon name="image_not_supported" className="text-2xl text-slate-300" />
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const CLEAN_CATEGORY_LABELS = [
+  'SOFA', 'BÀN TRÀ', 'KỆ TV', 'KỆ TRANG TRÍ', 'TRANH DECOR', 'THẢM TRẢI SÀN',
+  'ĐÈN CHÙM', 'ĐÈN SÀN', 'CÂY CẢNH', 'RÈM CỬA', 'DECOR TƯỜNG', 'LOA/ÂM THANH',
+  'ĐỒNG HỒ TREO TƯỜNG', 'TƯỢNG DECOR', 'CỬA SỔ', 'CỬA RA VÀO',
+];
+
+const CLEAN_UI_TEXT = {
+  subtitle: 'Thiết lập tham số cho bản dựng AI',
+  uploadHint: 'Kéo hoặc thả ảnh tham khảo',
+  notesTitle: 'Ghi chú yêu cầu',
+  notesPlaceholder:
+    'ví dụ: thêm nội thất vào phòng theo note trên hình ảnh, phòng ngủ thực tế như ảnh chụp tạp chí nội thất...',
+  optimizeTitle: '4. Tối ưu prompt và thông số',
+  optimizeAction: 'Phân tích và hoàn thiện prompt',
+  finalPromptLabel: 'Prompt tạo ảnh hoàn chỉnh:',
+  finalPromptPlaceholder:
+    'Ảnh chụp thực tế công trình, giữ chính xác góc chụp 100% như ảnh đưa vào...',
+  resolution: 'Độ phân giải',
+  imageCount: 'Số lượng ảnh',
+  aspectRatio: 'Tỷ lệ khung hình',
+  auto: 'Tự động',
+  processing: 'Đang xử lý...',
+  generate: 'Tạo Ảnh Thực Tế',
+  uploadTitle: 'Tải lên hình ảnh kiến trúc',
+  uploadDescription:
+    'Kéo thả hoặc chọn ảnh hiện trạng phòng trống để AI tiến hành dàn dựng nội thất ảo.',
+  chooseImage: 'Chọn ảnh từ máy tính',
+  formatSupport: 'Định dạng hỗ trợ: JPG, PNG, WEBP',
+  deleteImage: 'Xóa ảnh',
+  notesAndDraw: 'Ghi chú & Vẽ',
+  result: 'Kết quả',
+  replaceImage: 'Thay ảnh khác',
+  compare: 'Kéo để so sánh',
+  zoom: 'Phóng to',
+  drag: 'Kéo',
+  move: 'Di chuyển',
+  continueEdit: 'Cải tạo tiếp từ đây',
+  downloadResult: 'Tải ảnh kết quả',
+  history: 'Lịch Sử Sáng Tạo',
+  clearAll: 'Xóa Tất Cả',
+};
+
 
 
 export const VirtualStaging: React.FC = () => {
@@ -287,7 +472,7 @@ export const VirtualStaging: React.FC = () => {
     }
   };
 
-  const categories = [
+  const _categories = [
     'SOFA', 'BÀN TRÀ', 'KỆ TV', 'KỆ TRANG TRÍ', 'TRANH DECOR', 'THẢM TRẢI SÀN', 
     'ĐÈN CHÙM', 'ĐÈN SÀN', 'CÂY CẢNH', 'RÈM CỬA', 'DECOR TƯỜNG', 'LOA/ÂM THANH', 
     'ĐỒNG HỒ TREO TƯỜNG', 'TƯỢNG DECOR', 'CỬA SỔ', 'CỬA RA VÀO'
@@ -299,7 +484,7 @@ export const VirtualStaging: React.FC = () => {
 
   const handleGenerateContent = async () => {
     if (!uploadedImage) {
-      alert("Vui lòng tải lên ảnh trước khi tạo!");
+      alert("Vui lòng tải ảnh lên trước khi tạo.");
       return;
     }
 
@@ -322,22 +507,15 @@ export const VirtualStaging: React.FC = () => {
       const ai = await getAIClient(selectedModel);
       
       const shapesDescription = shapes.length > 0 
-        ? `\nMARKERS: ${shapes.map((s, i) => `[Target ${i+1}: ${s.label} at polygon coordinates ${JSON.stringify(s.points)}]`).join(', ')}.\nCRITICAL ACTION: Focus editing EXCLUSIVELY inside these markers. The rest of the image MUST be a perfect 1:1 match with the source. DO NOT delete, move, or change any furniture, plants, or details outside these polygons.`
+        ? `MARKER: ${shapes.map((s, i) => `[Vùng ${i + 1}: ${s.label} tại toạ độ ${JSON.stringify(s.points)}]`).join(', ')}. Chỉ chỉnh sửa trong các vùng này, mọi khu vực khác phải giữ nguyên như ảnh gốc.`
         : '';
 
-      const basePrompt = type === 'virtual' 
-        ? `You are an expert interior designer. Perform Virtual Staging on this empty room. Add high-quality furniture, professional lighting, and realistic textures to create a photorealistic ${style} ${roomType}.`
-        : shapes.length > 0
-          ? `You are an expert interior designer performing PRECISION SELECTIVE EDITING. Modify ONLY the items indicated in the markers. You MUST PRESERVE all surrounding furniture (like beds, sofas, tables), plants, decorations, and lighting exactly as they appear in original to maintain continuity. Non-annotated regions MUST remain identical to source.`
-          : `You are an expert interior designer performing room RENOVATION. Modify the space based on user notes while PRESERVING the existing layout and all furniture or objects not specifically mentioned in notes. Do NOT remove essential furniture (like beds) unless explicitly requested. Maintain strict consistency with architectural and design details of the source.`;
-
-      const parts: Record<string, unknown>[] = [
-        { inlineData: { data: (originalImage || uploadedImage || '').split(',')[1], mimeType: 'image/jpeg' } },
-        { text: `${basePrompt}${shapesDescription}\nUser notes: ${requestNotes}\nExtra instructions: ${prompt}` }
+      const promptImages: Array<{ data: string; mimeType: string }> = [
+        { data: (originalImage || uploadedImage || '').split(',')[1], mimeType: 'image/jpeg' }
       ];
 
       if (referenceImage) {
-        parts.push({ inlineData: { data: referenceImage.split(',')[1], mimeType: 'image/jpeg' } });
+        promptImages.push({ data: referenceImage.split(',')[1], mimeType: 'image/jpeg' });
       }
 
       const newResults: string[] = [];
@@ -346,7 +524,16 @@ export const VirtualStaging: React.FC = () => {
       for (let i = 0; i < numImages; i++) {
         const response = await generateContentWithRetry(ai, {
           model: selectedModel,
-          contents: { parts },
+          promptTemplateKey: 'virtual_staging_prompt',
+          promptTemplateInput: {
+            mode: type,
+            roomType,
+            style,
+            requestNotes,
+            extraPrompt: prompt,
+            shapesDescription,
+            images: promptImages
+          },
           config: {
             imageConfig: {
               aspectRatio: aspectRatio === 'Tự động' ? detectedAspectRatio :
@@ -393,7 +580,7 @@ export const VirtualStaging: React.FC = () => {
 
     } catch (error) {
       console.error("Generation failed:", error);
-      alert("Đã có lỗi xảy ra trong quá trình tạo ảnh. Vui lòng kiểm tra API Key và thử lại.");
+      alert("Đã có lỗi xảy ra trong quá trình tạo ảnh. Vui lòng kiểm tra API key và thử lại.");
     } finally {
       setIsGenerating(false);
       setGenerationProgress(0);
@@ -413,6 +600,45 @@ export const VirtualStaging: React.FC = () => {
     { id: 'mid-century', name: 'Mid-Century Modern' },
   ];
 
+  const handlePreviewHistory = (img: string) => {
+    setUploadedImage(img);
+    setSliderPos(50);
+    setViewMode('result');
+  };
+
+  const handleDownloadHistory = (img: string, index: number) => {
+    const link = document.createElement('a');
+    link.href = img;
+    link.download = `igen3-staging-result-${index}.png`;
+    link.click();
+  };
+
+  const handleDeleteHistory = (img: string, index: number) => {
+    setGeneratedResults(prev => prev.filter((_, itemIndex) => itemIndex !== index));
+    if (uploadedImage === img) {
+      setUploadedImage(null);
+      setViewMode('edit');
+    }
+  };
+
+  const handleContinueEdit = () => {
+    if (uploadedImage) {
+      setOriginalImage(uploadedImage);
+      setViewMode('edit');
+      setShapes([]);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleDownloadCurrentResult = () => {
+    if (uploadedImage) {
+      const link = document.createElement('a');
+      link.href = uploadedImage;
+      link.download = `igen3-staging-result-${Date.now()}.png`;
+      link.click();
+    }
+  };
+
   return (
     <div className="h-full flex overflow-hidden bg-surface">
       {/* Left Panel: Settings */}
@@ -420,7 +646,7 @@ export const VirtualStaging: React.FC = () => {
         <div className="p-6 space-y-6">
           <div>
             <h2 className="text-on-surface font-headline font-semibold text-lg mb-1">Virtual Staging</h2>
-            <p className="text-on-surface-variant text-sm font-body">Thiết lập tham số cho bản vẽ AI</p>
+            <p className="text-on-surface-variant text-sm font-body">{CLEAN_UI_TEXT.subtitle}</p>
           </div>
           {/* Input Group 1: Loại hình */}
           <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-5 shadow-sm space-y-3">
@@ -537,7 +763,7 @@ export const VirtualStaging: React.FC = () => {
               ) : (
                 <div className="text-center group-hover:scale-105 transition-transform">
                   <Icon name="cloud_upload" className="text-3xl text-[#00BCD4] mb-2" />
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Kéo hoặc Thả ảnh tham khảo</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{CLEAN_UI_TEXT.uploadHint}</p>
                   <p className="text-[8px] text-slate-400/60 font-medium">JPG, PNG, WEBP</p>
                 </div>
               )}
@@ -546,19 +772,19 @@ export const VirtualStaging: React.FC = () => {
 
           {/* New Section: Ghi Chú Yêu Cầu */}
           <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-5 shadow-sm space-y-3">
-            <h3 className="text-on-surface font-extrabold text-sm mb-2">Ghi chú yêu cầu</h3>
+            <h3 className="text-on-surface font-extrabold text-sm mb-2">{CLEAN_UI_TEXT.notesTitle}</h3>
             <textarea 
               value={requestNotes}
               onChange={(e) => setRequestNotes(e.target.value)}
               className="w-full bg-surface-container-low border-none outline-none rounded-2xl p-4 text-xs text-on-surface placeholder:text-slate-400 h-28 resize-none font-medium"
-              placeholder="ví dụ: thêm nội thất vào phòng theo note trên hình ảnh. phòng ngủ thực tế như ảnh chụp tạp chí nội thất..."
+              placeholder={CLEAN_UI_TEXT.notesPlaceholder}
             />
           </div>
 
           {/* 4. Tối ưu Prompt và Thông số */}
           <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-6 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-on-surface">4. Tối ưu Prompt và Thông số</h3>
+              <h3 className="text-sm font-bold text-on-surface">{CLEAN_UI_TEXT.optimizeTitle}</h3>
               <div className="relative">
                 <select 
                   value={aiEngine}
@@ -574,14 +800,14 @@ export const VirtualStaging: React.FC = () => {
 
             <button className="w-full bg-[#00BCD4] text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-sm hover:opacity-90 transition-all active:scale-[0.98]">
               <Icon name="auto_awesome" className="text-lg" />
-              <span>Phân tích và hoàn thiện prompt</span>
+              <span>{CLEAN_UI_TEXT.optimizeAction}</span>
             </button>
 
             <div className="space-y-2">
-              <h3 className="text-xs font-extrabold text-on-surface">Prompt tạo ảnh hoàn chỉnh:</h3>
+              <h3 className="text-xs font-extrabold text-on-surface">{CLEAN_UI_TEXT.finalPromptLabel}</h3>
               <textarea 
                 className="w-full bg-surface-container-low/50 border border-outline-variant/20 rounded-xl p-3 text-xs text-on-surface placeholder:text-on-surface-variant/40 h-24 resize-none outline-none focus:border-[#00BCD4] transition-all font-medium"
-                placeholder="Ảnh chụp thực tế công trình, giữ chính xác góc chụp 100% như ảnh đưa vào..."
+                placeholder={CLEAN_UI_TEXT.finalPromptPlaceholder}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
               />
@@ -619,7 +845,7 @@ export const VirtualStaging: React.FC = () => {
                 </div>
               </div>
               <div className="space-y-2">
-                <h3 className="text-[11px] font-extrabold text-on-surface">Độ phân giải</h3>
+                <h3 className="text-[11px] font-extrabold text-on-surface">{CLEAN_UI_TEXT.resolution}</h3>
                 <div className="relative">
                   <select 
                     value={resolution}
@@ -636,7 +862,7 @@ export const VirtualStaging: React.FC = () => {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <h3 className="text-[11px] font-extrabold text-on-surface">Số lượng ảnh</h3>
+                <h3 className="text-[11px] font-extrabold text-on-surface">{CLEAN_UI_TEXT.imageCount}</h3>
                 <div className="flex bg-surface-container-low rounded-lg p-1">
                   {[1, 2, 4].map(n => (
                     <button 
@@ -650,14 +876,14 @@ export const VirtualStaging: React.FC = () => {
                 </div>
               </div>
               <div className="space-y-2">
-                <h3 className="text-[11px] font-extrabold text-on-surface">Tỷ lệ khung hình</h3>
+                <h3 className="text-[11px] font-extrabold text-on-surface">{CLEAN_UI_TEXT.aspectRatio}</h3>
                 <div className="relative">
                   <select 
                     value={aspectRatio}
                     onChange={(e) => setAspectRatio(e.target.value)}
                     className="w-full bg-surface-container-low border border-outline-variant/20 rounded-lg p-2 text-[11px] font-bold text-on-surface outline-none appearance-none cursor-pointer pr-8 overflow-hidden text-ellipsis"
                   >
-                    <option>Tự động</option>
+                    <option>{CLEAN_UI_TEXT.auto}</option>
                     <option>1:1 Square</option>
                     <option>16:9 Landscape</option>
                     <option>9:16 Portrait</option>
@@ -679,12 +905,12 @@ export const VirtualStaging: React.FC = () => {
               {isGenerating ? (
                 <>
                   <Icon name="hourglass_empty" className="text-xl animate-spin" />
-                  Đang xử lý...
+                  {CLEAN_UI_TEXT.processing}
                 </>
               ) : (
                 <>
                   <Icon name="auto_awesome" className="text-xl" />
-                  Tạo Ảnh Thực Tế
+                  {CLEAN_UI_TEXT.generate}
                 </>
               )}
             </button>
@@ -715,14 +941,14 @@ export const VirtualStaging: React.FC = () => {
                   <Icon name="upload_file" className="text-4xl text-slate-400" />
                 </div>
                 <div>
-                  <h3 className="text-on-surface font-bold text-xl">Tải lên hình ảnh kiến trúc</h3>
-                  <p className="text-on-surface-variant text-sm mt-2 leading-relaxed">Kéo thả hoặc chọn ảnh hiện trạng phòng trống để AI tiến hành dàn dựng nội thất ảo.</p>
+                  <h3 className="text-on-surface font-bold text-xl">{CLEAN_UI_TEXT.uploadTitle}</h3>
+                  <p className="text-on-surface-variant text-sm mt-2 leading-relaxed">{CLEAN_UI_TEXT.uploadDescription}</p>
                 </div>
                 <button className="inline-flex items-center gap-2 bg-white ring-1 ring-outline-variant/40 px-6 py-3 rounded-full text-on-surface font-medium hover:bg-surface-container-low transition-all">
                   <Icon name="add_photo_alternate" className="text-xl" />
-                  Chọn ảnh từ máy tính
+                  {CLEAN_UI_TEXT.chooseImage}
                 </button>
-                <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Định dạng hỗ trợ: JPG, PNG, WEBP</p>
+                <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">{CLEAN_UI_TEXT.formatSupport}</p>
               </div>
             </div>
           ) : (
@@ -734,7 +960,7 @@ export const VirtualStaging: React.FC = () => {
                   className="flex items-center gap-2 px-4 py-2 rounded-lg bg-error/10 text-error text-[10px] font-bold uppercase tracking-wider hover:bg-error/20 transition-colors"
                 >
                   <Icon name="delete" className="text-sm" />
-                  Xóa ảnh
+                  {CLEAN_UI_TEXT.deleteImage}
                 </button>
 
                 <div className="flex bg-slate-200/50 p-1 rounded-xl border border-outline-variant/10">
@@ -744,7 +970,7 @@ export const VirtualStaging: React.FC = () => {
                       viewMode === 'edit' ? 'bg-[#00BCD4] text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'
                     }`}
                   >
-                    Ghi chú & Vẽ
+                    {CLEAN_UI_TEXT.notesAndDraw}
                   </button>
                   <button 
                     onClick={() => setViewMode('result')}
@@ -752,7 +978,7 @@ export const VirtualStaging: React.FC = () => {
                       viewMode === 'result' ? 'bg-[#00BCD4] text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'
                     }`}
                   >
-                    Kết quả
+                    {CLEAN_UI_TEXT.result}
                   </button>
                 </div>
 
@@ -761,7 +987,7 @@ export const VirtualStaging: React.FC = () => {
                   className="flex items-center gap-2 px-6 py-2 rounded-lg bg-[#00BCD4] text-white text-[10px] font-bold uppercase tracking-wider hover:bg-[#00ACC1] transition-all shadow-lg shadow-[#00BCD4]/20"
                 >
                   <Icon name="upload" className="text-sm" />
-                  Thay ảnh khác
+                  {CLEAN_UI_TEXT.replaceImage}
                 </button>
               </div>
 
@@ -829,7 +1055,7 @@ export const VirtualStaging: React.FC = () => {
 
                   {/* Categories Scrollable */}
                   <div className="flex-1 flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-                    {categories.map(cat => (
+                    {CLEAN_CATEGORY_LABELS.map(cat => (
                       <button
                         key={cat}
                         onClick={() => setActiveCategory(cat)}
@@ -1220,9 +1446,17 @@ export const VirtualStaging: React.FC = () => {
                             </div>
                           </div>
 
+                          <ComparisonOverlay
+                            isPanning={isPanning}
+                            sliderPos={sliderPos}
+                            zoomScale={zoomScale}
+                            onContinueEdit={handleContinueEdit}
+                            onDownload={handleDownloadCurrentResult}
+                          />
+
                           {/* Slider Tooltip (Fixed) */}
                           <div 
-                            className="absolute bottom-24 left-1/2 -translate-x-1/2 z-40 opacity-0 group-hover/slider:opacity-100 transition-opacity bg-white/90 backdrop-blur-md px-3 py-1 rounded-full border border-[#FF5722]/20 shadow-xl pointer-events-none whitespace-nowrap"
+                            className="hidden absolute bottom-24 left-1/2 -translate-x-1/2 z-40 opacity-0 group-hover/slider:opacity-100 transition-opacity bg-white/90 backdrop-blur-md px-3 py-1 rounded-full border border-[#FF5722]/20 shadow-xl pointer-events-none whitespace-nowrap"
                             style={{ 
                               left: `${sliderPos}%`,
                               display: isPanning ? 'none' : 'block'
@@ -1232,7 +1466,7 @@ export const VirtualStaging: React.FC = () => {
                           </div>
 
                           {/* Bottom Action Overlays */}
-                          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-6 z-40 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0">
+                          <div className="hidden absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-6 z-40 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0">
                             {/* Help / Status Pill */}
                             <div className="bg-[#2C2C2C]/90 backdrop-blur-md px-6 py-2.5 rounded-2xl flex items-center gap-6 border border-white/5 shadow-2xl">
                               <div className="flex items-center gap-2">
@@ -1297,8 +1531,17 @@ export const VirtualStaging: React.FC = () => {
           )}
         </div>
 
+        <HistoryPanel
+          generatedResults={generatedResults}
+          uploadedImage={uploadedImage}
+          onClear={() => setGeneratedResults([])}
+          onPreview={handlePreviewHistory}
+          onDownload={handleDownloadHistory}
+          onDelete={handleDeleteHistory}
+        />
+
         {/* Bottom Card: History Area */}
-        <div className="bg-surface-container-lowest rounded-3xl border border-outline-variant/20 p-8 shadow-sm flex flex-col">
+        <div className="hidden bg-surface-container-lowest rounded-3xl border border-outline-variant/20 p-8 shadow-sm flex-col">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-on-surface font-bold text-base">Lịch Sử Sáng Tạo</h3>
             <button 

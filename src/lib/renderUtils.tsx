@@ -186,6 +186,29 @@ export const generateContentWithRetry = async (
   delay = 2000,
   timeoutMs = 180000,
 ) => {
+  const describeContents = (contents: unknown) => {
+    if (typeof contents === "string") return `string:${contents.slice(0, 120)}`;
+    if (!Array.isArray(contents)) return "non-array";
+
+    return contents
+      .map((content, index) => {
+        if (!content || typeof content !== "object" || !("parts" in content)) {
+          return `item${index}:no-parts`;
+        }
+
+        const parts = (content as { parts?: Array<Record<string, unknown>> }).parts || [];
+        const partSummary = parts.map((part) => {
+          if (typeof part?.text === "string") return "text";
+          if (part?.inlineData) return "inlineData";
+          if (part?.fileData) return "fileData";
+          return "other";
+        });
+
+        return `item${index}:${partSummary.join(",")}`;
+      })
+      .join(" | ");
+  };
+
   try {
     const res = await apiClient.get<ApiResponse<{ credits?: number }>>("/api/v1/auth/me");
     if (res.success && res.data) {
@@ -222,6 +245,8 @@ export const generateContentWithRetry = async (
         systemInstruction,
         generationConfig,
         config,
+        promptTemplateKey,
+        promptTemplateInput,
         ...rest
       } = params;
       const combinedConfig = {
@@ -233,6 +258,8 @@ export const generateContentWithRetry = async (
       const callParams = {
         model,
         contents,
+        promptTemplateKey,
+        promptTemplateInput,
         config: combinedConfig,
       } as Record<string, unknown>;
 
@@ -273,28 +300,19 @@ export const generateContentWithRetry = async (
 
       const isImagenMode = modelName.startsWith("imagen-") || modelName === "nano-banana-2" || modelName === "gemini-3.1-flash-image-preview" || modelName === "igen-image-flash";
       if (isImagenMode) {
-        let prompt = "";
-        if (Array.isArray(callParams.contents)) {
-          const allParts = callParams.contents.flatMap(
-            (c: { parts?: unknown[] }) => c.parts || [],
-          );
-          const promptPart = (allParts as Array<{ text?: string }>).find((p) => p?.text);
-          prompt = promptPart ? (promptPart.text as string) : "";
-        } else if (callParams.contents && typeof callParams.contents === "object" && "parts" in callParams.contents) {
-          const contentsObj = callParams.contents as { parts?: Array<{ text?: string }> };
-          const promptPart = contentsObj.parts?.find((p) => p.text);
-          prompt = promptPart ? (promptPart.text as string) : "";
-        } else {
-          prompt =
-            typeof callParams.contents === "string" ? callParams.contents : "";
-        }
-
         const imageConfig = (callParams.config as { imageConfig?: { aspectRatio?: string; imageSize?: string } })?.imageConfig || {};
+        console.info("[AI Request] Provider route: backend Gemini native image", {
+          model: modelName,
+          hasSystemInstruction: !!systemInstruction,
+          contents: describeContents(callParams.contents),
+          aspectRatio: imageConfig.aspectRatio || "1:1",
+        });
 
         const backendRes = await apiClient.post<ApiResponse<AIResponse>>("/api/v1/gemini/generate", {
           params: {
             model: modelName,
-            contents: [{ parts: [{ text: prompt }] }],
+            contents: callParams.contents,
+            systemInstruction,
             config: {
               imageConfig: {
                 aspectRatio: imageConfig.aspectRatio || "1:1",
@@ -332,6 +350,11 @@ export const generateContentWithRetry = async (
           text: "",
         };
       } else {
+        console.info("[AI Request] Provider route: backend Gemini/PiAPI text-or-generic", {
+          model: modelName,
+          hasSystemInstruction: !!systemInstruction,
+          contents: describeContents(callParams.contents),
+        });
         const backendRes = await apiClient.post<ApiResponse<AIResponse>>("/api/v1/gemini/generate", {
           params: callParams
         });
