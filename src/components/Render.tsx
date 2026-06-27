@@ -131,7 +131,7 @@ export const Render: React.FC = () => {
         {/* Main Tabs Navigation */}
         <div className="flex items-center justify-center gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
           {TABS.map((tab) => {
-            const isLocked = LOCKED_TABS.has(tab);
+            const isLocked = (tab === "Cải thiện Render" || tab === "Tiện ích khác") && !isAdmin;
             return (
               <button
                 key={tab}

@@ -109,6 +109,27 @@ function appendFloorplanNegativePrompt(type: string, prompt: string) {
   return `${prompt}${negativePrompt}`;
 }
 
+/**
+ * Chỉ áp dụng cho "Floorplan to 3D" (ảnh nội thất thực tế).
+ * KHÔNG áp dụng cho "Floorplan to 3D Floorplan" (phối cảnh trục đo).
+ * Inject yêu cầu góc chụp ngang tầm mắt vào cuối prompt gửi image model.
+ */
+function appendFloorplanCameraDirective(type: string, prompt: string) {
+  const normalizedType = String(type || "").toLowerCase().trim();
+  if (normalizedType !== "floorplan to 3d") {
+    return prompt;
+  }
+
+  const cameraDirective =
+    " Camera angle: eye-level (ngang tam mat), shot from room entrance, no bird's eye view, no top-down, no panorama from above. All furniture must remain in exact positions from the floorplan.";
+
+  if (prompt.includes("eye-level") || prompt.includes("ngang tam mat")) {
+    return prompt;
+  }
+
+  return `${prompt}${cameraDirective}`;
+}
+
 export const renderJobController = {
   async getMyJobs(req: AuthRequest, res: Response) {
     const { error } = limitQuerySchema.validate(req.query);
@@ -170,7 +191,6 @@ export const renderJobController = {
       const resolution = req.body.resolution || settings.resolution || "1K";
       const numImages = req.body.numImages || settings.numImages || 1;
 
-      // Xác định model: nano-banana-2 dùng Gemini SDK, các model khác dùng PiAPI
       const GEMINI_NATIVE_MODELS = [
         "nano-banana-2",
         "igen-image-flash",
@@ -184,6 +204,9 @@ export const renderJobController = {
         piapiModel = "piapi-flux";
       }
 
+      logger.info(`[renderJobController.createJob] Model: ${model} | piapiModel: ${piapiModel} | type: ${req.body.type}`);
+      logger.info(`[renderJobController.createJob] inputImageUrls: ${JSON.stringify(inputImageUrls)} | referenceImageUrls: ${JSON.stringify(referenceImageUrls)}`);
+
       let piapiTaskId = "";
       let status = "pending";
       let progress = 0;
@@ -192,7 +215,7 @@ export const renderJobController = {
       let parsedPrompt = prompt || "";
       try {
         const parsed = JSON.parse(prompt);
-        parsedPrompt = parsed.prompt_tieng_viet_toi_uu || parsed.optimized_english_prompt || prompt;
+        parsedPrompt = parsed.optimized_english_prompt || parsed.prompt_tieng_viet_toi_uu || prompt;
       } catch {
         // Không phải chuỗi JSON
       }
@@ -204,6 +227,7 @@ export const renderJobController = {
       }
       finalPrompt = appendFloorplanCleanupDirective(req.body.type, finalPrompt);
       finalPrompt = appendFloorplanNegativePrompt(req.body.type, finalPrompt);
+      finalPrompt = appendFloorplanCameraDirective(req.body.type, finalPrompt);
 
       const aspect = aspectRatio || "1:1";
 
@@ -215,11 +239,64 @@ export const renderJobController = {
           const userApiKey = user?.apiKey || "";
 
           logger.info(`[renderJobController] Generating image synchronously via Gemini for model: ${piapiModel}`);
+
+          // Download and convert input image to base64 if it exists
+          let inputImageBase64 = "";
+          let inputImageMime = "image/jpeg";
+          if (inputImageUrls && inputImageUrls.length > 0) {
+            try {
+              const fetchRes = await fetch(inputImageUrls[0]);
+              if (fetchRes.ok) {
+                const arrayBuffer = await fetchRes.arrayBuffer();
+                inputImageBase64 = Buffer.from(arrayBuffer).toString("base64");
+                inputImageMime = fetchRes.headers.get("content-type") || "image/jpeg";
+              }
+            } catch (err) {
+              logger.error(`[renderJobController] Failed to download input image for Gemini: ${err}`);
+            }
+          }
+
+          // Download reference/style image if exists
+          let refImageBase64 = "";
+          let refImageMime = "image/jpeg";
+          if (referenceImageUrls && referenceImageUrls.length > 0) {
+            try {
+              const fetchRes = await fetch(referenceImageUrls[0]);
+              if (fetchRes.ok) {
+                const arrayBuffer = await fetchRes.arrayBuffer();
+                refImageBase64 = Buffer.from(arrayBuffer).toString("base64");
+                refImageMime = fetchRes.headers.get("content-type") || "image/jpeg";
+              }
+            } catch (err) {
+              logger.error(`[renderJobController] Failed to download reference image for Gemini: ${err}`);
+            }
+          }
+
           const generatedUrls: string[] = [];
           for (let i = 0; i < numImages; i++) {
+            const contentsParts: Array<Record<string, unknown>> = [];
+            if (inputImageBase64) {
+              contentsParts.push({
+                inlineData: {
+                  data: inputImageBase64,
+                  mimeType: inputImageMime
+                }
+              });
+            }
+            if (refImageBase64) {
+              contentsParts.push({ text: "Ảnh tham khảo phong cách:" });
+              contentsParts.push({
+                inlineData: {
+                  data: refImageBase64,
+                  mimeType: refImageMime
+                }
+              });
+            }
+            contentsParts.push({ text: finalPrompt });
+
             const geminiRes = await geminiService.generate({
               model: model || "gemini-3-pro-image",
-              contents: [{ parts: [{ text: finalPrompt }] }],
+              contents: [{ parts: contentsParts }],
               config: {
                 imageConfig: {
                   aspectRatio: aspect,
@@ -253,7 +330,8 @@ export const renderJobController = {
             const taskResult = await piapiService.createImageTask(finalPrompt, piapiModel, {
               aspectRatio: aspect,
               numImages: 1, // Generate 1 image per call
-              image: (inputImageUrls && inputImageUrls.length > 0) ? inputImageUrls[0] : undefined
+              image: (inputImageUrls && inputImageUrls.length > 0) ? inputImageUrls[0] : undefined,
+              jobType: req.body.type
             });
             taskIds.push(taskResult.taskId);
           }
