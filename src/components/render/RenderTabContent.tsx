@@ -70,6 +70,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
   const [inputImages, setInputImages] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [smoothUploadProgress, setSmoothUploadProgress] = useState(0);
   const [isRendering, setIsRendering] = useState(false);
 
   // Form states
@@ -103,6 +104,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
 
   const [renderJobs, setRenderJobs] = useState<RenderJob[]>([]);
   const [showVRModal, setShowVRModal] = useState(false);
+  const [pendingSubTab, setPendingSubTab] = useState<string | null>(null);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [libraryTarget, setLibraryTarget] = useState<"input" | "reference">(
     "input",
@@ -114,6 +116,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
   const [referenceImages, setReferenceImages] = useState<string[]>([]);
   const [isUploadingRef, setIsUploadingRef] = useState(false);
   const [uploadProgressRef, setUploadProgressRef] = useState(0);
+  const [smoothUploadProgressRef, setSmoothUploadProgressRef] = useState(0);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [jobToDelete, setJobToDelete] = useState<RenderJob | null>(null);
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
@@ -161,22 +164,19 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
         setCameraAngleStyle("Ảnh cầm tay ngang tầm mắt");
       } else if (activeSubTab === "Floorplan to 3D Floorplan") {
         setStyle("Ảnh phối cảnh 3D mặt bằng");
-        setInteriorStyle("Hiện đại");
-        setLighting("Có nắng");
-        setBuildingStyle("Căn hộ");
+        setInteriorStyle("");
+        setLighting("");
+        setBuildingStyle("");
         setCameraAngleStyle("Phối cảnh Trục đo (Isometric)");
       } else if (activeSubTab === "Masterplan to 3D") {
         setStyle("Ảnh phối cảnh 3D tổng thể");
-        setPrompt(
-          "Ảnh chụp thực tế công trình. Biến bản vẽ mặt bằng tổng thể này thành ảnh phối cảnh 3D thực tế từ trên cao.",
-        );
       }
     }, 0);
   }, [activeSubTab]);
 
   // Reset prompt when core parameters change to encourage re-analysis and ensure output matches selected options
   useEffect(() => {
-    if (prompt && !prompt.includes("Biến bản vẽ mặt bằng tổng thể")) {
+    if (prompt) {
       setTimeout(() => setPrompt(""), 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -188,7 +188,13 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
     description,
     cameraAngle,
     customCameraAngle,
+    roomType,
+    interiorStyle,
+    buildingStyle,
+    cameraAngleStyle,
     activeSubTab,
+    inputImages.length,
+    referenceImages.length,
   ]);
 
   useEffect(() => {
@@ -222,9 +228,25 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
         }
         return prev;
       });
+
+      setSmoothUploadProgress((prev) => {
+        if (!isUploading) return uploadProgress >= 100 ? 100 : 0;
+        if (prev < uploadProgress) {
+          return Math.min(uploadProgress, prev + Math.max(1, (uploadProgress - prev) * 0.2));
+        }
+        return prev;
+      });
+
+      setSmoothUploadProgressRef((prev) => {
+        if (!isUploadingRef) return uploadProgressRef >= 100 ? 100 : 0;
+        if (prev < uploadProgressRef) {
+          return Math.min(uploadProgressRef, prev + Math.max(1, (uploadProgressRef - prev) * 0.2));
+        }
+        return prev;
+      });
     }, 100);
     return () => clearInterval(interval);
-  }, [renderJobs, isGeneratingPrompt, promptProgress]);
+  }, [renderJobs, isGeneratingPrompt, promptProgress, isUploading, uploadProgress, isUploadingRef, uploadProgressRef]);
 
   const handleDeleteInputImage = async (
     urlToDelete: string,
@@ -439,9 +461,9 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
         let floorplanStylePrompt = "";
         if (activeSubTab === "Floorplan to 3D") {
           if (style === "Phối cảnh thực tế") {
-            floorplanStylePrompt = `- Kiểu chụp: Ảnh cầm tay ngang tầm mắt từ cửa phòng đi vào, không phải góc cao panorama, không nhìn từ trên xuống.
-- Tiêu điểm ảnh: Phân tích bản vẽ để xác định chính xác toàn bộ đồ nội thất thực tế trong phòng (ví dụ: phòng ngủ → giường đôi, túp đầu giường, tủ quần áo, bàn trang điểm; phòng khách → sofa, bàn trà, kệ TV; ...). Giữ nguyên chính xác vị trí của từng món đồ đó theo bản vẽ, không được tự ý di chuyển, xoay hay bỏ bất kỳ vật nào.
-- Bố cục: giữ nguyên 100% vị trí đồ đạc, tường ngăn, cửa và lối đi theo bản vẽ gốc; không thêm đồ đạc mới, không dịch chuyển nội thất.
+            floorplanStylePrompt = `- Kiểu chụp: Ảnh phối cảnh thực tế ở ngang tầm mắt, góc nhìn tự nhiên của người đứng trong không gian, không dùng góc panorama hoặc góc quá cao nếu bản vẽ không yêu cầu.
+- Tiêu điểm ảnh: phân tích bản vẽ để xác định chính xác các không gian, đồ đạc, cửa mở và hướng nhìn thực sự có trong đầu vào; nếu có ảnh tham chiếu thì chỉ dùng để khóa đúng loại đồ và vị trí cần giữ. Không tự giả định loại phòng hoặc thêm món đồ đặc thù ngoài dữ liệu đầu vào.
+- Bố cục: giữ nguyên 100% vị trí đồ đạc, tường ngăn, cửa và lối đi theo bản vẽ gốc; không thêm đồ đạc mới, không dịch chuyển nội thất sang khu vực khác.
 `;
           } else if (style === "Phối cảnh 3D") {
             floorplanStylePrompt = `- Kiểu chụp: Góc nhìn trục đo isometric / dollhouse, tường cắt lửng và không có trần nhà để quan sát bố cục mặt bằng rõ ràng.
@@ -458,6 +480,8 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
 
         const floorplanCleanupPrompt = `- Quy tắc làm sạch bản vẽ: chỉ dùng bản vẽ để suy luận bố cục không gian. PHẢI xóa hoàn toàn mọi chữ, nhãn phòng, số kích thước, hatch, nét đứt, ký hiệu CAD, mũi tên, khung tên, watermark và mọi dấu vết đồ họa 2D của bản vẽ gốc.
 - Kết quả cuối: ảnh phối cảnh 3D sạch, không còn cảm giác ảnh bản vẽ được tô màu, không còn annotation hay text kỹ thuật.
+- Ràng buộc kiến trúc cứng: tuyệt đối không được thêm, bớt, dời, xoay, tách, nối, mở rộng hoặc thu hẹp tường, vách, cột, cửa đi, cửa sổ, lõi thang, hộp kỹ thuật, logia, ban công, ranh giới phòng, lối giao thông hay bất kỳ cấu trúc kiến trúc nào so với bản vẽ gốc.
+- Nếu bản vẽ mơ hồ ở chi tiết nào thì phải giữ nguyên logic hiện trạng gần nhất theo bản vẽ, không được tự bịa thêm kiến trúc cho “đẹp”.
 `;
 
         const textPrompt = `
@@ -475,7 +499,7 @@ ${activeSubTab === "Render Nội Thất"
 - Style render: ${style || "Không có"}
 - Loại phòng: ${roomType || "Không có"}
 - Phong cách: ${interiorStyle || "Không có"}
-${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ nguyên 100% vị trí tường, cửa, cửa sổ, và đồ đạc theo bản vẽ. KHÔNG di chuyển giường, tủ áo, bàn trang điểm, rèm, hoặc cửa sổ. KHÔNG đổi vị trí nội thất hay làm lệch bố cục mặt bằng.
+${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ nguyên 100% vị trí tường, cửa, cửa sổ, lối đi, phân khu phòng và đồ đạc theo bản vẽ. CHỈ được dựng các thành phần có cơ sở từ bản vẽ hoặc ảnh tham chiếu; không tự gán thêm món đồ đặc thù, không đổi vị trí nội thất và không làm lệch cấu trúc mặt bằng.
 `
               : activeSubTab === "Floorplan to 3D Floorplan"
                 ? `
@@ -540,19 +564,40 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
       try {
         const rawText = typeof response.text === "function" ? response.text() : response.text;
         const jsonStr = rawText?.trim() || "{}";
-        const result = safeJsonParse(jsonStr) as Record<string, unknown>;
-        // Extract the final prompt field from the AI response JSON.
-        // Different templates use different field names; fall back to the raw text.
-        const extractedPrompt =
-          (result.optimized_english_prompt as string) ||
-          (result.prompt_tieng_viet_toi_uu as string) ||
-          (result.optimized_inpaint_prompt as string) ||
-          rawText ||
-          "";
-        if (!extractedPrompt || extractedPrompt === "{}") {
-          console.warn("[handleGeneratePrompt] Empty or invalid prompt returned from AI. Raw:", rawText?.slice(0, 200));
+        const result = safeJsonParse(jsonStr);
+        const resultObject =
+          result && !Array.isArray(result) && typeof result === "object"
+            ? (result as Record<string, unknown>)
+            : null;
+
+        const finalPrompt =
+          (typeof resultObject?.prompt_tieng_viet_toi_uu === "string"
+            ? resultObject.prompt_tieng_viet_toi_uu
+            : "") ||
+          (typeof resultObject?.optimized_english_prompt === "string"
+            ? resultObject.optimized_english_prompt
+            : "");
+
+        const negativePrompt =
+          (typeof resultObject?.prompt_phu_dinh === "string"
+            ? resultObject.prompt_phu_dinh
+            : "") ||
+          (typeof resultObject?.negative_prompt === "string"
+            ? resultObject.negative_prompt
+            : "");
+
+        if (finalPrompt) {
+          setPrompt(
+            negativePrompt
+              ? `${finalPrompt}\n\nNegative prompt: ${negativePrompt}`
+              : finalPrompt,
+          );
+        } else if (rawText && rawText.trim() && rawText.trim() !== "{}") {
+          setPrompt(rawText);
+        } else {
+          setPrompt("");
+          toast.error("AI chưa trả về prompt hoàn chỉnh. Vui lòng thử lại.");
         }
-        setPrompt(extractedPrompt);
         setPromptProgress(100);
         setPromptStatus("Hoàn tất!");
       } catch (parseError) {
@@ -655,7 +700,7 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
 
     if (!(await checkUserCredits())) return;
     setIsUploading(true);
-    setUploadProgress(0);
+    setUploadProgress(6);
 
     try {
       const processedFilesNested = await Promise.all(
@@ -687,16 +732,20 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
       const downloadURLs: string[] = [];
       let idx = 0;
       for (const file of validFiles) {
-        setUploadProgress(Math.round((idx / validFiles.length) * 100));
+        const uploadStartProgress = Math.round((idx / validFiles.length) * 80) + 10;
+        setUploadProgress(Math.min(95, uploadStartProgress));
         const url = await uploadMedia(file, "uploads");
         cacheImage(url, file);
 
 
         downloadURLs.push(url);
         idx++;
+        const uploadCompleteProgress = Math.round((idx / validFiles.length) * 80) + 15;
+        setUploadProgress(Math.min(98, uploadCompleteProgress));
       }
 
       setInputImages((prev) => [...prev, ...downloadURLs]);
+      setUploadProgress(100);
       setIsUploading(false);
     } catch (error) {
       console.error("Error initiating upload:", error);
@@ -763,22 +812,26 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
 
     if (!(await checkUserCredits())) return;
     setIsUploadingRef(true);
-    setUploadProgressRef(0);
+    setUploadProgressRef(6);
 
     try {
       const downloadURLs: string[] = [];
       let idx = 0;
       for (const file of files) {
-        setUploadProgressRef(Math.round((idx / files.length) * 100));
+        const uploadStartProgress = Math.round((idx / files.length) * 80) + 10;
+        setUploadProgressRef(Math.min(95, uploadStartProgress));
         const url = await uploadMedia(file, "uploads");
         cacheImage(url, file);
 
 
         downloadURLs.push(url);
         idx++;
+        const uploadCompleteProgress = Math.round((idx / files.length) * 80) + 15;
+        setUploadProgressRef(Math.min(98, uploadCompleteProgress));
       }
 
       setReferenceImages((prev) => [...prev, ...downloadURLs]);
+      setUploadProgressRef(100);
       setIsUploadingRef(false);
     } catch (error) {
       console.error("Error initiating upload:", error);
@@ -919,7 +972,7 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                 <div className="flex flex-col items-center">
                   <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-3"></div>
                   <p className="text-sm font-semibold text-primary">
-                    Đang tải lên... {Math.round(uploadProgress)}%
+                    Đang tải lên... {Math.round(smoothUploadProgress)}%
                   </p>
                 </div>
               ) : inputImages.length > 0 ? (
@@ -1016,7 +1069,7 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                     <div className="flex flex-col items-center">
                       <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mb-1"></div>
                       <p className="text-[10px] font-semibold text-primary">
-                        {Math.round(uploadProgressRef)}%
+                        {Math.round(smoothUploadProgressRef)}%
                       </p>
                     </div>
                   ) : referenceImages.length > 0 ? (
