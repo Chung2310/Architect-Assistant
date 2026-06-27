@@ -36,6 +36,8 @@ const TABS = [
   "Tiện ích khác",
 ];
 
+const LOCKED_TABS = new Set(["Cải thiện Render", "Tiện ích khác"]);
+
 const MODELS = [
   {
     id: "nano-banana-pro",
