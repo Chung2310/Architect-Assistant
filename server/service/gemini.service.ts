@@ -279,15 +279,9 @@ export const geminiService = {
       const ai = new GoogleGenAI({ apiKey: apiKey as string });
       logger.info(`[Gemini Service] Provider: Gemini native image. Requested model: ${modelName}`);
 
-      const promptText = extractTextFromContents(params.contents);
-
       const imageConfig = params.config?.imageConfig || params.generationConfig?.imageConfig || {};
       const aspectRatio = imageConfig.aspectRatio || "1:1";
 
-      // Chọn model Gemini native dựa trên model được yêu cầu:
-      // - nano-banana-2 / igen-image-flash / gemini-3.1-flash-image → Flash (nhanh hơn, rẻ hơn)
-      // - nano-banana-pro / gemini-3-pro-image / imagen-* → Pro (chất lượng cao hơn)
-      // KHÔNG dùng generateImages / imagen-3.0-generate-002 (chỉ cho Vertex AI)
       // Chọn model Gemini native dựa trên model được yêu cầu:
       // - nano-banana-2 / igen-image-flash / gemini-3.1-flash-image → Flash (nhanh hơn, rẻ hơn)
       // - Các model khác → Pro (chất lượng cao hơn)
@@ -299,10 +293,42 @@ export const geminiService = {
       const IMAGE_GEN_MODEL = isFlashVariant ? "gemini-3.1-flash-image" : "gemini-3-pro-image";
       logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL} (variant: ${isFlashVariant ? 'flash' : 'pro'}), aspect: ${aspectRatio}`);
 
-      // Thêm aspect ratio vào prompt vì GenerateContentConfig không hỗ trợ aspectRatio
-      const finalPromptText = aspectRatio && aspectRatio !== "1:1"
-        ? `${promptText}\n[Aspect ratio: ${aspectRatio}]`
-        : promptText;
+      const contentsArray = Array.isArray(params.contents)
+        ? params.contents
+        : params.contents
+          ? [params.contents]
+          : [];
+
+      const aspectRatioPart =
+        aspectRatio && aspectRatio !== "1:1"
+          ? [{ text: `[Aspect ratio: ${aspectRatio}]` }]
+          : [];
+
+      const finalContents = contentsArray.length > 0
+        ? contentsArray.map((content, index) => {
+            if (
+              index === contentsArray.length - 1 &&
+              content &&
+              typeof content === "object" &&
+              "parts" in content &&
+              Array.isArray((content as { parts?: unknown[] }).parts)
+            ) {
+              const typedContent = content as {
+                role?: string;
+                parts: Array<Record<string, unknown>>;
+              };
+
+              return {
+                role: typedContent.role,
+                parts: [...typedContent.parts, ...aspectRatioPart],
+              };
+            }
+
+            return content;
+          })
+        : typeof params.contents === "string"
+          ? `${params.contents}${aspectRatioPart.length > 0 ? `\n[Aspect ratio: ${aspectRatio}]` : ""}`
+          : extractTextFromContents(params.contents);
 
       const imageConfigForSdk: Record<string, unknown> = {
         responseModalities: ["TEXT", "IMAGE"],
@@ -316,7 +342,7 @@ export const geminiService = {
       try {
         response = await ai.models.generateContent({
           model: IMAGE_GEN_MODEL,
-          contents: finalPromptText,
+          contents: finalContents,
           config: imageConfigForSdk,
         });
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

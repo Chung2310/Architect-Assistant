@@ -81,7 +81,7 @@ function appendFloorplanCleanupDirective(type: string, prompt: string) {
   }
 
   const cleanupDirective =
-    " IMPORTANT: chi giu bo cuc khong gian, tuong, cua, cua so, cau thang va vi tri noi that theo ban ve. Xoa hoan toan moi chu, nhan phong, so kich thuoc, hatch, net dut, ky hieu CAD, mui ten, khung ten, watermark va moi dau vet do hoa 2D cua ban ve goc. Anh cuoi phai la phoi canh 3D sach, khong con annotation hay text ky thuat.";
+    " IMPORTANT: chi giu bo cuc khong gian, tuong, cua, cua so, cau thang va vi tri noi that theo ban ve. Tuyet doi khong duoc them, bot, doi cho, tach, noi, mo rong, thu hep, xoay hoac tai cau truc bat ky thanh phan kien truc nao so voi ban ve goc. Xoa hoan toan moi chu, nhan phong, so kich thuoc, hatch, net dut, ky hieu CAD, mui ten, khung ten, watermark va moi dau vet do hoa 2D cua ban ve goc. Anh cuoi phai la phoi canh 3D sach, khong con annotation hay text ky thuat.";
 
   if (prompt.includes(cleanupDirective.trim())) {
     return prompt;
@@ -100,13 +100,94 @@ function appendFloorplanNegativePrompt(type: string, prompt: string) {
   }
 
   const negativePrompt =
-    " Negative prompt: no text, no room labels, no dimensions, no dimension lines, no annotations, no arrows, no hatch patterns, no CAD lines, no dashed lines, no blueprint look, no technical drawing overlay, no title block, no watermark, no 2D graphic remnants.";
+    " Negative prompt: no text, no room labels, no dimensions, no dimension lines, no annotations, no arrows, no hatch patterns, no CAD lines, no dashed lines, no blueprint look, no technical drawing overlay, no title block, no watermark, no 2D graphic remnants, no missing walls, no extra walls, no shifted doors, no shifted windows, no altered room boundaries, no changed circulation, no invented architectural elements, no deleted architectural elements.";
 
   if (prompt.includes(negativePrompt.trim())) {
     return prompt;
   }
 
   return `${prompt}${negativePrompt}`;
+}
+
+function appendFloorplanCameraDirective(type: string, prompt: string) {
+  const normalizedType = String(type || "").toLowerCase().trim();
+  if (normalizedType !== "floorplan to 3d") {
+    return prompt;
+  }
+
+  const cameraDirective =
+    " Camera angle: eye-level (ngang tam mat), shot from room entrance, no bird's eye view, no top-down, no panorama from above. All furniture must remain in exact positions from the floorplan.";
+
+  if (prompt.includes("eye-level") || prompt.includes("ngang tam mat")) {
+    return prompt;
+  }
+
+  return `${prompt}${cameraDirective}`;
+}
+
+function extractPromptPayload(rawPrompt: string) {
+  const fallback = {
+    finalPrompt: rawPrompt || "",
+    negativePrompt: "",
+  };
+
+  try {
+    const parsed = JSON.parse(rawPrompt);
+    if (!parsed || typeof parsed !== "object") {
+      return fallback;
+    }
+
+    const promptObject = parsed as Record<string, unknown>;
+    return {
+      finalPrompt: String(
+        promptObject.prompt_tieng_viet_toi_uu ||
+          promptObject.optimized_english_prompt ||
+          rawPrompt ||
+          "",
+      ),
+      negativePrompt: String(
+        promptObject.prompt_phu_dinh || promptObject.negative_prompt || "",
+      ),
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function buildGeminiImageContents(
+  promptText: string,
+  inputImageUrls: string[],
+  referenceImageUrls: string[],
+) {
+  const parts: Array<Record<string, unknown>> = [];
+
+  if (inputImageUrls.length > 0) {
+    parts.push({ text: "Reference floorplan images to preserve exactly:" });
+    for (const url of inputImageUrls) {
+      parts.push({
+        fileData: {
+          mimeType: "image/jpeg",
+          fileUri: url,
+        },
+      });
+    }
+  }
+
+  if (referenceImageUrls.length > 0) {
+    parts.push({ text: "Additional reference images:" });
+    for (const url of referenceImageUrls) {
+      parts.push({
+        fileData: {
+          mimeType: "image/jpeg",
+          fileUri: url,
+        },
+      });
+    }
+  }
+
+  parts.push({ text: promptText });
+
+  return [{ role: "user", parts }];
 }
 
 export const renderJobController = {
@@ -170,7 +251,6 @@ export const renderJobController = {
       const resolution = req.body.resolution || settings.resolution || "1K";
       const numImages = req.body.numImages || settings.numImages || 1;
 
-      // Xác định model: nano-banana-2 dùng Gemini SDK, các model khác dùng PiAPI
       const GEMINI_NATIVE_MODELS = [
         "nano-banana-2",
         "igen-image-flash",
@@ -184,26 +264,29 @@ export const renderJobController = {
         piapiModel = "piapi-flux";
       }
 
+      logger.info(`[renderJobController.createJob] Model: ${model} | piapiModel: ${piapiModel} | type: ${req.body.type}`);
+      logger.info(`[renderJobController.createJob] inputImageUrls: ${JSON.stringify(inputImageUrls)} | referenceImageUrls: ${JSON.stringify(referenceImageUrls)}`);
+
       let piapiTaskId = "";
       let status = "pending";
       let progress = 0;
       let outputImageUrls: string[] = [];
 
-      let parsedPrompt = prompt || "";
-      try {
-        const parsed = JSON.parse(prompt);
-        parsedPrompt = parsed.prompt_tieng_viet_toi_uu || parsed.optimized_english_prompt || prompt;
-      } catch {
-        // Không phải chuỗi JSON
-      }
+      const promptPayload = extractPromptPayload(prompt || "");
+      const parsedPrompt = promptPayload.finalPrompt;
+      const parsedNegativePrompt = promptPayload.negativePrompt;
 
       // Tích hợp link ảnh gốc vào prompt đối với Midjourney
       let finalPrompt = parsedPrompt;
-      if (inputImageUrls && inputImageUrls.length > 0) {
+      if (!isGeminiNativeModel && inputImageUrls && inputImageUrls.length > 0) {
         finalPrompt = inputImageUrls.join(" ") + " " + finalPrompt;
+      }
+      if (parsedNegativePrompt) {
+        finalPrompt = `${finalPrompt}\nNegative prompt: ${parsedNegativePrompt}`;
       }
       finalPrompt = appendFloorplanCleanupDirective(req.body.type, finalPrompt);
       finalPrompt = appendFloorplanNegativePrompt(req.body.type, finalPrompt);
+      finalPrompt = appendFloorplanCameraDirective(req.body.type, finalPrompt);
 
       const aspect = aspectRatio || "1:1";
 
@@ -215,11 +298,16 @@ export const renderJobController = {
           const userApiKey = user?.apiKey || "";
 
           logger.info(`[renderJobController] Generating image synchronously via Gemini for model: ${piapiModel}`);
+
           const generatedUrls: string[] = [];
           for (let i = 0; i < numImages; i++) {
             const geminiRes = await geminiService.generate({
               model: model || "gemini-3-pro-image",
-              contents: [{ parts: [{ text: finalPrompt }] }],
+              contents: buildGeminiImageContents(
+                finalPrompt,
+                inputImageUrls,
+                referenceImageUrls,
+              ),
               config: {
                 imageConfig: {
                   aspectRatio: aspect,
@@ -253,7 +341,8 @@ export const renderJobController = {
             const taskResult = await piapiService.createImageTask(finalPrompt, piapiModel, {
               aspectRatio: aspect,
               numImages: 1, // Generate 1 image per call
-              image: (inputImageUrls && inputImageUrls.length > 0) ? inputImageUrls[0] : undefined
+              image: (inputImageUrls && inputImageUrls.length > 0) ? inputImageUrls[0] : undefined,
+              jobType: req.body.type
             });
             taskIds.push(taskResult.taskId);
           }

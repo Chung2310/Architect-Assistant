@@ -64,12 +64,12 @@ function buildPhotorealismDirective(style: string, subject: "exterior" | "interi
     subject === "exterior" ? "ngoai that cong trinh" : "noi that cong trinh";
 
   return [
-    `Uu tien ngon ngu anh chup ${subjectLabel} chan thuc, khong phai CGI hay concept art.`,
-    "Mo ta nhu anh chup bang may anh full-frame chuyen nghiep, phoi canh tu nhien, vat lieu dung scale, do sau anh hop ly.",
-    "Bat buoc the hien be mat co vi sai thuc te: mep vat lieu sac vua phai, phan xa kinh hop ly, bong do mem dung huong sang, texture khong lap gia.",
-    "Anh sang phai giong anh doi thuc da hau ky nhe: dynamic range can bang, white balance tu nhien, khong glow gia, khong vien sang ao.",
-    "Cho phep cac dau hieu realism muc nhe nhu do nham vat lieu, sai so thi cong nho, bui be mat rat nhe, cay coi va nguoi neu co phai dung ty le thuc.",
-    "Tranh tuyet doi cam giac render AI: oversharpen, be mat nhua, vat lieu qua sach, doi xung hoan hao, anh sang san khau, mau qua no, chi tiet bia them.",
+    `Ưu tiên ngôn ngữ ảnh chụp ${subjectLabel} chân thực, không phải CGI hay concept art.`,
+    "Mô tả như ảnh chụp bằng máy ảnh full-frame chuyên nghiệp, phối cảnh tự nhiên, vật liệu đúng scale, độ sau ảnh hợp lý.",
+    "Bắt buộc thể hiện bề mặt có vi sai thực tế: mép vật liệu sắc vừa phải, phản xạ kính hợp lý, bóng đổ mềm đúng hướng sáng, texture không lặp lại.",
+    "Ánh sáng phải giống ảnh đời thực đã hậu kỳ nhẹ: dynamic range cân bằng, white balance tự nhiên, không glow giả, không viền sáng ảo.",
+    "Cho phép các dấu hiệu realism mức nhẹ như độ nhòe vật liệu, sai số thi công nhỏ, bụi bề mặt rất nhẹ, cây cối và người nếu có phải dùng tỷ lệ thực.",
+    "Tránh tuyệt đối cảm giác render AI: oversharpen, bề mặt nhũ, vật liệu quá sạch, đối xứng hoàn hảo, ánh sáng sàn khâu, màu quá nồng, chi tiết bịa thêm.",
   ].join(" ");
 }
 
@@ -104,19 +104,23 @@ function buildPhotorealNegativePrompt(style: string) {
 function buildFloorplanCleanupDirective(mode: "space" | "axonometric") {
   if (mode === "space") {
     return [
-      "Day la anh render duoc dien giai tu ban ve, khong phai anh chup lai ban ve.",
-      "Chi duoc giu logic bo cuc, vi tri tuong, cua, cua so, loi di va noi that theo floorplan.",
-      "Phai xoa hoan toan moi dau vet do hoa cua ban ve goc: chu, nhan phong, kich thuoc, dimension line, mui ten, hatch, net dut, vien CAD, ky hieu vat lieu, ky hieu ky thuat, khung ten, watermark.",
-      "Khong de lai bat ky text, icon ky thuat, vien den day, net phac thao hay hieu ung blueprint nao trong anh cuoi.",
+      "Đây là ảnh render được diễn giải từ bản vẽ, không phải ảnh chụp lại bản vẽ.",
+      "Chỉ được giữ logic bố trí, vị trí tường, cửa, cửa sổ, lối đi và nội thất theo floorplan.",
+      "Tuyệt đối không được thêm, bớt, đổi chỗ, tách, nối, mở rộng, thu hẹp hay xoay bất kỳ thành phần kiến trúc nào so với bản vẽ gốc.",
+      "Kiến trúc là ràng buộc cùng: tường, vách, cột, lối đi, cửa đi, cửa sổ, thông tầng, thang, sàn trong, lỗ gia, lối thoát hiểm, WC, hộp kỹ thuật, lõi giao thông và ranh giới phòng phải giữ nguyên vị trí và quan hệ không gian.",
+      "Phải xóa hoàn toàn mọi dấu vết đồ họa của bản vẽ gốc: chữ, nhãn phòng, kích thước, dimension line, mũi tên, hatch, nét đứt, vien CAD, ký hiệu vật liệu, ký hiệu kỹ thuật, khung tên, watermark.",
+      "Không để lại bất kỳ text, icon kỹ thuật, viền đen dày, nét phác thảo hay hiệu ứng blueprint nào trong ảnh cuối.",
       "Anh cuoi phai la khong gian 3D sach, thuc te, khong con dau vet mat bang 2D.",
     ].join(" ");
   }
 
   return [
-    "Day la phoi canh 3D axonometric duoc tai dung tu floorplan 2D.",
-    "Chi duoc giu cau truc mat bang, tuong, cua, vach, thang, nhan dien khong gian o muc logic bo cuc.",
-    "Phai xoa hoan toan chu, nhan phong, so do kich thuoc, hatch, ky hieu CAD, duong tim, net dut, ky hieu mo cua, khung ban ve va moi dau vet do hoa 2D khong thuoc vat the 3D.",
-    "Khong duoc de anh cuoi trong giong ban ve duoc to mau; phai la mo hinh 3D sach, ro, khong con annotation.",
+    "Đây là phôi cảnh 3D axonometric được tải dụng từ floorplan 2D.",
+    "Chỉ được giữ cấu trúc mặt bằng, tường, cửa, vách, thang, nhận diện không gian ở mục logic bố trí.",
+    "Tuyệt đối không được thêm, bớt, đổi chỗ, tách, nối, mở rộng, thu hẹp hay xoay bất kỳ thành phần kiến trúc nào so với bản vẽ gốc.",
+    "Mọi thành phần kiến trúc phải khóa cùng theo bản vẽ: tường, cột, vách, cửa đi, cửa sổ, lối thông tầng, lối đi, trục giao thông, lối thoát hiểm, WC, hộp kỹ thuật, sàn trong và ranh giới từng phòng.",
+    "Phải xóa hoàn toàn chữ, nhãn phòng, số đo kích thước, hatch, ký hiệu CAD, đường tim, nét đứt, ký hiệu mở cửa, khung bản vẽ và mọi dấu vết đồ họa 2D không thuộc vật thể 3D.",
+    "Không được để ảnh cuối trong giống bản vẽ được tô màu; phải là mô hình 3D sạch, rõ, không còn annotation.",
   ].join(" ");
 }
 
@@ -146,6 +150,14 @@ function buildFloorplanNegativePrompt(mode: "space" | "axonometric") {
     "room labels",
     "dimensions",
     "annotations",
+    "missing walls",
+    "extra walls",
+    "shifted doors",
+    "shifted windows",
+    "altered room boundaries",
+    "changed circulation",
+    "invented architectural elements",
+    "deleted architectural elements",
     "CAD symbols",
     "door swing markers",
     "grid lines",
@@ -175,10 +187,25 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
   const images = (input.images as InlineImageInput[] | undefined) || [];
   const referenceImages = (input.referenceImages as InlineImageInput[] | undefined) || [];
 
+  // Determine whether this is a floorplan tab — reference images have a different role
+  const isFloorplanTab =
+    activeSubTabKey === "floorplan to 3d" || activeSubTabKey === "floorplan to 3d floorplan";
+
   const parts: Array<Record<string, unknown>> = [];
-  parts.push(...imageParts(images));
+  if (images.length > 0) {
+    if (isFloorplanTab) {
+      parts.push({ text: "Ảnh bản vẽ mặt bằng / Floorplan gốc (Dùng để suy luận bố cục không gian: tường, cửa, cửa sổ, lối đi, vị trí phòng. KHÔNG xuất hiện dấu vết bản vẽ trong ảnh kết quả):" });
+    } else {
+      parts.push({ text: "Ảnh phác thảo / concept kiến trúc gốc (Cần bảo tồn tuyệt đối góc chụp, phối cảnh và hình khối này):" });
+    }
+    parts.push(...imageParts(images));
+  }
   if (referenceImages.length > 0) {
-    parts.push({ text: "Ảnh tham khảo phong cách:" });
+    if (isFloorplanTab) {
+      parts.push({ text: "Ảnh tham khảo nội thất mẫu (BẮT BUỘC: Giữ nguyên hoàn toàn vị trí, chủng loại và sắp xếp của từng món đồ nội thất xuất hiện trong ảnh này. KHÔNG được tự ý di chuyển, xoay, thêm hoặc bỏ bất kỳ món đồ nào. Chỉ áp dụng phong cách, màu sắc và vật liệu từ ảnh tham khảo; cấm thay đổi bố trí đồ đạc):" });
+    } else {
+      parts.push({ text: "Ảnh tham khảo phong cách / Moodboard (Chỉ học hỏi phong cách, màu sắc, vật liệu, ánh sáng; KHÔNG lấy góc chụp hay hình khối từ ảnh này):" });
+    }
     parts.push(...imageParts(referenceImages));
   }
 
@@ -207,8 +234,9 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     systemInstruction = [
       "Bạn là chuyên gia biên soạn prompt render ngoại thất cho iGen.",
       "Tất cả phân tích và prompt cuối cùng phải viết bằng tiếng Việt rõ ràng, ngắn gọn, hữu dụng.",
-      "Nếu có ảnh tham khảo, phải bảo tồn hình khối, bố cục, góc máy và logic cấu trúc của công trình.",
-      "Nếu không có ảnh, được phép sáng tạo nhưng vẫn phải hợp lý về kiến trúc.",
+      "BẮT BUỘC: Nếu có Ảnh phác thảo/concept gốc đầu vào, bạn PHẢI phân tích góc chụp của bức ảnh đó. Prompt cuối cùng được tạo ra PHẢI khớp hoàn toàn và bảo tồn tuyệt đối góc chụp (camera angle), phối cảnh (perspective), hình khối kiến trúc (geometry) và bố cục (layout) của ảnh phác thảo gốc. Không được thay đổi góc chụp dưới bất kỳ hình thức nào.",
+      "Nếu có ảnh tham khảo phong cách, chỉ học hỏi tông màu, ánh sáng, vật liệu; tuyệt đối không lấy góc chụp hay hình khối từ ảnh phong cách.",
+      "Nếu không có ảnh phác thảo gốc, được phép sáng tạo góc chụp hợp lý về kiến trúc.",
       "Nếu style là ảnh chụp thực tế, prompt cuối phải ép model theo ngôn ngữ nhiếp ảnh đời thực và chủ động loại bỏ cảm giác CGI hoặc AI.",
       "Hãy trả về JSON gồm phần phân tích ngắn gọn và prompt render cuối cùng tối ưu, tránh lặp lại, tránh lý thuyết thừa.",
     ].join(" ");
@@ -218,7 +246,8 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
         phong_cach_va_tone_kien_truc: stringField("Tổng hợp phong cách kiến trúc và tone màu."),
         anh_sang_va_moi_truong: stringField("Phân tích ánh sáng, thời tiết, bối cảnh."),
         goc_may_anh_va_bo_cuc: stringField("Quy tắc góc máy và bố cục cần giữ."),
-        prompt_tieng_viet_toi_uu: stringField("Prompt render cuối cùng bằng tiếng Việt."),
+        prompt_tieng_viet_toi_uu: stringField("Prompt render cuối cùng bằng tiếng Việt để hiển thị."),
+        optimized_english_prompt: stringField("Detailed, professional, photorealistic English rendering prompt for the image generator, strictly avoiding CGI/AI-style artifacts."),
         prompt_phu_dinh: stringField("Các lỗi cần tránh khi render."),
       },
       [
@@ -227,6 +256,7 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
         "anh_sang_va_moi_truong",
         "goc_may_anh_va_bo_cuc",
         "prompt_tieng_viet_toi_uu",
+        "optimized_english_prompt",
         "prompt_phu_dinh",
       ],
     );
@@ -241,7 +271,9 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     systemInstruction = [
       "Bạn là chuyên gia biên soạn prompt render nội thất cao cấp.",
       "Tất cả đầu ra phải bằng tiếng Việt, nhấn mạnh công năng phòng, vật liệu, bố cục và không khí ánh sáng.",
-      "Nếu có ảnh gốc, phải giữ bố cục và tỷ lệ khung hình; nếu không có ảnh, được phép suy luận hợp lý.",
+      "BẮT BUỘC: Nếu có Ảnh phác thảo/concept gốc đầu vào, bạn PHẢI phân tích góc chụp của bức ảnh đó. Prompt cuối cùng được tạo ra PHẢI khớp hoàn toàn và bảo tồn tuyệt đối góc chụp (camera angle), phối cảnh (perspective), hình khối và bố cục phòng của ảnh phác thảo gốc. Không được thay đổi góc chụp dưới bất kỳ hình thức nào.",
+      "Nếu có ảnh tham khảo phong cách, chỉ học hỏi tông màu, ánh sáng, bày biện; tuyệt đối không lấy góc chụp hay hình khối từ ảnh phong cách.",
+      "Nếu không có ảnh phác thảo gốc, được phép tự thiết lập phối cảnh hợp lý.",
       "Nếu style là ảnh chụp thực tế, prompt cuối phải mô tả vật liệu, ánh sáng và cảm giác ống kính như ảnh nội thất đời thực, tránh showroom CGI.",
       "Trả về JSON ngắn gọn, đúng trọng tâm, tập trung vào prompt cuối dùng được ngay.",
     ].join(" ");
@@ -252,7 +284,8 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
         phong_cach_noi_that_va_anh_sang: stringField("Tổng hợp phong cách, vật liệu, ánh sáng."),
         danh_sach_noi_that_va_vat_lieu: stringField("Những thành phần nội thất cần có."),
         logic_camera_va_ty_le_khung_hinh: stringField("Quy tắc góc chụp và tỷ lệ khung hình."),
-        prompt_tieng_viet_toi_uu: stringField("Prompt render cuối cùng bằng tiếng Việt."),
+        prompt_tieng_viet_toi_uu: stringField("Prompt render cuối cùng bằng tiếng Việt để hiển thị."),
+        optimized_english_prompt: stringField("Detailed, professional, photorealistic English rendering prompt for the image generator, strictly avoiding CGI/AI-style artifacts."),
         prompt_phu_dinh: stringField("Các lỗi cần tránh."),
       },
       [
@@ -262,11 +295,15 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
         "danh_sach_noi_that_va_vat_lieu",
         "logic_camera_va_ty_le_khung_hinh",
         "prompt_tieng_viet_toi_uu",
+        "optimized_english_prompt",
         "prompt_phu_dinh",
       ],
     );
   } else if (activeSubTabKey === "floorplan to 3d") {
     textPrompt += `Style render: ${style}\nLoại phòng: ${roomType}\nPhong cách: ${interiorStyle}\nGiữ đúng bố cục mặt bằng, tường, cửa, nội thất theo floorplan.\nYêu cầu làm sạch bản vẽ: ${floorplanSpaceCleanupDirective}\n`;
+    if (referenceImages.length > 0) {
+      textPrompt += `Quy tắc ảnh tham khảo nội thất: Giữ nguyên tuyệt đối vị trí, loại và sắp xếp của từng món đồ nội thất có trong ảnh tham khảo (giường, tủ, bàn, ghế, đèn, v.v.). TUYỆT ĐỐI không di chuyển, xoay, thêm hoặc bỏ bất kỳ món đồ nào so với ảnh tham khảo. Chỉ được phép áp dụng phong cách hoàn thiện bề mặt (màu sắc, vật liệu, ánh sáng) từ ảnh tham khảo lên vị trí đồ vật đã cố định.\n`;
+    }
     if (cameraAngleStyle) {
       textPrompt += `Style góc chụp: ${cameraAngleStyle}\n`;
     }
@@ -275,16 +312,21 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
       "Bạn là chuyên gia chuyển mặt bằng thành không gian 3D.",
       "Mục tiêu là dựng lại không gian từ floorplan thật chính xác, không được phá vỡ bố cục.",
       "Phải phân biệt ro rang giua du lieu bo cuc can giu va dau vet do hoa ban ve can xoa bo.",
+      "Không được phép suy luận sang tạo vào kiến trúc nếu bản vẽ không thể hiện; ưu tiên bảo tồn ý nguyên bản vẽ hơn thẩm mỹ hình ảnh.",
+      "Nếu có thể nhận diện đồ nội thất từ bản vẽ hoặc ảnh tham khảo, từng món phải giữ đúng loại, vị trí, hướng và quan hệ không gian; không được tự ý di chuyển, xoay, thêm hoặc bỏ.",
+      referenceImages.length > 0
+        ? "Khi có ảnh tham khảo nội thất: chỉ được học phong cách hoàn thiện bề mặt từ ảnh tham khảo, còn layout đồ vật và kiến trúc phải bất biến theo bản vẽ và vị trí nhận diện được từ đầu vào."
+        : "Nếu không có ảnh tham khảo nội thất, chỉ dựng những gì suy ra được chắc chắn từ bản vẽ và thông số người dùng cung cấp.",
       "Tất cả đầu ra phải bằng tiếng Việt và tập trung vào prompt cuối khả thi cho image model.",
     ].join(" ");
     responseSchema = objectSchema(
       {
         phan_tich_mat_bang: stringField("Tóm tắt nhận diện mặt bằng."),
-        logic_phong_cach_va_tham_khao: stringField("Tổng hợp phong cách cần áp dụng."),
+        logic_phong_cach_va_tham_khao: stringField("Tổng hợp phong cách áp dụng. Nếu có ảnh tham khảo nội thất, liệt kê rõ từng món đồ và vị trí cần giữ."),
         logic_che_do_render_va_camera: stringField("Lựa chọn góc chụp và chế độ render."),
-        so_do_bo_tri_noi_that: stringField("Nguyên tắc bố trí nội thất cần giữ."),
-        prompt_tieng_viet_toi_uu: stringField("Prompt render cuối cùng."),
-        prompt_phu_dinh: stringField("Các lỗi cần tránh."),
+        so_do_bo_tri_noi_that: stringField("Sơ đồ bố trí nội thất bất biến: liệt kê từng món đồ và vị trí cụ thể theo bản vẽ và ảnh tham khảo (nếu có). Không được thay đổi."),
+        prompt_tieng_viet_toi_uu: stringField("Prompt render cuối cùng. Phải nêu rõ vị trí từng món đồ nội thất không được thay đổi."),
+        prompt_phu_dinh: stringField("Các lỗi cần tránh, bao gồm: moved furniture, repositioned objects, rearranged interior."),
       },
       [
         "phan_tich_mat_bang",
@@ -297,6 +339,9 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     );
   } else if (activeSubTabKey === "floorplan to 3d floorplan") {
     textPrompt += `Loại ảnh: floorplan 2D kỹ thuật.\nStyle công trình: ${buildingStyle}\nPhong cách: ${interiorStyle}\nKhông được biến floorplan thành ảnh nội thất thông thường.\nYêu cầu làm sạch bản vẽ: ${floorplanAxonometricCleanupDirective}\n`;
+    if (referenceImages.length > 0) {
+      textPrompt += `Quy tắc ảnh tham khảo nội thất: Giữ nguyên tuyệt đối vị trí, loại và sắp xếp của từng món đồ nội thất có trong ảnh tham khảo. TUYỆT ĐỐI không di chuyển, xoay, thêm hoặc bỏ bất kỳ món đồ nào. Chỉ được áp dụng phong cách hoàn thiện bề mặt từ ảnh tham khảo lên vị trí đồ vật đã cố định theo bản vẽ.\n`;
+    }
     if (cameraAngleStyle) {
       textPrompt += `Style góc chụp: ${cameraAngleStyle}\n`;
     }
@@ -304,7 +349,11 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     systemInstruction = [
       "Bạn là chuyên gia phân tích floorplan 2D và tái dựng thành không gian 3D chính xác.",
       "Mặt bằng là sự thật tuyệt đối: tường, cửa, thang, vách và nhãn phòng phải được tôn trọng.",
-      "Nhan phong va ky hieu chi dung de suy luan bo cuc, khong duoc xuat hien lai trong anh ket qua.",
+      "Nhãn phòng và ký hiệu chỉ dùng để suy luận bố trí, không được xuất hiện lại trong ảnh kết quả.",
+      "Không được phép bổ sung, xóa bỏ hoặc sửa đổi bất kỳ thành phần kiến trúc nào không có trong bản vẽ; nếu không chắc, phải giữ nguyên thay vì tự bịa.",
+      referenceImages.length > 0
+        ? "Khi có ảnh tham khảo nội thất: từng món đồ tham khảo chỉ được dùng để khóa đúng chủng loại, hướng và vị trí tương ứng theo mặt bằng; không tự ý thêm bớt hay di chuyển."
+        : "Nếu không có ảnh tham khảo nội thất, bố trí đồ đạc phải bám logic mặt bằng và chỉ dựng những gì suy ra chắc chắn từ bản vẽ.",
       "Tất cả đầu ra bằng tiếng Việt, ưu tiên prompt cuối dùng được ngay.",
     ].join(" ");
     responseSchema = objectSchema(
@@ -330,8 +379,16 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     if (selectedAngle) {
       textPrompt += `Góc chụp: ${selectedAngle}\n`;
     }
+    textPrompt += [
+      "Ràng buộc masterplan: phải giữ nguyên logic phân khu, mạng lưới giao thông, vị trí công trình, mặt nước, cây xanh, tiện ích, khoảng lùi và quan hệ không gian theo bản vẽ gốc.",
+      "Không được tự thêm, bớt, di chuyển, xoay hoặc hoán đổi các khối công trình, đường nội bộ, quảng trường, hồ cảnh quan hay cụm chức năng nếu đầu vào không thể hiện.",
+      "Phải xóa sạch mọi chữ, ký hiệu quy hoạch, dimension, mũi tên, lưới trục, ghi chú CAD, legend và watermark khỏi ảnh kết quả.",
+      "Nếu bản vẽ không rõ một chi tiết, ưu tiên giữ logic hiện trạng gần nhất thay vì tự sáng tác bố cục mới.",
+    ].join(" ") + "\n";
     systemInstruction = [
       "Bạn là chuyên gia biên soạn prompt masterplan 3D.",
+      "Mục tiêu là dựng lại masterplan 3D bám sát bản vẽ quy hoạch gốc, ưu tiên tính đúng đắn không gian hơn hiệu ứng đẹp mắt.",
+      "Không được sáng tác lại zoning, massing, đường giao thông hay thêm bớt tiện ích ngoài dữ liệu đầu vào.",
       "Trả về JSON ngắn gọn và prompt cuối có thể render được ngay.",
     ].join(" ");
     thinkingLevel = "high";
@@ -342,7 +399,7 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
         camera_and_scale_logic: stringField("Logic góc nhìn và tỷ lệ."),
         style_lighting_and_context: stringField("Tổng hợp phong cách, ánh sáng, bối cảnh."),
         optimized_english_prompt: stringField("Prompt cuối cùng."),
-        negative_prompt: stringField("Các lỗi cần tránh."),
+        negative_prompt: stringField("Các lỗi cần tránh, đặc biệt lỗi bịa zoning, sai giao thông, sai vị trí khối công trình và còn sót annotation quy hoạch."),
       },
       [
         "masterplan_analysis",
