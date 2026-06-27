@@ -833,7 +833,6 @@ ${floorplanStylePrompt}- Quy tắc bố cục: giữ nguyên 100% vị trí tư�
             key={tab.id}
             onClick={() => {
               if (tab.isLocked || tab.id === "Render VR 360") {
-                setPendingSubTab(tab.id);
                 setShowVRModal(true);
               } else {
                 setActiveSubTab(tab.id);
@@ -2115,7 +2114,6 @@ ${floorplanStylePrompt}- Quy tắc bố cục: giữ nguyên 100% vị trí tư�
 
               <button
                 onClick={() => {
-                  setPendingSubTab(null);
                   setShowVRModal(false);
                 }}
                 className="w-full py-2.5 px-6 bg-primary hover:bg-primary/90 text-white rounded-xl font-semibold shadow-md transition-all text-xs uppercase tracking-wider"
