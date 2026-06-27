@@ -36,6 +36,8 @@ const TABS = [
   "Tiện ích khác",
 ];
 
+const LOCKED_TABS = new Set(["Cải thiện Render", "Tiện ích khác"]);
+
 const MODELS = [
   {
     id: "nano-banana-pro",
@@ -129,7 +131,7 @@ export const Render: React.FC = () => {
         {/* Main Tabs Navigation */}
         <div className="flex items-center justify-center gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
           {TABS.map((tab) => {
-            const isLocked = tab !== "Render";
+            const isLocked = LOCKED_TABS.has(tab);
             return (
               <button
                 key={tab}
