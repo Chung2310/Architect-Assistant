@@ -456,6 +456,10 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
           }
         }
 
+        const floorplanCleanupPrompt = `- Quy tắc làm sạch bản vẽ: chỉ dùng bản vẽ để suy luận bố cục không gian. PHẢI xóa hoàn toàn mọi chữ, nhãn phòng, số kích thước, hatch, nét đứt, ký hiệu CAD, mũi tên, khung tên, watermark và mọi dấu vết đồ họa 2D của bản vẽ gốc.
+- Kết quả cuối: ảnh phối cảnh 3D sạch, không còn cảm giác ảnh bản vẽ được tô màu, không còn annotation hay text kỹ thuật.
+`;
+
         const textPrompt = `
 - Mô tả ý tưởng: ${description || "Không có"}
 ${activeSubTab === "Render Nội Thất"
@@ -471,7 +475,7 @@ ${activeSubTab === "Render Nội Thất"
 - Style render: ${style || "Không có"}
 - Loại phòng: ${roomType || "Không có"}
 - Phong cách: ${interiorStyle || "Không có"}
-${floorplanStylePrompt}- Quy tắc bố cục: giữ nguyên 100% vị trí tường, cửa, cửa sổ, và đồ đạc theo bản vẽ. KHÔNG di chuyển giường, tủ áo, bàn trang điểm, rèm, hoặc cửa sổ. KHÔNG đổi vị trí nội thất hay làm lệch bố cục mặt bằng.
+${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ nguyên 100% vị trí tường, cửa, cửa sổ, và đồ đạc theo bản vẽ. KHÔNG di chuyển giường, tủ áo, bàn trang điểm, rèm, hoặc cửa sổ. KHÔNG đổi vị trí nội thất hay làm lệch bố cục mặt bằng.
 `
               : activeSubTab === "Floorplan to 3D Floorplan"
                 ? `
@@ -480,6 +484,7 @@ ${floorplanStylePrompt}- Quy tắc bố cục: giữ nguyên 100% vị trí tư�
 - Style công trình: ${buildingStyle || "Không có"}
 - Phong cách: ${interiorStyle || "Không có"}
 - Quy tắc nhận diện bản vẽ: dùng tường ngăn, vách ngăn, cửa và ký hiệu phòng để xác định vị trí chính xác của từng đồ đạc.
+- Quy tắc làm sạch bản vẽ: phải xóa hoàn toàn chữ, nhãn phòng, số đo, hatch, nét CAD, mũi tên, khung tên và mọi dấu vết 2D không thuộc mô hình 3D cuối.
 - Bố cục: giữ nguyên tuyệt đối vị trí tường, cửa, phòng và đồ đạc theo bản vẽ; không thêm cửa, không dịch chuyển hay mở rộng không gian.
 - Nếu tủ áo nằm sau bức tường, tủ phải ở trong phòng tương ứng và KHÔNG được đặt xuyên qua tường.
 `
