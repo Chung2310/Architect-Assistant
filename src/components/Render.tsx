@@ -15,7 +15,6 @@ import {
   scaleToResolution,
   uploadMedia,
 } from "../lib/renderUtils";
-import { Type } from "@google/genai";
 import { toast } from "sonner";
 import ReactCrop, { type Crop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
@@ -112,8 +111,14 @@ export const Render: React.FC = () => {
             </button>
           </div>
           <div className="flex flex-col items-center text-center">
-            <h1 className="text-3xl font-black tracking-tight text-on-surface flex items-center gap-2 uppercase justify-center">
-              <span className="text-primary">iGen</span> Rendering
+            <h1 className="text-3xl font-black tracking-tight text-on-surface flex items-center gap-3 uppercase justify-center">
+              <img
+                src="https://res.cloudinary.com/dgaofuhmv/image/upload/v1775301001/unnamed_tcmlmp.png"
+                alt="iGen Logo"
+                className="h-10 object-contain"
+                referrerPolicy="no-referrer"
+              />
+              Rendering
             </h1>
             <p className="text-xs font-bold text-on-surface-variant/60 tracking-widest uppercase mt-1 text-center">
               Powered by iGen Vision Engine
@@ -123,26 +128,32 @@ export const Render: React.FC = () => {
 
         {/* Main Tabs Navigation */}
         <div className="flex items-center justify-center gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
-          {TABS.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => {
-                if (tab === "Tiện ích khác" || tab === "Cải thiện Render") {
-                  setPendingTab(tab);
-                  setShowFeatureModal(true);
-                } else {
-                  setActiveTab(tab);
-                }
-              }}
-              className={`px-6 py-3 rounded-full font-semibold text-sm whitespace-nowrap transition-all ${
-                activeTab === tab
-                  ? "bg-on-surface text-white"
-                  : "bg-surface-container-lowest text-on-surface-variant hover:bg-white hover:shadow-sm"
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
+          {TABS.map((tab) => {
+            const isLocked = tab !== "Render";
+            return (
+              <button
+                key={tab}
+                onClick={() => {
+                  if (isLocked) {
+                    setPendingTab(tab);
+                    setShowFeatureModal(true);
+                  } else {
+                    setActiveTab(tab);
+                  }
+                }}
+                className={`px-6 py-3 rounded-full font-semibold text-sm whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                  activeTab === tab
+                    ? "bg-on-surface text-white"
+                    : isLocked
+                      ? "bg-surface-container-lowest text-on-surface-variant/40 hover:text-on-surface-variant/60 opacity-55"
+                      : "bg-surface-container-lowest text-on-surface-variant hover:bg-white hover:shadow-sm"
+                }`}
+              >
+                {tab}
+                {isLocked && <Icon name="lock" className="text-xs opacity-60" />}
+              </button>
+            );
+          })}
         </div>
 
         {/* Content Container */}
@@ -181,9 +192,6 @@ export const Render: React.FC = () => {
                   </p>
                   <button
                     onClick={() => {
-                      if (isAdmin && pendingTab) {
-                        setActiveTab(pendingTab);
-                      }
                       setPendingTab(null);
                       setShowFeatureModal(false);
                     }}
