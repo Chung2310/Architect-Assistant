@@ -47,6 +47,117 @@ function numberField() {
   return { type: "NUMBER" };
 }
 
+function isPhotorealStyle(style: string) {
+  const normalizedStyle = normalizeKey(style);
+  return (
+    normalizedStyle.includes("anh chup thuc te") ||
+    normalizedStyle.includes("phoi canh thuc te") ||
+    normalizedStyle.includes("photoreal") ||
+    normalizedStyle.includes("realistic")
+  );
+}
+
+function buildPhotorealismDirective(style: string, subject: "exterior" | "interior") {
+  if (!isPhotorealStyle(style)) return "";
+
+  const subjectLabel =
+    subject === "exterior" ? "ngoai that cong trinh" : "noi that cong trinh";
+
+  return [
+    `Uu tien ngon ngu anh chup ${subjectLabel} chan thuc, khong phai CGI hay concept art.`,
+    "Mo ta nhu anh chup bang may anh full-frame chuyen nghiep, phoi canh tu nhien, vat lieu dung scale, do sau anh hop ly.",
+    "Bat buoc the hien be mat co vi sai thuc te: mep vat lieu sac vua phai, phan xa kinh hop ly, bong do mem dung huong sang, texture khong lap gia.",
+    "Anh sang phai giong anh doi thuc da hau ky nhe: dynamic range can bang, white balance tu nhien, khong glow gia, khong vien sang ao.",
+    "Cho phep cac dau hieu realism muc nhe nhu do nham vat lieu, sai so thi cong nho, bui be mat rat nhe, cay coi va nguoi neu co phai dung ty le thuc.",
+    "Tranh tuyet doi cam giac render AI: oversharpen, be mat nhua, vat lieu qua sach, doi xung hoan hao, anh sang san khau, mau qua no, chi tiet bia them.",
+  ].join(" ");
+}
+
+function buildPhotorealNegativePrompt(style: string) {
+  if (!isPhotorealStyle(style)) return "";
+
+  return [
+    "CGI",
+    "3D render look",
+    "concept art",
+    "surreal",
+    "plastic materials",
+    "waxy surfaces",
+    "fake reflections",
+    "repeated textures",
+    "oversaturated colors",
+    "excessive contrast",
+    "HDR overprocessed",
+    "bloom",
+    "glow",
+    "floating objects",
+    "warped geometry",
+    "distorted perspective",
+    "inconsistent scale",
+    "perfect symmetry",
+    "sterile surfaces",
+    "artificial lighting",
+    "game-engine look",
+  ].join(", ");
+}
+
+function buildFloorplanCleanupDirective(mode: "space" | "axonometric") {
+  if (mode === "space") {
+    return [
+      "Day la anh render duoc dien giai tu ban ve, khong phai anh chup lai ban ve.",
+      "Chi duoc giu logic bo cuc, vi tri tuong, cua, cua so, loi di va noi that theo floorplan.",
+      "Phai xoa hoan toan moi dau vet do hoa cua ban ve goc: chu, nhan phong, kich thuoc, dimension line, mui ten, hatch, net dut, vien CAD, ky hieu vat lieu, ky hieu ky thuat, khung ten, watermark.",
+      "Khong de lai bat ky text, icon ky thuat, vien den day, net phac thao hay hieu ung blueprint nao trong anh cuoi.",
+      "Anh cuoi phai la khong gian 3D sach, thuc te, khong con dau vet mat bang 2D.",
+    ].join(" ");
+  }
+
+  return [
+    "Day la phoi canh 3D axonometric duoc tai dung tu floorplan 2D.",
+    "Chi duoc giu cau truc mat bang, tuong, cua, vach, thang, nhan dien khong gian o muc logic bo cuc.",
+    "Phai xoa hoan toan chu, nhan phong, so do kich thuoc, hatch, ky hieu CAD, duong tim, net dut, ky hieu mo cua, khung ban ve va moi dau vet do hoa 2D khong thuoc vat the 3D.",
+    "Khong duoc de anh cuoi trong giong ban ve duoc to mau; phai la mo hinh 3D sach, ro, khong con annotation.",
+  ].join(" ");
+}
+
+function buildFloorplanNegativePrompt(mode: "space" | "axonometric") {
+  if (mode === "space") {
+    return [
+      "text",
+      "room labels",
+      "dimensions",
+      "dimension lines",
+      "annotations",
+      "arrows",
+      "hatch patterns",
+      "CAD lines",
+      "dashed lines",
+      "blueprint look",
+      "technical drawing",
+      "floorplan overlay",
+      "watermark",
+      "title block",
+      "2D graphic remnants",
+    ].join(", ");
+  }
+
+  return [
+    "text",
+    "room labels",
+    "dimensions",
+    "annotations",
+    "CAD symbols",
+    "door swing markers",
+    "grid lines",
+    "hatch patterns",
+    "blueprint style",
+    "technical plan graphics",
+    "2D overlay",
+    "title block",
+    "watermark",
+  ].join(", ");
+}
+
 function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplateParams {
   const activeSubTab = String(input.activeSubTab || "");
   const activeSubTabKey = normalizeKey(activeSubTab);
@@ -77,17 +188,28 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
   let thinkingLevel: "medium" | "high" = "medium";
 
   const selectedAngle = customCameraAngle || cameraAngle;
+  const exteriorPhotorealDirective = buildPhotorealismDirective(style, "exterior");
+  const interiorPhotorealDirective = buildPhotorealismDirective(style, "interior");
+  const photorealNegativePrompt = buildPhotorealNegativePrompt(style);
+  const floorplanSpaceCleanupDirective = buildFloorplanCleanupDirective("space");
+  const floorplanAxonometricCleanupDirective = buildFloorplanCleanupDirective("axonometric");
+  const floorplanSpaceNegativePrompt = buildFloorplanNegativePrompt("space");
+  const floorplanAxonometricNegativePrompt = buildFloorplanNegativePrompt("axonometric");
 
   if (activeSubTabKey.includes("render ngoai that")) {
     textPrompt += `Style ảnh: ${style}\nTone màu: ${colorTone}\nBối cảnh: ${context}\nÁnh sáng: ${lighting}\n`;
     if (selectedAngle) {
       textPrompt += `Góc chụp: ${selectedAngle}\n`;
     }
+    if (exteriorPhotorealDirective) {
+      textPrompt += `Photoreal directive: ${exteriorPhotorealDirective}\n`;
+    }
     systemInstruction = [
       "Bạn là chuyên gia biên soạn prompt render ngoại thất cho iGen.",
       "Tất cả phân tích và prompt cuối cùng phải viết bằng tiếng Việt rõ ràng, ngắn gọn, hữu dụng.",
       "Nếu có ảnh tham khảo, phải bảo tồn hình khối, bố cục, góc máy và logic cấu trúc của công trình.",
       "Nếu không có ảnh, được phép sáng tạo nhưng vẫn phải hợp lý về kiến trúc.",
+      "Nếu style là ảnh chụp thực tế, prompt cuối phải ép model theo ngôn ngữ nhiếp ảnh đời thực và chủ động loại bỏ cảm giác CGI hoặc AI.",
       "Hãy trả về JSON gồm phần phân tích ngắn gọn và prompt render cuối cùng tối ưu, tránh lặp lại, tránh lý thuyết thừa.",
     ].join(" ");
     responseSchema = objectSchema(
@@ -113,10 +235,14 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     if (selectedAngle) {
       textPrompt += `Góc chụp: ${selectedAngle}\n`;
     }
+    if (interiorPhotorealDirective) {
+      textPrompt += `Photoreal directive: ${interiorPhotorealDirective}\n`;
+    }
     systemInstruction = [
       "Bạn là chuyên gia biên soạn prompt render nội thất cao cấp.",
       "Tất cả đầu ra phải bằng tiếng Việt, nhấn mạnh công năng phòng, vật liệu, bố cục và không khí ánh sáng.",
       "Nếu có ảnh gốc, phải giữ bố cục và tỷ lệ khung hình; nếu không có ảnh, được phép suy luận hợp lý.",
+      "Nếu style là ảnh chụp thực tế, prompt cuối phải mô tả vật liệu, ánh sáng và cảm giác ống kính như ảnh nội thất đời thực, tránh showroom CGI.",
       "Trả về JSON ngắn gọn, đúng trọng tâm, tập trung vào prompt cuối dùng được ngay.",
     ].join(" ");
     responseSchema = objectSchema(
@@ -140,13 +266,15 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
       ],
     );
   } else if (activeSubTabKey === "floorplan to 3d") {
-    textPrompt += `Style render: ${style}\nLoại phòng: ${roomType}\nPhong cách: ${interiorStyle}\nGiữ đúng bố cục mặt bằng, tường, cửa, nội thất theo floorplan.\n`;
+    textPrompt += `Style render: ${style}\nLoại phòng: ${roomType}\nPhong cách: ${interiorStyle}\nGiữ đúng bố cục mặt bằng, tường, cửa, nội thất theo floorplan.\nYêu cầu làm sạch bản vẽ: ${floorplanSpaceCleanupDirective}\n`;
     if (cameraAngleStyle) {
       textPrompt += `Style góc chụp: ${cameraAngleStyle}\n`;
     }
+    textPrompt += `Negative prompt ưu tiên: ${floorplanSpaceNegativePrompt}\n`;
     systemInstruction = [
       "Bạn là chuyên gia chuyển mặt bằng thành không gian 3D.",
       "Mục tiêu là dựng lại không gian từ floorplan thật chính xác, không được phá vỡ bố cục.",
+      "Phải phân biệt ro rang giua du lieu bo cuc can giu va dau vet do hoa ban ve can xoa bo.",
       "Tất cả đầu ra phải bằng tiếng Việt và tập trung vào prompt cuối khả thi cho image model.",
     ].join(" ");
     responseSchema = objectSchema(
@@ -168,13 +296,15 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
       ],
     );
   } else if (activeSubTabKey === "floorplan to 3d floorplan") {
-    textPrompt += `Loại ảnh: floorplan 2D kỹ thuật.\nStyle công trình: ${buildingStyle}\nPhong cách: ${interiorStyle}\nKhông được biến floorplan thành ảnh nội thất thông thường.\n`;
+    textPrompt += `Loại ảnh: floorplan 2D kỹ thuật.\nStyle công trình: ${buildingStyle}\nPhong cách: ${interiorStyle}\nKhông được biến floorplan thành ảnh nội thất thông thường.\nYêu cầu làm sạch bản vẽ: ${floorplanAxonometricCleanupDirective}\n`;
     if (cameraAngleStyle) {
       textPrompt += `Style góc chụp: ${cameraAngleStyle}\n`;
     }
+    textPrompt += `Negative prompt ưu tiên: ${floorplanAxonometricNegativePrompt}\n`;
     systemInstruction = [
       "Bạn là chuyên gia phân tích floorplan 2D và tái dựng thành không gian 3D chính xác.",
       "Mặt bằng là sự thật tuyệt đối: tường, cửa, thang, vách và nhãn phòng phải được tôn trọng.",
+      "Nhan phong va ky hieu chi dung de suy luan bo cuc, khong duoc xuat hien lai trong anh ket qua.",
       "Tất cả đầu ra bằng tiếng Việt, ưu tiên prompt cuối dùng được ngay.",
     ].join(" ");
     responseSchema = objectSchema(
@@ -223,6 +353,10 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
         "negative_prompt",
       ],
     );
+  }
+
+  if (photorealNegativePrompt) {
+    textPrompt += `Negative prompt ưu tiên: ${photorealNegativePrompt}\n`;
   }
 
   parts.push({ text: textPrompt.trim() });
