@@ -64,12 +64,12 @@ function buildPhotorealismDirective(style: string, subject: "exterior" | "interi
     subject === "exterior" ? "ngoai that cong trinh" : "noi that cong trinh";
 
   return [
-    `Uu tien ngon ngu anh chup ${subjectLabel} chan thuc, khong phai CGI hay concept art.`,
-    "Mo ta nhu anh chup bang may anh full-frame chuyen nghiep, phoi canh tu nhien, vat lieu dung scale, do sau anh hop ly.",
-    "Bat buoc the hien be mat co vi sai thuc te: mep vat lieu sac vua phai, phan xa kinh hop ly, bong do mem dung huong sang, texture khong lap gia.",
-    "Anh sang phai giong anh doi thuc da hau ky nhe: dynamic range can bang, white balance tu nhien, khong glow gia, khong vien sang ao.",
-    "Cho phep cac dau hieu realism muc nhe nhu do nham vat lieu, sai so thi cong nho, bui be mat rat nhe, cay coi va nguoi neu co phai dung ty le thuc.",
-    "Tranh tuyet doi cam giac render AI: oversharpen, be mat nhua, vat lieu qua sach, doi xung hoan hao, anh sang san khau, mau qua no, chi tiet bia them.",
+    `Ưu tiên ngôn ngữ ảnh chụp ${subjectLabel} chân thực, không phải CGI hay concept art.`,
+    "Mô tả như ảnh chụp bằng máy ảnh full-frame chuyên nghiệp, phối cảnh tự nhiên, vật liệu đúng scale, độ sau ảnh hợp lý.",
+    "Bắt buộc thể hiện bề mặt có vi sai thực tế: mép vật liệu sắc vừa phải, phản xạ kính hợp lý, bóng đổ mềm đúng hướng sáng, texture không lặp lại.",
+    "Ánh sáng phải giống ảnh đời thực đã hậu kỳ nhẹ: dynamic range cân bằng, white balance tự nhiên, không glow giả, không viền sáng ảo.",
+    "Cho phép các dấu hiệu realism mức nhẹ như độ nhòe vật liệu, sai số thi công nhỏ, bụi bề mặt rất nhẹ, cây cối và người nếu có phải dùng tỷ lệ thực.",
+    "Tránh tuyệt đối cảm giác render AI: oversharpen, bề mặt nhũ, vật liệu quá sạch, đối xứng hoàn hảo, ánh sáng sàn khâu, màu quá nồng, chi tiết bịa thêm.",
   ].join(" ");
 }
 
@@ -104,19 +104,23 @@ function buildPhotorealNegativePrompt(style: string) {
 function buildFloorplanCleanupDirective(mode: "space" | "axonometric") {
   if (mode === "space") {
     return [
-      "Day la anh render duoc dien giai tu ban ve, khong phai anh chup lai ban ve.",
-      "Chi duoc giu logic bo cuc, vi tri tuong, cua, cua so, loi di va noi that theo floorplan.",
-      "Phai xoa hoan toan moi dau vet do hoa cua ban ve goc: chu, nhan phong, kich thuoc, dimension line, mui ten, hatch, net dut, vien CAD, ky hieu vat lieu, ky hieu ky thuat, khung ten, watermark.",
-      "Khong de lai bat ky text, icon ky thuat, vien den day, net phac thao hay hieu ung blueprint nao trong anh cuoi.",
+      "Đây là ảnh render được diễn giải từ bản vẽ, không phải ảnh chụp lại bản vẽ.",
+      "Chỉ được giữ logic bố trí, vị trí tường, cửa, cửa sổ, lối đi và nội thất theo floorplan.",
+      "Tuyệt đối không được thêm, bớt, đổi chỗ, tách, nối, mở rộng, thu hẹp hay xoay bất kỳ thành phần kiến trúc nào so với bản vẽ gốc.",
+      "Kiến trúc là ràng buộc cùng: tường, vách, cột, lối đi, cửa đi, cửa sổ, thông tầng, thang, sàn trong, lỗ gia, lối thoát hiểm, WC, hộp kỹ thuật, lõi giao thông và ranh giới phòng phải giữ nguyên vị trí và quan hệ không gian.",
+      "Phải xóa hoàn toàn mọi dấu vết đồ họa của bản vẽ gốc: chữ, nhãn phòng, kích thước, dimension line, mũi tên, hatch, nét đứt, vien CAD, ký hiệu vật liệu, ký hiệu kỹ thuật, khung tên, watermark.",
+      "Không để lại bất kỳ text, icon kỹ thuật, viền đen dày, nét phác thảo hay hiệu ứng blueprint nào trong ảnh cuối.",
       "Anh cuoi phai la khong gian 3D sach, thuc te, khong con dau vet mat bang 2D.",
     ].join(" ");
   }
 
   return [
-    "Day la phoi canh 3D axonometric duoc tai dung tu floorplan 2D.",
-    "Chi duoc giu cau truc mat bang, tuong, cua, vach, thang, nhan dien khong gian o muc logic bo cuc.",
-    "Phai xoa hoan toan chu, nhan phong, so do kich thuoc, hatch, ky hieu CAD, duong tim, net dut, ky hieu mo cua, khung ban ve va moi dau vet do hoa 2D khong thuoc vat the 3D.",
-    "Khong duoc de anh cuoi trong giong ban ve duoc to mau; phai la mo hinh 3D sach, ro, khong con annotation.",
+    "Đây là phôi cảnh 3D axonometric được tải dụng từ floorplan 2D.",
+    "Chỉ được giữ cấu trúc mặt bằng, tường, cửa, vách, thang, nhận diện không gian ở mục logic bố trí.",
+    "Tuyệt đối không được thêm, bớt, đổi chỗ, tách, nối, mở rộng, thu hẹp hay xoay bất kỳ thành phần kiến trúc nào so với bản vẽ gốc.",
+    "Mọi thành phần kiến trúc phải khóa cùng theo bản vẽ: tường, cột, vách, cửa đi, cửa sổ, lối thông tầng, lối đi, trục giao thông, lối thoát hiểm, WC, hộp kỹ thuật, sàn trong và ranh giới từng phòng.",
+    "Phải xóa hoàn toàn chữ, nhãn phòng, số đo kích thước, hatch, ký hiệu CAD, đường tim, nét đứt, ký hiệu mở cửa, khung bản vẽ và mọi dấu vết đồ họa 2D không thuộc vật thể 3D.",
+    "Không được để ảnh cuối trong giống bản vẽ được tô màu; phải là mô hình 3D sạch, rõ, không còn annotation.",
   ].join(" ");
 }
 
@@ -146,6 +150,14 @@ function buildFloorplanNegativePrompt(mode: "space" | "axonometric") {
     "room labels",
     "dimensions",
     "annotations",
+    "missing walls",
+    "extra walls",
+    "shifted doors",
+    "shifted windows",
+    "altered room boundaries",
+    "changed circulation",
+    "invented architectural elements",
+    "deleted architectural elements",
     "CAD symbols",
     "door swing markers",
     "grid lines",
@@ -297,14 +309,14 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     }
     textPrompt += `Negative prompt ưu tiên: ${floorplanSpaceNegativePrompt}\n`;
     systemInstruction = [
-      "Bạn là chuyên gia chuyển mặt bằng thành không gian 3D photorealistic.",
-      "BƯỚC 1 - PHÂN TÍCH BẢN VẼ: Đọc kỹ bản vẽ mặt bằng, xác định loại phòng (phòng ngủ, phòng khách, bếp, v.v.) và liệt kê TOÀN BỘ đồ nội thất thực tế có trong bản vẽ cùng vị trí chính xác của từng món (ví dụ: phòng ngủ → giường đôi ở giữa, tủ quần áo bên phải, bàn trang điểm bên trái, táp đầu giường hai bên; phòng khách → sofa góc trái, bàn trà trước sofa, kệ TV đối diện, v.v.).",
-      "BƯỚC 2 - CAMERA: Luôn dùng góc ngang tầm mắt nhìn từ cửa phòng đi vào. Không góc cao, không nhìn từ trên xuống. Đảm bảo thể hiện được các đồ nội thất chính của phòng.",
-      "BƯỚC 3 - BẤT BIẾN VỊ TRÍ: Tất cả đồ đạc đã xác định ở BƯỚC 1 PHẢI xuất hiện đúng vị trí trong ảnh cuối. Không tự ý di chuyển, xoay, thêm hoặc bỏ bất kỳ món đồ nào.",
-      "BƯỚC 4 - LÀM SẠCH BẢN VẼ: Xóa hoàn toàn mọi dấu vết đồ họa 2D (chữ, số kích thước, hatch, nét đứt, ký hiệu CAD) — chỉ giữ lại logic bố cục không gian.",
+      "Bạn là chuyên gia chuyển mặt bằng thành không gian 3D.",
+      "Mục tiêu là dựng lại không gian từ floorplan thật chính xác, không được phá vỡ bố cục.",
+      "Phải phân biệt ro rang giua du lieu bo cuc can giu va dau vet do hoa ban ve can xoa bo.",
+      "Không được phép suy luận sang tạo vào kiến trúc nếu bản vẽ không thể hiện; ưu tiên bảo tồn ý nguyên bản vẽ hơn thẩm mỹ hình ảnh.",
+      "Nếu có thể nhận diện đồ nội thất từ bản vẽ hoặc ảnh tham khảo, từng món phải giữ đúng loại, vị trí, hướng và quan hệ không gian; không được tự ý di chuyển, xoay, thêm hoặc bỏ.",
       referenceImages.length > 0
-        ? "BẮT BUỘC KHI CÓ ẢNH THAM KHẢO NỘI THẤT: Từng món đồ nội thất trong ảnh tham khảo phải được giữ nguyên vị trí, hướng và loại đồ vật. TUYỆT ĐỐI không được tự ý di chuyển, đổi hướng, xóa hoặc thêm đồ vật so với ảnh tham khảo. Phong cách hoàn thiện (màu, vật liệu, ánh sáng) được học từ ảnh tham khảo nhưng layout đồ vật phải bất biến."
-        : "Nếu không có ảnh tham khảo nội thất, bố trí nội thất theo đúng bố cục mặt bằng và phong cách được chỉ định.",
+        ? "Khi có ảnh tham khảo nội thất: chỉ được học phong cách hoàn thiện bề mặt từ ảnh tham khảo, còn layout đồ vật và kiến trúc phải bất biến theo bản vẽ và vị trí nhận diện được từ đầu vào."
+        : "Nếu không có ảnh tham khảo nội thất, chỉ dựng những gì suy ra được chắc chắn từ bản vẽ và thông số người dùng cung cấp.",
       "Tất cả đầu ra phải bằng tiếng Việt và tập trung vào prompt cuối khả thi cho image model.",
     ].join(" ");
     responseSchema = objectSchema(
@@ -337,10 +349,11 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     systemInstruction = [
       "Bạn là chuyên gia phân tích floorplan 2D và tái dựng thành không gian 3D chính xác.",
       "Mặt bằng là sự thật tuyệt đối: tường, cửa, thang, vách và nhãn phòng phải được tôn trọng.",
-      "Nhãn phòng và ký hiệu chỉ dùng để suy luận bố cục, không được xuất hiện lại trong ảnh kết quả.",
+      "Nhãn phòng và ký hiệu chỉ dùng để suy luận bố trí, không được xuất hiện lại trong ảnh kết quả.",
+      "Không được phép bổ sung, xóa bỏ hoặc sửa đổi bất kỳ thành phần kiến trúc nào không có trong bản vẽ; nếu không chắc, phải giữ nguyên thay vì tự bịa.",
       referenceImages.length > 0
-        ? "BẮT BUỘC KHI CÓ ẢNH THAM KHẢO NỘI THẤT: Từng món đồ trong ảnh tham khảo phải được đặt đúng vị trí, đúng hướng, đúng chủng loại trong ảnh kết quả. TUYỆT ĐỐI không tự ý di chuyển, đổi hướng, xóa hay thêm đồ vật so với ảnh tham khảo. Chỉ phong cách hoàn thiện bề mặt được học từ ảnh tham khảo."
-        : "Nếu không có ảnh tham khảo nội thất, bố trí đồ đạc theo logic mặt bằng và phong cách được chỉ định.",
+        ? "Khi có ảnh tham khảo nội thất: từng món đồ tham khảo chỉ được dùng để khóa đúng chủng loại, hướng và vị trí tương ứng theo mặt bằng; không tự ý thêm bớt hay di chuyển."
+        : "Nếu không có ảnh tham khảo nội thất, bố trí đồ đạc phải bám logic mặt bằng và chỉ dựng những gì suy ra chắc chắn từ bản vẽ.",
       "Tất cả đầu ra bằng tiếng Việt, ưu tiên prompt cuối dùng được ngay.",
     ].join(" ");
     responseSchema = objectSchema(
@@ -366,8 +379,16 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     if (selectedAngle) {
       textPrompt += `Góc chụp: ${selectedAngle}\n`;
     }
+    textPrompt += [
+      "Ràng buộc masterplan: phải giữ nguyên logic phân khu, mạng lưới giao thông, vị trí công trình, mặt nước, cây xanh, tiện ích, khoảng lùi và quan hệ không gian theo bản vẽ gốc.",
+      "Không được tự thêm, bớt, di chuyển, xoay hoặc hoán đổi các khối công trình, đường nội bộ, quảng trường, hồ cảnh quan hay cụm chức năng nếu đầu vào không thể hiện.",
+      "Phải xóa sạch mọi chữ, ký hiệu quy hoạch, dimension, mũi tên, lưới trục, ghi chú CAD, legend và watermark khỏi ảnh kết quả.",
+      "Nếu bản vẽ không rõ một chi tiết, ưu tiên giữ logic hiện trạng gần nhất thay vì tự sáng tác bố cục mới.",
+    ].join(" ") + "\n";
     systemInstruction = [
       "Bạn là chuyên gia biên soạn prompt masterplan 3D.",
+      "Mục tiêu là dựng lại masterplan 3D bám sát bản vẽ quy hoạch gốc, ưu tiên tính đúng đắn không gian hơn hiệu ứng đẹp mắt.",
+      "Không được sáng tác lại zoning, massing, đường giao thông hay thêm bớt tiện ích ngoài dữ liệu đầu vào.",
       "Trả về JSON ngắn gọn và prompt cuối có thể render được ngay.",
     ].join(" ");
     thinkingLevel = "high";
@@ -378,7 +399,7 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
         camera_and_scale_logic: stringField("Logic góc nhìn và tỷ lệ."),
         style_lighting_and_context: stringField("Tổng hợp phong cách, ánh sáng, bối cảnh."),
         optimized_english_prompt: stringField("Prompt cuối cùng."),
-        negative_prompt: stringField("Các lỗi cần tránh."),
+        negative_prompt: stringField("Các lỗi cần tránh, đặc biệt lỗi bịa zoning, sai giao thông, sai vị trí khối công trình và còn sót annotation quy hoạch."),
       },
       [
         "masterplan_analysis",

@@ -293,34 +293,42 @@ export const geminiService = {
       const IMAGE_GEN_MODEL = isFlashVariant ? "gemini-3.1-flash-image" : "gemini-3-pro-image";
       logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL} (variant: ${isFlashVariant ? 'flash' : 'pro'}), aspect: ${aspectRatio}`);
 
-      // Thêm aspect ratio vào prompt nếu có cấu hình tỷ lệ khung hình khác 1:1
-      let finalContents = params.contents;
-      if (aspectRatio && aspectRatio !== "1:1") {
-        if (Array.isArray(params.contents)) {
-          finalContents = params.contents.map((content) => {
-            if (content && typeof content === "object" && "parts" in content) {
-              const parts = (content as { parts?: Array<Record<string, unknown>> }).parts;
-              if (Array.isArray(parts)) {
-                return {
-                  ...content,
-                  parts: parts.map((part) => {
-                    if (typeof part?.text === "string" && part.text.trim()) {
-                      return {
-                        ...part,
-                        text: `${part.text}\n[Aspect ratio: ${aspectRatio}]`,
-                      };
-                    }
-                    return part;
-                  }),
-                };
-              }
+      const contentsArray = Array.isArray(params.contents)
+        ? params.contents
+        : params.contents
+          ? [params.contents]
+          : [];
+
+      const aspectRatioPart =
+        aspectRatio && aspectRatio !== "1:1"
+          ? [{ text: `[Aspect ratio: ${aspectRatio}]` }]
+          : [];
+
+      const finalContents = contentsArray.length > 0
+        ? contentsArray.map((content, index) => {
+            if (
+              index === contentsArray.length - 1 &&
+              content &&
+              typeof content === "object" &&
+              "parts" in content &&
+              Array.isArray((content as { parts?: unknown[] }).parts)
+            ) {
+              const typedContent = content as {
+                role?: string;
+                parts: Array<Record<string, unknown>>;
+              };
+
+              return {
+                role: typedContent.role,
+                parts: [...typedContent.parts, ...aspectRatioPart],
+              };
             }
+
             return content;
-          });
-        } else if (typeof params.contents === "string") {
-          finalContents = `${params.contents}\n[Aspect ratio: ${aspectRatio}]`;
-        }
-      }
+          })
+        : typeof params.contents === "string"
+          ? `${params.contents}${aspectRatioPart.length > 0 ? `\n[Aspect ratio: ${aspectRatio}]` : ""}`
+          : extractTextFromContents(params.contents);
 
       const imageConfigForSdk: Record<string, unknown> = {
         responseModalities: ["TEXT", "IMAGE"],
