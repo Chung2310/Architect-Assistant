@@ -15,7 +15,7 @@ export const piapiService = {
   async createImageTask(
     prompt: string,
     model: string,
-    options?: { aspectRatio?: string; image?: string; numImages?: number }
+    options?: { aspectRatio?: string; image?: string; numImages?: number; jobType?: string }
   ): Promise<{ taskId: string; isMock: boolean; mockUrl?: string }> {
     if (!PIAPI_API_KEY) {
       console.log(`[PiAPI Image Task] Running in MOCK mode (No PIAPI_API_KEY). Model: ${model}`);
@@ -31,8 +31,11 @@ export const piapiService = {
     const randomSeed = Math.floor(Math.random() * 2147483647);
     let reqBody: Record<string, unknown> | undefined;
 
+    const isFloorplanJob = String(options?.jobType || "").toLowerCase().includes("floorplan") || String(options?.jobType || "").toLowerCase().includes("masterplan");
+
     if (model === "nano-banana-2" || model === "igen-image-flash" || model === "nano-banana-pro") {
       const taskType = model === "igen-image-flash" ? "nano-banana-2" : model;
+      const hasImage = !!options?.image;
       reqBody = {
         model: "gemini",
         task_type: taskType,
@@ -43,7 +46,7 @@ export const piapiService = {
           resolution: "1K",
           number_of_images: options?.numImages || 1,
           seed: randomSeed,
-          ...(options?.image ? { image: options.image } : {}),
+          ...(hasImage ? { image: options.image, strength: isFloorplanJob ? 0.85 : 0.35 } : {}),
         },
       };
     } else {
@@ -53,19 +56,27 @@ export const piapiService = {
       }
 
       let finalPrompt = prompt;
-      if (piapiModel === "midjourney" && !prompt.includes("--seed")) {
-        finalPrompt = `${prompt} --seed ${randomSeed}`;
+      if (piapiModel === "midjourney") {
+        if (!prompt.includes("--seed")) {
+          finalPrompt = `${prompt} --seed ${randomSeed}`;
+        }
+        if (options?.image && !finalPrompt.includes("--iw") && !isFloorplanJob) {
+          finalPrompt = `${finalPrompt} --iw 2.0`;
+        }
       }
+
+      const hasImage = !!options?.image && piapiModel !== "midjourney";
 
       reqBody = {
         model: piapiModel,
-        task_type: piapiModel === "midjourney" ? "imagine" : "txt2img",
+        task_type: piapiModel === "midjourney" ? "imagine" : (hasImage ? "img2img" : "txt2img"),
         input: {
           prompt: finalPrompt,
           aspect_ratio: aspect,
           number_of_images: options?.numImages || 1,
           seed: randomSeed,
           ...(options?.image ? { image: options.image } : {}),
+          ...(hasImage ? { strength: isFloorplanJob ? 0.85 : 0.35 } : {}),
         },
       };
     }

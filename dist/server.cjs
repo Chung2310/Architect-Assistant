@@ -1126,6 +1126,7 @@ var piapiService = {
     let reqBody;
     if (model === "nano-banana-2" || model === "igen-image-flash" || model === "nano-banana-pro") {
       const taskType = model === "igen-image-flash" ? "nano-banana-2" : model;
+      const hasImage = !!options?.image;
       reqBody = {
         model: "gemini",
         task_type: taskType,
@@ -1136,7 +1137,7 @@ var piapiService = {
           resolution: "1K",
           number_of_images: options?.numImages || 1,
           seed: randomSeed,
-          ...options?.image ? { image: options.image } : {}
+          ...hasImage ? { image: options.image, strength: 0.35 } : {}
         }
       };
     } else {
@@ -1145,18 +1146,25 @@ var piapiService = {
         piapiModel = "Qubico/flux1-dev";
       }
       let finalPrompt = prompt;
-      if (piapiModel === "midjourney" && !prompt.includes("--seed")) {
-        finalPrompt = `${prompt} --seed ${randomSeed}`;
+      if (piapiModel === "midjourney") {
+        if (!prompt.includes("--seed")) {
+          finalPrompt = `${prompt} --seed ${randomSeed}`;
+        }
+        if (options?.image && !finalPrompt.includes("--iw")) {
+          finalPrompt = `${finalPrompt} --iw 2.0`;
+        }
       }
+      const hasImage = !!options?.image && piapiModel !== "midjourney";
       reqBody = {
         model: piapiModel,
-        task_type: piapiModel === "midjourney" ? "imagine" : "txt2img",
+        task_type: piapiModel === "midjourney" ? "imagine" : hasImage ? "img2img" : "txt2img",
         input: {
           prompt: finalPrompt,
           aspect_ratio: aspect,
           number_of_images: options?.numImages || 1,
           seed: randomSeed,
-          ...options?.image ? { image: options.image } : {}
+          ...options?.image ? { image: options.image } : {},
+          ...hasImage ? { strength: 0.35 } : {}
         }
       };
     }
@@ -1383,23 +1391,6 @@ var piapiService = {
 
 // server/service/gemini.service.ts
 var import_genai = require("@google/genai");
-function extractTextFromContents(contents) {
-  const contentsArray = Array.isArray(contents) ? contents : contents && typeof contents === "object" && "parts" in contents ? [contents] : [];
-  let promptText = "";
-  for (const content of contentsArray) {
-    if (content && typeof content === "object" && "parts" in content) {
-      const parts = content.parts;
-      if (Array.isArray(parts)) {
-        for (const part of parts) {
-          if (typeof part?.text === "string") {
-            promptText += part.text + "\n";
-          }
-        }
-      }
-    }
-  }
-  return promptText.trim();
-}
 function summarizeContents(contents) {
   if (typeof contents === "string") {
     return `string:${contents.slice(0, 120)}`;
@@ -1595,14 +1586,40 @@ ${promptText}`.trim();
       }
       const ai2 = new import_genai.GoogleGenAI({ apiKey });
       logger.info(`[Gemini Service] Provider: Gemini native image. Requested model: ${modelName}`);
-      const promptText = extractTextFromContents(params.contents);
       const imageConfig = params.config?.imageConfig || params.generationConfig?.imageConfig || {};
       const aspectRatio = imageConfig.aspectRatio || "1:1";
       const isFlashVariant = modelName === "nano-banana-2" || modelName === "igen-image-flash" || modelName === "gemini-3.1-flash-image";
       const IMAGE_GEN_MODEL = isFlashVariant ? "gemini-3.1-flash-image" : "gemini-3-pro-image";
       logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL} (variant: ${isFlashVariant ? "flash" : "pro"}), aspect: ${aspectRatio}`);
-      const finalPromptText = aspectRatio && aspectRatio !== "1:1" ? `${promptText}
-[Aspect ratio: ${aspectRatio}]` : promptText;
+      let finalContents = params.contents;
+      if (aspectRatio && aspectRatio !== "1:1") {
+        if (Array.isArray(params.contents)) {
+          finalContents = params.contents.map((content) => {
+            if (content && typeof content === "object" && "parts" in content) {
+              const parts2 = content.parts;
+              if (Array.isArray(parts2)) {
+                return {
+                  ...content,
+                  parts: parts2.map((part) => {
+                    if (typeof part?.text === "string" && part.text.trim()) {
+                      return {
+                        ...part,
+                        text: `${part.text}
+[Aspect ratio: ${aspectRatio}]`
+                      };
+                    }
+                    return part;
+                  })
+                };
+              }
+            }
+            return content;
+          });
+        } else if (typeof params.contents === "string") {
+          finalContents = `${params.contents}
+[Aspect ratio: ${aspectRatio}]`;
+        }
+      }
       const imageConfigForSdk = {
         responseModalities: ["TEXT", "IMAGE"]
       };
@@ -1613,7 +1630,7 @@ ${promptText}`.trim();
       try {
         response2 = await ai2.models.generateContent({
           model: IMAGE_GEN_MODEL,
-          contents: finalPromptText,
+          contents: finalContents,
           config: imageConfigForSdk
         });
       } catch (err) {
@@ -1763,6 +1780,28 @@ var updateJobSchema = import_joi3.default.object({
     "number.max": "Ti\u1EBFn tr\xECnh kh\xF4ng \u0111\u01B0\u1EE3c l\u1EDBn h\u01A1n 100."
   })
 });
+function appendFloorplanCleanupDirective(type, prompt) {
+  const normalizedType = String(type || "").toLowerCase().trim();
+  if (normalizedType !== "floorplan to 3d" && normalizedType !== "floorplan to 3d floorplan") {
+    return prompt;
+  }
+  const cleanupDirective = " IMPORTANT: chi giu bo cuc khong gian, tuong, cua, cua so, cau thang va vi tri noi that theo ban ve. Xoa hoan toan moi chu, nhan phong, so kich thuoc, hatch, net dut, ky hieu CAD, mui ten, khung ten, watermark va moi dau vet do hoa 2D cua ban ve goc. Anh cuoi phai la phoi canh 3D sach, khong con annotation hay text ky thuat.";
+  if (prompt.includes(cleanupDirective.trim())) {
+    return prompt;
+  }
+  return `${prompt}${cleanupDirective}`;
+}
+function appendFloorplanNegativePrompt(type, prompt) {
+  const normalizedType = String(type || "").toLowerCase().trim();
+  if (normalizedType !== "floorplan to 3d" && normalizedType !== "floorplan to 3d floorplan") {
+    return prompt;
+  }
+  const negativePrompt = " Negative prompt: no text, no room labels, no dimensions, no dimension lines, no annotations, no arrows, no hatch patterns, no CAD lines, no dashed lines, no blueprint look, no technical drawing overlay, no title block, no watermark, no 2D graphic remnants.";
+  if (prompt.includes(negativePrompt.trim())) {
+    return prompt;
+  }
+  return `${prompt}${negativePrompt}`;
+}
 var renderJobController = {
   async getMyJobs(req, res) {
     const { error } = limitQuerySchema.validate(req.query);
@@ -1829,6 +1868,8 @@ var renderJobController = {
       if (!isGeminiNativeModel && !piapiModel.startsWith("piapi-") && piapiModel !== "nano-banana-pro") {
         piapiModel = "piapi-flux";
       }
+      logger.info(`[renderJobController.createJob] Model: ${model} | piapiModel: ${piapiModel} | type: ${req.body.type}`);
+      logger.info(`[renderJobController.createJob] inputImageUrls: ${JSON.stringify(inputImageUrls)} | referenceImageUrls: ${JSON.stringify(referenceImageUrls)}`);
       let piapiTaskId = "";
       let status = "pending";
       let progress = 0;
@@ -1843,6 +1884,8 @@ var renderJobController = {
       if (inputImageUrls && inputImageUrls.length > 0) {
         finalPrompt = inputImageUrls.join(" ") + " " + finalPrompt;
       }
+      finalPrompt = appendFloorplanCleanupDirective(req.body.type, finalPrompt);
+      finalPrompt = appendFloorplanNegativePrompt(req.body.type, finalPrompt);
       const aspect = aspectRatio || "1:1";
       const isGeminiModel = isGeminiNativeModel;
       if (isGeminiModel) {
@@ -1850,11 +1893,58 @@ var renderJobController = {
           const user = await userService.getById(req.user.userId);
           const userApiKey = user?.apiKey || "";
           logger.info(`[renderJobController] Generating image synchronously via Gemini for model: ${piapiModel}`);
+          let inputImageBase64 = "";
+          let inputImageMime = "image/jpeg";
+          if (inputImageUrls && inputImageUrls.length > 0) {
+            try {
+              const fetchRes = await fetch(inputImageUrls[0]);
+              if (fetchRes.ok) {
+                const arrayBuffer = await fetchRes.arrayBuffer();
+                inputImageBase64 = Buffer.from(arrayBuffer).toString("base64");
+                inputImageMime = fetchRes.headers.get("content-type") || "image/jpeg";
+              }
+            } catch (err) {
+              logger.error(`[renderJobController] Failed to download input image for Gemini: ${err}`);
+            }
+          }
+          let refImageBase64 = "";
+          let refImageMime = "image/jpeg";
+          if (referenceImageUrls && referenceImageUrls.length > 0) {
+            try {
+              const fetchRes = await fetch(referenceImageUrls[0]);
+              if (fetchRes.ok) {
+                const arrayBuffer = await fetchRes.arrayBuffer();
+                refImageBase64 = Buffer.from(arrayBuffer).toString("base64");
+                refImageMime = fetchRes.headers.get("content-type") || "image/jpeg";
+              }
+            } catch (err) {
+              logger.error(`[renderJobController] Failed to download reference image for Gemini: ${err}`);
+            }
+          }
           const generatedUrls = [];
           for (let i = 0; i < numImages; i++) {
+            const contentsParts = [];
+            if (inputImageBase64) {
+              contentsParts.push({
+                inlineData: {
+                  data: inputImageBase64,
+                  mimeType: inputImageMime
+                }
+              });
+            }
+            if (refImageBase64) {
+              contentsParts.push({ text: "\u1EA2nh tham kh\u1EA3o phong c\xE1ch:" });
+              contentsParts.push({
+                inlineData: {
+                  data: refImageBase64,
+                  mimeType: refImageMime
+                }
+              });
+            }
+            contentsParts.push({ text: finalPrompt });
             const geminiRes = await geminiService.generate({
               model: model || "gemini-3-pro-image",
-              contents: [{ parts: [{ text: finalPrompt }] }],
+              contents: [{ parts: contentsParts }],
               config: {
                 imageConfig: {
                   aspectRatio: aspect
@@ -2317,6 +2407,101 @@ function stringField(description) {
 function numberField() {
   return { type: "NUMBER" };
 }
+function isPhotorealStyle(style) {
+  const normalizedStyle = normalizeKey(style);
+  return normalizedStyle.includes("anh chup thuc te") || normalizedStyle.includes("phoi canh thuc te") || normalizedStyle.includes("photoreal") || normalizedStyle.includes("realistic");
+}
+function buildPhotorealismDirective(style, subject) {
+  if (!isPhotorealStyle(style)) return "";
+  const subjectLabel = subject === "exterior" ? "ngoai that cong trinh" : "noi that cong trinh";
+  return [
+    `Uu tien ngon ngu anh chup ${subjectLabel} chan thuc, khong phai CGI hay concept art.`,
+    "Mo ta nhu anh chup bang may anh full-frame chuyen nghiep, phoi canh tu nhien, vat lieu dung scale, do sau anh hop ly.",
+    "Bat buoc the hien be mat co vi sai thuc te: mep vat lieu sac vua phai, phan xa kinh hop ly, bong do mem dung huong sang, texture khong lap gia.",
+    "Anh sang phai giong anh doi thuc da hau ky nhe: dynamic range can bang, white balance tu nhien, khong glow gia, khong vien sang ao.",
+    "Cho phep cac dau hieu realism muc nhe nhu do nham vat lieu, sai so thi cong nho, bui be mat rat nhe, cay coi va nguoi neu co phai dung ty le thuc.",
+    "Tranh tuyet doi cam giac render AI: oversharpen, be mat nhua, vat lieu qua sach, doi xung hoan hao, anh sang san khau, mau qua no, chi tiet bia them."
+  ].join(" ");
+}
+function buildPhotorealNegativePrompt(style) {
+  if (!isPhotorealStyle(style)) return "";
+  return [
+    "CGI",
+    "3D render look",
+    "concept art",
+    "surreal",
+    "plastic materials",
+    "waxy surfaces",
+    "fake reflections",
+    "repeated textures",
+    "oversaturated colors",
+    "excessive contrast",
+    "HDR overprocessed",
+    "bloom",
+    "glow",
+    "floating objects",
+    "warped geometry",
+    "distorted perspective",
+    "inconsistent scale",
+    "perfect symmetry",
+    "sterile surfaces",
+    "artificial lighting",
+    "game-engine look"
+  ].join(", ");
+}
+function buildFloorplanCleanupDirective(mode) {
+  if (mode === "space") {
+    return [
+      "Day la anh render duoc dien giai tu ban ve, khong phai anh chup lai ban ve.",
+      "Chi duoc giu logic bo cuc, vi tri tuong, cua, cua so, loi di va noi that theo floorplan.",
+      "Phai xoa hoan toan moi dau vet do hoa cua ban ve goc: chu, nhan phong, kich thuoc, dimension line, mui ten, hatch, net dut, vien CAD, ky hieu vat lieu, ky hieu ky thuat, khung ten, watermark.",
+      "Khong de lai bat ky text, icon ky thuat, vien den day, net phac thao hay hieu ung blueprint nao trong anh cuoi.",
+      "Anh cuoi phai la khong gian 3D sach, thuc te, khong con dau vet mat bang 2D."
+    ].join(" ");
+  }
+  return [
+    "Day la phoi canh 3D axonometric duoc tai dung tu floorplan 2D.",
+    "Chi duoc giu cau truc mat bang, tuong, cua, vach, thang, nhan dien khong gian o muc logic bo cuc.",
+    "Phai xoa hoan toan chu, nhan phong, so do kich thuoc, hatch, ky hieu CAD, duong tim, net dut, ky hieu mo cua, khung ban ve va moi dau vet do hoa 2D khong thuoc vat the 3D.",
+    "Khong duoc de anh cuoi trong giong ban ve duoc to mau; phai la mo hinh 3D sach, ro, khong con annotation."
+  ].join(" ");
+}
+function buildFloorplanNegativePrompt(mode) {
+  if (mode === "space") {
+    return [
+      "text",
+      "room labels",
+      "dimensions",
+      "dimension lines",
+      "annotations",
+      "arrows",
+      "hatch patterns",
+      "CAD lines",
+      "dashed lines",
+      "blueprint look",
+      "technical drawing",
+      "floorplan overlay",
+      "watermark",
+      "title block",
+      "2D graphic remnants"
+    ].join(", ");
+  }
+  return [
+    "text",
+    "room labels",
+    "dimensions",
+    "annotations",
+    "CAD symbols",
+    "door swing markers",
+    "grid lines",
+    "hatch patterns",
+    "blueprint style",
+    "technical plan graphics",
+    "2D overlay",
+    "title block",
+    "watermark"
+  ].join(", ");
+}
 function buildRenderTabPrompt(input) {
   const activeSubTab = String(input.activeSubTab || "");
   const activeSubTabKey = normalizeKey(activeSubTab);
@@ -2334,9 +2519,12 @@ function buildRenderTabPrompt(input) {
   const images = input.images || [];
   const referenceImages = input.referenceImages || [];
   const parts = [];
-  parts.push(...imageParts2(images));
+  if (images.length > 0) {
+    parts.push({ text: "\u1EA2nh ph\xE1c th\u1EA3o / concept ki\u1EBFn tr\xFAc g\u1ED1c (C\u1EA7n b\u1EA3o t\u1ED3n tuy\u1EC7t \u0111\u1ED1i g\xF3c ch\u1EE5p, ph\u1ED1i c\u1EA3nh v\xE0 h\xECnh kh\u1ED1i n\xE0y):" });
+    parts.push(...imageParts2(images));
+  }
   if (referenceImages.length > 0) {
-    parts.push({ text: "\u1EA2nh tham kh\u1EA3o phong c\xE1ch:" });
+    parts.push({ text: "\u1EA2nh tham kh\u1EA3o phong c\xE1ch / Moodboard (Ch\u1EC9 h\u1ECDc h\u1ECFi phong c\xE1ch, m\xE0u s\u1EAFc, v\u1EADt li\u1EC7u, \xE1nh s\xE1ng; KH\xD4NG l\u1EA5y g\xF3c ch\u1EE5p hay h\xECnh kh\u1ED1i t\u1EEB \u1EA3nh n\xE0y):" });
     parts.push(...imageParts2(referenceImages));
   }
   let textPrompt = `M\xF4 t\u1EA3 \xFD t\u01B0\u1EDFng: ${description}
@@ -2345,6 +2533,13 @@ function buildRenderTabPrompt(input) {
   let responseSchema;
   let thinkingLevel = "medium";
   const selectedAngle = customCameraAngle || cameraAngle;
+  const exteriorPhotorealDirective = buildPhotorealismDirective(style, "exterior");
+  const interiorPhotorealDirective = buildPhotorealismDirective(style, "interior");
+  const photorealNegativePrompt = buildPhotorealNegativePrompt(style);
+  const floorplanSpaceCleanupDirective = buildFloorplanCleanupDirective("space");
+  const floorplanAxonometricCleanupDirective = buildFloorplanCleanupDirective("axonometric");
+  const floorplanSpaceNegativePrompt = buildFloorplanNegativePrompt("space");
+  const floorplanAxonometricNegativePrompt = buildFloorplanNegativePrompt("axonometric");
   if (activeSubTabKey.includes("render ngoai that")) {
     textPrompt += `Style \u1EA3nh: ${style}
 Tone m\xE0u: ${colorTone}
@@ -2355,11 +2550,17 @@ B\u1ED1i c\u1EA3nh: ${context}
       textPrompt += `G\xF3c ch\u1EE5p: ${selectedAngle}
 `;
     }
+    if (exteriorPhotorealDirective) {
+      textPrompt += `Photoreal directive: ${exteriorPhotorealDirective}
+`;
+    }
     systemInstruction = [
       "B\u1EA1n l\xE0 chuy\xEAn gia bi\xEAn so\u1EA1n prompt render ngo\u1EA1i th\u1EA5t cho iGen.",
       "T\u1EA5t c\u1EA3 ph\xE2n t\xEDch v\xE0 prompt cu\u1ED1i c\xF9ng ph\u1EA3i vi\u1EBFt b\u1EB1ng ti\u1EBFng Vi\u1EC7t r\xF5 r\xE0ng, ng\u1EAFn g\u1ECDn, h\u1EEFu d\u1EE5ng.",
-      "N\u1EBFu c\xF3 \u1EA3nh tham kh\u1EA3o, ph\u1EA3i b\u1EA3o t\u1ED3n h\xECnh kh\u1ED1i, b\u1ED1 c\u1EE5c, g\xF3c m\xE1y v\xE0 logic c\u1EA5u tr\xFAc c\u1EE7a c\xF4ng tr\xECnh.",
-      "N\u1EBFu kh\xF4ng c\xF3 \u1EA3nh, \u0111\u01B0\u1EE3c ph\xE9p s\xE1ng t\u1EA1o nh\u01B0ng v\u1EABn ph\u1EA3i h\u1EE3p l\xFD v\u1EC1 ki\u1EBFn tr\xFAc.",
+      "B\u1EAET BU\u1ED8C: N\u1EBFu c\xF3 \u1EA2nh ph\xE1c th\u1EA3o/concept g\u1ED1c \u0111\u1EA7u v\xE0o, b\u1EA1n PH\u1EA2I ph\xE2n t\xEDch g\xF3c ch\u1EE5p c\u1EE7a b\u1EE9c \u1EA3nh \u0111\xF3. Prompt cu\u1ED1i c\xF9ng \u0111\u01B0\u1EE3c t\u1EA1o ra PH\u1EA2I kh\u1EDBp ho\xE0n to\xE0n v\xE0 b\u1EA3o t\u1ED3n tuy\u1EC7t \u0111\u1ED1i g\xF3c ch\u1EE5p (camera angle), ph\u1ED1i c\u1EA3nh (perspective), h\xECnh kh\u1ED1i ki\u1EBFn tr\xFAc (geometry) v\xE0 b\u1ED1 c\u1EE5c (layout) c\u1EE7a \u1EA3nh ph\xE1c th\u1EA3o g\u1ED1c. Kh\xF4ng \u0111\u01B0\u1EE3c thay \u0111\u1ED5i g\xF3c ch\u1EE5p d\u01B0\u1EDBi b\u1EA5t k\u1EF3 h\xECnh th\u1EE9c n\xE0o.",
+      "N\u1EBFu c\xF3 \u1EA3nh tham kh\u1EA3o phong c\xE1ch, ch\u1EC9 h\u1ECDc h\u1ECFi t\xF4ng m\xE0u, \xE1nh s\xE1ng, v\u1EADt li\u1EC7u; tuy\u1EC7t \u0111\u1ED1i kh\xF4ng l\u1EA5y g\xF3c ch\u1EE5p hay h\xECnh kh\u1ED1i t\u1EEB \u1EA3nh phong c\xE1ch.",
+      "N\u1EBFu kh\xF4ng c\xF3 \u1EA3nh ph\xE1c th\u1EA3o g\u1ED1c, \u0111\u01B0\u1EE3c ph\xE9p s\xE1ng t\u1EA1o g\xF3c ch\u1EE5p h\u1EE3p l\xFD v\u1EC1 ki\u1EBFn tr\xFAc.",
+      "N\u1EBFu style l\xE0 \u1EA3nh ch\u1EE5p th\u1EF1c t\u1EBF, prompt cu\u1ED1i ph\u1EA3i \xE9p model theo ng\xF4n ng\u1EEF nhi\u1EBFp \u1EA3nh \u0111\u1EDDi th\u1EF1c v\xE0 ch\u1EE7 \u0111\u1ED9ng lo\u1EA1i b\u1ECF c\u1EA3m gi\xE1c CGI ho\u1EB7c AI.",
       "H\xE3y tr\u1EA3 v\u1EC1 JSON g\u1ED3m ph\u1EA7n ph\xE2n t\xEDch ng\u1EAFn g\u1ECDn v\xE0 prompt render cu\u1ED1i c\xF9ng t\u1ED1i \u01B0u, tr\xE1nh l\u1EB7p l\u1EA1i, tr\xE1nh l\xFD thuy\u1EBFt th\u1EEBa."
     ].join(" ");
     responseSchema = objectSchema(
@@ -2391,10 +2592,17 @@ Tone m\xE0u: ${colorTone}
       textPrompt += `G\xF3c ch\u1EE5p: ${selectedAngle}
 `;
     }
+    if (interiorPhotorealDirective) {
+      textPrompt += `Photoreal directive: ${interiorPhotorealDirective}
+`;
+    }
     systemInstruction = [
       "B\u1EA1n l\xE0 chuy\xEAn gia bi\xEAn so\u1EA1n prompt render n\u1ED9i th\u1EA5t cao c\u1EA5p.",
       "T\u1EA5t c\u1EA3 \u0111\u1EA7u ra ph\u1EA3i b\u1EB1ng ti\u1EBFng Vi\u1EC7t, nh\u1EA5n m\u1EA1nh c\xF4ng n\u0103ng ph\xF2ng, v\u1EADt li\u1EC7u, b\u1ED1 c\u1EE5c v\xE0 kh\xF4ng kh\xED \xE1nh s\xE1ng.",
-      "N\u1EBFu c\xF3 \u1EA3nh g\u1ED1c, ph\u1EA3i gi\u1EEF b\u1ED1 c\u1EE5c v\xE0 t\u1EF7 l\u1EC7 khung h\xECnh; n\u1EBFu kh\xF4ng c\xF3 \u1EA3nh, \u0111\u01B0\u1EE3c ph\xE9p suy lu\u1EADn h\u1EE3p l\xFD.",
+      "B\u1EAET BU\u1ED8C: N\u1EBFu c\xF3 \u1EA2nh ph\xE1c th\u1EA3o/concept g\u1ED1c \u0111\u1EA7u v\xE0o, b\u1EA1n PH\u1EA2I ph\xE2n t\xEDch g\xF3c ch\u1EE5p c\u1EE7a b\u1EE9c \u1EA3nh \u0111\xF3. Prompt cu\u1ED1i c\xF9ng \u0111\u01B0\u1EE3c t\u1EA1o ra PH\u1EA2I kh\u1EDBp ho\xE0n to\xE0n v\xE0 b\u1EA3o t\u1ED3n tuy\u1EC7t \u0111\u1ED1i g\xF3c ch\u1EE5p (camera angle), ph\u1ED1i c\u1EA3nh (perspective), h\xECnh kh\u1ED1i v\xE0 b\u1ED1 c\u1EE5c ph\xF2ng c\u1EE7a \u1EA3nh ph\xE1c th\u1EA3o g\u1ED1c. Kh\xF4ng \u0111\u01B0\u1EE3c thay \u0111\u1ED5i g\xF3c ch\u1EE5p d\u01B0\u1EDBi b\u1EA5t k\u1EF3 h\xECnh th\u1EE9c n\xE0o.",
+      "N\u1EBFu c\xF3 \u1EA3nh tham kh\u1EA3o phong c\xE1ch, ch\u1EC9 h\u1ECDc h\u1ECFi t\xF4ng m\xE0u, \xE1nh s\xE1ng, b\xE0y bi\u1EC7n; tuy\u1EC7t \u0111\u1ED1i kh\xF4ng l\u1EA5y g\xF3c ch\u1EE5p hay h\xECnh kh\u1ED1i t\u1EEB \u1EA3nh phong c\xE1ch.",
+      "N\u1EBFu kh\xF4ng c\xF3 \u1EA3nh ph\xE1c th\u1EA3o g\u1ED1c, \u0111\u01B0\u1EE3c ph\xE9p t\u1EF1 thi\u1EBFt l\u1EADp ph\u1ED1i c\u1EA3nh h\u1EE3p l\xFD.",
+      "N\u1EBFu style l\xE0 \u1EA3nh ch\u1EE5p th\u1EF1c t\u1EBF, prompt cu\u1ED1i ph\u1EA3i m\xF4 t\u1EA3 v\u1EADt li\u1EC7u, \xE1nh s\xE1ng v\xE0 c\u1EA3m gi\xE1c \u1ED1ng k\xEDnh nh\u01B0 \u1EA3nh n\u1ED9i th\u1EA5t \u0111\u1EDDi th\u1EF1c, tr\xE1nh showroom CGI.",
       "Tr\u1EA3 v\u1EC1 JSON ng\u1EAFn g\u1ECDn, \u0111\xFAng tr\u1ECDng t\xE2m, t\u1EADp trung v\xE0o prompt cu\u1ED1i d\xF9ng \u0111\u01B0\u1EE3c ngay."
     ].join(" ");
     responseSchema = objectSchema(
@@ -2422,14 +2630,18 @@ Tone m\xE0u: ${colorTone}
 Lo\u1EA1i ph\xF2ng: ${roomType}
 Phong c\xE1ch: ${interiorStyle}
 Gi\u1EEF \u0111\xFAng b\u1ED1 c\u1EE5c m\u1EB7t b\u1EB1ng, t\u01B0\u1EDDng, c\u1EEDa, n\u1ED9i th\u1EA5t theo floorplan.
+Y\xEAu c\u1EA7u l\xE0m s\u1EA1ch b\u1EA3n v\u1EBD: ${floorplanSpaceCleanupDirective}
 `;
     if (cameraAngleStyle) {
       textPrompt += `Style g\xF3c ch\u1EE5p: ${cameraAngleStyle}
 `;
     }
+    textPrompt += `Negative prompt \u01B0u ti\xEAn: ${floorplanSpaceNegativePrompt}
+`;
     systemInstruction = [
       "B\u1EA1n l\xE0 chuy\xEAn gia chuy\u1EC3n m\u1EB7t b\u1EB1ng th\xE0nh kh\xF4ng gian 3D.",
       "M\u1EE5c ti\xEAu l\xE0 d\u1EF1ng l\u1EA1i kh\xF4ng gian t\u1EEB floorplan th\u1EADt ch\xEDnh x\xE1c, kh\xF4ng \u0111\u01B0\u1EE3c ph\xE1 v\u1EE1 b\u1ED1 c\u1EE5c.",
+      "Ph\u1EA3i ph\xE2n bi\u1EC7t ro rang giua du lieu bo cuc can giu va dau vet do hoa ban ve can xoa bo.",
       "T\u1EA5t c\u1EA3 \u0111\u1EA7u ra ph\u1EA3i b\u1EB1ng ti\u1EBFng Vi\u1EC7t v\xE0 t\u1EADp trung v\xE0o prompt cu\u1ED1i kh\u1EA3 thi cho image model."
     ].join(" ");
     responseSchema = objectSchema(
@@ -2455,14 +2667,18 @@ Gi\u1EEF \u0111\xFAng b\u1ED1 c\u1EE5c m\u1EB7t b\u1EB1ng, t\u01B0\u1EDDng, c\u1
 Style c\xF4ng tr\xECnh: ${buildingStyle}
 Phong c\xE1ch: ${interiorStyle}
 Kh\xF4ng \u0111\u01B0\u1EE3c bi\u1EBFn floorplan th\xE0nh \u1EA3nh n\u1ED9i th\u1EA5t th\xF4ng th\u01B0\u1EDDng.
+Y\xEAu c\u1EA7u l\xE0m s\u1EA1ch b\u1EA3n v\u1EBD: ${floorplanAxonometricCleanupDirective}
 `;
     if (cameraAngleStyle) {
       textPrompt += `Style g\xF3c ch\u1EE5p: ${cameraAngleStyle}
 `;
     }
+    textPrompt += `Negative prompt \u01B0u ti\xEAn: ${floorplanAxonometricNegativePrompt}
+`;
     systemInstruction = [
       "B\u1EA1n l\xE0 chuy\xEAn gia ph\xE2n t\xEDch floorplan 2D v\xE0 t\xE1i d\u1EF1ng th\xE0nh kh\xF4ng gian 3D ch\xEDnh x\xE1c.",
       "M\u1EB7t b\u1EB1ng l\xE0 s\u1EF1 th\u1EADt tuy\u1EC7t \u0111\u1ED1i: t\u01B0\u1EDDng, c\u1EEDa, thang, v\xE1ch v\xE0 nh\xE3n ph\xF2ng ph\u1EA3i \u0111\u01B0\u1EE3c t\xF4n tr\u1ECDng.",
+      "Nhan phong va ky hieu chi dung de suy luan bo cuc, khong duoc xuat hien lai trong anh ket qua.",
       "T\u1EA5t c\u1EA3 \u0111\u1EA7u ra b\u1EB1ng ti\u1EBFng Vi\u1EC7t, \u01B0u ti\xEAn prompt cu\u1ED1i d\xF9ng \u0111\u01B0\u1EE3c ngay."
     ].join(" ");
     responseSchema = objectSchema(
@@ -2516,6 +2732,10 @@ B\u1ED1i c\u1EA3nh: ${context}
         "negative_prompt"
       ]
     );
+  }
+  if (photorealNegativePrompt) {
+    textPrompt += `Negative prompt \u01B0u ti\xEAn: ${photorealNegativePrompt}
+`;
   }
   parts.push({ text: textPrompt.trim() });
   return {

@@ -439,8 +439,8 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
         let floorplanStylePrompt = "";
         if (activeSubTab === "Floorplan to 3D") {
           if (style === "Phối cảnh thực tế") {
-            floorplanStylePrompt = `- Kiểu chụp: Ảnh cầm tay ngang tầm mắt từ cửa phòng đi vào, không phải góc cao panorama.
-- Tiêu điểm ảnh: giữ nguyên giường ngủ, tab đầu giường, bàn trang điểm bên trái, tủ áo gỗ bên phải, cửa kính ban công phía trước; che khuất nhà vệ sinh và các phòng phụ sau góc khuất camera.
+            floorplanStylePrompt = `- Kiểu chụp: Ảnh cầm tay ngang tầm mắt từ cửa phòng đi vào, không phải góc cao panorama, không nhìn từ trên xuống.
+- Tiêu điểm ảnh: Phân tích bản vẽ để xác định chính xác toàn bộ đồ nội thất thực tế trong phòng (ví dụ: phòng ngủ → giường đôi, túp đầu giường, tủ quần áo, bàn trang điểm; phòng khách → sofa, bàn trà, kệ TV; ...). Giữ nguyên chính xác vị trí của từng món đồ đó theo bản vẽ, không được tự ý di chuyển, xoay hay bỏ bất kỳ vật nào.
 - Bố cục: giữ nguyên 100% vị trí đồ đạc, tường ngăn, cửa và lối đi theo bản vẽ gốc; không thêm đồ đạc mới, không dịch chuyển nội thất.
 `;
           } else if (style === "Phối cảnh 3D") {
@@ -540,8 +540,19 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
       try {
         const rawText = typeof response.text === "function" ? response.text() : response.text;
         const jsonStr = rawText?.trim() || "{}";
-        const result = safeJsonParse(jsonStr);
-        setPrompt(JSON.stringify(result, null, 2));
+        const result = safeJsonParse(jsonStr) as Record<string, unknown>;
+        // Extract the final prompt field from the AI response JSON.
+        // Different templates use different field names; fall back to the raw text.
+        const extractedPrompt =
+          (result.optimized_english_prompt as string) ||
+          (result.prompt_tieng_viet_toi_uu as string) ||
+          (result.optimized_inpaint_prompt as string) ||
+          rawText ||
+          "";
+        if (!extractedPrompt || extractedPrompt === "{}") {
+          console.warn("[handleGeneratePrompt] Empty or invalid prompt returned from AI. Raw:", rawText?.slice(0, 200));
+        }
+        setPrompt(extractedPrompt);
         setPromptProgress(100);
         setPromptStatus("Hoàn tất!");
       } catch (parseError) {
