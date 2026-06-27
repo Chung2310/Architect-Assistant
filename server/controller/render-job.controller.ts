@@ -71,6 +71,44 @@ const updateJobSchema = Joi.object({
   }),
 });
 
+function appendFloorplanCleanupDirective(type: string, prompt: string) {
+  const normalizedType = String(type || "").toLowerCase().trim();
+  if (
+    normalizedType !== "floorplan to 3d" &&
+    normalizedType !== "floorplan to 3d floorplan"
+  ) {
+    return prompt;
+  }
+
+  const cleanupDirective =
+    " IMPORTANT: chi giu bo cuc khong gian, tuong, cua, cua so, cau thang va vi tri noi that theo ban ve. Xoa hoan toan moi chu, nhan phong, so kich thuoc, hatch, net dut, ky hieu CAD, mui ten, khung ten, watermark va moi dau vet do hoa 2D cua ban ve goc. Anh cuoi phai la phoi canh 3D sach, khong con annotation hay text ky thuat.";
+
+  if (prompt.includes(cleanupDirective.trim())) {
+    return prompt;
+  }
+
+  return `${prompt}${cleanupDirective}`;
+}
+
+function appendFloorplanNegativePrompt(type: string, prompt: string) {
+  const normalizedType = String(type || "").toLowerCase().trim();
+  if (
+    normalizedType !== "floorplan to 3d" &&
+    normalizedType !== "floorplan to 3d floorplan"
+  ) {
+    return prompt;
+  }
+
+  const negativePrompt =
+    " Negative prompt: no text, no room labels, no dimensions, no dimension lines, no annotations, no arrows, no hatch patterns, no CAD lines, no dashed lines, no blueprint look, no technical drawing overlay, no title block, no watermark, no 2D graphic remnants.";
+
+  if (prompt.includes(negativePrompt.trim())) {
+    return prompt;
+  }
+
+  return `${prompt}${negativePrompt}`;
+}
+
 export const renderJobController = {
   async getMyJobs(req: AuthRequest, res: Response) {
     const { error } = limitQuerySchema.validate(req.query);
@@ -164,6 +202,8 @@ export const renderJobController = {
       if (inputImageUrls && inputImageUrls.length > 0) {
         finalPrompt = inputImageUrls.join(" ") + " " + finalPrompt;
       }
+      finalPrompt = appendFloorplanCleanupDirective(req.body.type, finalPrompt);
+      finalPrompt = appendFloorplanNegativePrompt(req.body.type, finalPrompt);
 
       const aspect = aspectRatio || "1:1";
 
