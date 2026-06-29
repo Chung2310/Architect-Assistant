@@ -8,6 +8,16 @@ const fmtFt = (meters: number) => {
   const inch = Math.round((totalFt - ft) * 12);
   return inch === 12 ? `${ft + 1}'0"` : `${ft}'${inch}"`;
 };
+
+const projectPointToSegment = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
+  const abx = bx - ax, aby = by - ay;
+  const apx = px - ax, apy = py - ay;
+  const len2 = abx * abx + aby * aby;
+  if (len2 === 0) return { x: ax, y: ay, dist: Math.sqrt(apx * apx + apy * apy), t: 0 };
+  const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / len2));
+  const cx = ax + t * abx, cy = ay + t * aby;
+  return { x: cx, y: cy, dist: Math.sqrt((px - cx) ** 2 + (py - cy) ** 2), t };
+};
 const fmtSqFt = (sqm: number) => `${Math.round(sqm * 10.76391)} ft²`;
 
 interface Point { x: number; y: number; }
@@ -77,21 +87,24 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
   const svgRef = useRef<SVGSVGElement>(null);
 
   // Sync inputs ↔ state
-  useEffect(() => { setLocalWidth(landWidth); setWidthInput(String(landWidth)); }, [landWidth]);
-  useEffect(() => { setLocalLength(landLength); setLengthInput(String(landLength)); }, [landLength]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setLocalWidth(landWidth);
+      setWidthInput(String(landWidth));
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [landWidth]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setLocalLength(landLength);
+      setLengthInput(String(landLength));
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [landLength]);
 
   // ── Geometry helpers ─────────────────────────────────────────────────────
-  const projectPointToSegment = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
-    const abx = bx - ax, aby = by - ay;
-    const apx = px - ax, apy = py - ay;
-    const len2 = abx * abx + aby * aby;
-    if (len2 === 0) return { x: ax, y: ay, dist: Math.sqrt(apx * apx + apy * apy), t: 0 };
-    let t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / len2));
-    const cx = ax + t * abx, cy = ay + t * aby;
-    return { x: cx, y: cy, dist: Math.sqrt((px - cx) ** 2 + (py - cy) ** 2), t };
-  };
-
-  const getClosestOnPolygon = (px: number, py: number, poly: Point[], snap: number) => {
+  const getClosestOnPolygon = useCallback((px: number, py: number, poly: Point[], snap: number) => {
     let best = { x: 0, y: 0, angle: 0, dist: Infinity };
     for (let i = 0; i < poly.length; i++) {
       const a = poly[i], b = poly[(i + 1) % poly.length];
@@ -106,7 +119,7 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
       }
     }
     return best;
-  };
+  }, []);
 
   // ── Transform shape ──────────────────────────────────────────────────────
   const getTransformedPoints = useCallback((): Point[] => {
@@ -116,7 +129,7 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
     tpl.points.forEach(p => { xmin = Math.min(xmin, p.x); xmax = Math.max(xmax, p.x); ymin = Math.min(ymin, p.y); ymax = Math.max(ymax, p.y); });
     const cx = (xmin + xmax) / 2, cy = (ymin + ymax) / 2;
 
-    let pts = tpl.points.map(p => {
+    const pts = tpl.points.map(p => {
       let x = flipH ? 2 * cx - p.x : p.x;
       let y = flipV ? 2 * cy - p.y : p.y;
       if (rotation === 90)  { const dx = x - cx, dy = y - cy; x = cx - dy; y = cy + dx; }
@@ -139,23 +152,26 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
   // Place initial front door on bottom wall
   useEffect(() => {
     if (currentPolygon.length === 0) return;
-    let maxY = -Infinity, bottomIdx = 0;
-    for (let i = 0; i < currentPolygon.length; i++) {
-      const mid = (currentPolygon[i].y + currentPolygon[(i + 1) % currentPolygon.length].y) / 2;
-      if (mid > maxY) { maxY = mid; bottomIdx = i; }
-    }
-    const a = currentPolygon[bottomIdx], b = currentPolygon[(bottomIdx + 1) % currentPolygon.length];
-    const dx = b.x - a.x, dy = b.y - a.y;
-    if (placements.length > 0) {
-      const snap = 0.1524;
-      setPlacements(prev => prev.map(p => {
-        const { x, y, angle } = getClosestOnPolygon(p.x, p.y, currentPolygon, snap);
-        return { ...p, x, y, angle };
-      }));
-    } else {
-      setPlacements([{ id: "door", type: "door", label: "Front door", x: a.x + dx * 0.5, y: a.y + dy * 0.5, angle: Math.atan2(dy, dx) * (180 / Math.PI) }]);
-    }
-  }, [selectedIdx, rotation, flipH, flipV, localWidth, localLength]);
+    const timer = setTimeout(() => {
+      let maxY = -Infinity, bottomIdx = 0;
+      for (let i = 0; i < currentPolygon.length; i++) {
+        const mid = (currentPolygon[i].y + currentPolygon[(i + 1) % currentPolygon.length].y) / 2;
+        if (mid > maxY) { maxY = mid; bottomIdx = i; }
+      }
+      const a = currentPolygon[bottomIdx], b = currentPolygon[(bottomIdx + 1) % currentPolygon.length];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      if (placements.length > 0) {
+        const snap = 0.1524;
+        setPlacements(prev => prev.map(p => {
+          const { x, y, angle } = getClosestOnPolygon(p.x, p.y, currentPolygon, snap);
+          return { ...p, x, y, angle };
+        }));
+      } else {
+        setPlacements([{ id: "door", type: "door", label: "Front door", x: a.x + dx * 0.5, y: a.y + dy * 0.5, angle: Math.atan2(dy, dx) * (180 / Math.PI) }]);
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [selectedIdx, rotation, flipH, flipV, localWidth, localLength, currentPolygon, getClosestOnPolygon, placements.length]);
 
   if (!isOpen) return null;
 

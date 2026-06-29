@@ -104,7 +104,6 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
 
   const [renderJobs, setRenderJobs] = useState<RenderJob[]>([]);
   const [showVRModal, setShowVRModal] = useState(false);
-  const [pendingSubTab, setPendingSubTab] = useState<string | null>(null);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [libraryTarget, setLibraryTarget] = useState<"input" | "reference">(
     "input",

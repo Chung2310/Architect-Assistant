@@ -3,7 +3,7 @@ import { Stage, Layer, Rect, Text, Line, Group } from "react-konva";
 import {
   Download, Sparkles, ZoomIn, ZoomOut, RotateCw,
   Send, CheckCircle2, Circle, Settings2, ArrowLeft,
-  Maximize2, ChevronRight, Plus, Minus
+  Maximize2, Plus, Minus
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
@@ -22,7 +22,7 @@ import { ChooseRoomsModal } from "./ChooseRoomsModal";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const METER_TO_PX = 48;
-const GRID_SIZE = 0.5;
+const _GRID_SIZE = 0.5;
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Room {
@@ -87,7 +87,7 @@ const CHECKLIST_STEPS: { key: GatherStep; label: string }[] = [
 ];
 
 // ── Helper: parse user text for numbers ──────────────────────────────────
-function extractDimensions(text: string): { w?: number; l?: number } {
+function _extractDimensions(text: string): { w?: number; l?: number } {
   const matched = text.match(/(\d+(?:\.\d+)?)\s*[xX×*]\s*(\d+(?:\.\d+)?)/);
   if (matched) return { w: parseFloat(matched[1]), l: parseFloat(matched[2]) };
   const single = text.match(/(\d+(?:\.\d+)?)/);
@@ -157,6 +157,7 @@ export const FloorPlanEditor: React.FC = () => {
   const panStart = useRef({ x: 0, y: 0 });
   const stageContainerRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ w: 800, h: 600 });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stageRef = useRef<any>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [renderResult, setRenderResult] = useState<string | null>(null);
@@ -285,6 +286,7 @@ Trả về JSON thuần túý, TUYỆT ĐỐI KHÔNG thêm text ngoài:
 
       const rawText =
         (typeof response.text === "function" ? response.text() : response.text) || "{}";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const parsed = safeJsonParse(rawText) as Record<string, any> | null;
 
       if (!parsed) {
@@ -356,6 +358,7 @@ Trả về JSON thuần túý, TUYỆT ĐỐI KHÔNG thêm text ngoài:
         const cleanReply = replyText.replace("__SHAPE_PICKER__", "").trim();
         addMessage("assistant", cleanReply || "Hãy cho tôi biết thêm nhé!");
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       console.error("Chat AI error:", e);
       addMessage("assistant", "Xin lỗi, có lỗi kết nối. Vui lòng thử lại.");
@@ -480,10 +483,12 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
           (typeof response.text === "function"
             ? response.text()
             : response.text) || "";
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const parsed = safeJsonParse(textResult) as Record<string, any> | null;
 
         if (parsed && Array.isArray(parsed.rooms)) {
           const validatedRooms: Room[] = parsed.rooms.map(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (r: any, idx: number) => ({
               id: `room_${floor}_${idx}_${Date.now()}`,
               name: r.name || "Phòng",
@@ -533,6 +538,7 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
       );
 
       toast.success("Đã tạo mặt bằng thành công!");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       console.error("FloorPlan AI error:", e);
       addMessage(
@@ -553,6 +559,7 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
   };
 
   // ── Canvas zoom / pan ───────────────────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleWheel = (e: any) => {
     e.evt.preventDefault();
     const scaleBy = 1.12;
@@ -565,6 +572,7 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
     setPan({ x: pointer.x - to.x * newScale, y: pointer.y - to.y * newScale });
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleStageMouseDown = (e: any) => {
     if (e.target === e.target.getStage()) {
       setIsPanning(true);
@@ -573,6 +581,7 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
       setSelectedRoomId(null);
     }
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleStageMouseMove = (e: any) => {
     if (!isPanning) return;
     const p = e.target.getStage().getPointerPosition();
@@ -581,7 +590,7 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
   const handleStageMouseUp = () => setIsPanning(false);
 
   // ── Render 3D ──────────────────────────────────────────────────────────
-  const handleRender3D = async () => {
+  const handleRender3D = useCallback(async () => {
     if (!floorPlan || floorPlan.rooms.length === 0) {
       toast.error("Vui lòng tạo mặt bằng trước!");
       return;
@@ -602,14 +611,14 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
       if (!base64Image) throw new Error("Không thể chụp canvas.");
 
       // Upload to Cloudinary
-      let imageUrl = base64Image;
+      let _imageUrl = base64Image;
       if (user) {
         try {
           const res = await apiClient.post<ApiResponse<{ url: string }>>(
             "/api/v1/media/upload",
             { file: base64Image, folder: "floorplans" }
           );
-          imageUrl = res.data.url;
+          _imageUrl = res.data.url;
         } catch {
           // fallback base64
         }
@@ -674,6 +683,7 @@ Requirements:
       setRenderResult(finalUrl);
       addMessage("assistant", "✅ Phối cảnh 3D đã hoàn thành! Bạn có thể tải về bên dưới.");
       toast.success("Render 3D hoàn tất!");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       console.error("Render 3D error:", e);
       addMessage("assistant", "❌ Lỗi render 3D. Vui lòng thử lại.");
@@ -681,22 +691,25 @@ Requirements:
     } finally {
       setIsRendering3D(false);
     }
-  };
+  }, [floorPlan, selectedRoomId, gatherInfo, user, addMessage]);
 
   // ── Auto-render 3D after floor plan is generated ────────────────────────
   useEffect(() => {
     if (floorPlan && autoRenderPending) {
-      setAutoRenderPending(false);
-      addMessage(
-        "assistant",
-        "🔄 Tôi đang tự động khởi chạy tiến trình dựng phối cảnh 3D qua PiAPI cho mặt bằng này..."
-      );
-      // Wait for stage to render completely
-      setTimeout(() => {
-        handleRender3D();
-      }, 1500);
+      const timer = setTimeout(() => {
+        setAutoRenderPending(false);
+        addMessage(
+          "assistant",
+          "🔄 Tôi đang tự động khởi chạy tiến trình dựng phối cảnh 3D qua PiAPI cho mặt bằng này..."
+        );
+        // Wait for stage to render completely
+        setTimeout(() => {
+          handleRender3D();
+        }, 1500);
+      }, 0);
+      return () => clearTimeout(timer);
     }
-  }, [floorPlan, autoRenderPending]);
+  }, [floorPlan, autoRenderPending, addMessage, handleRender3D]);
 
   // ── Keyboard send ───────────────────────────────────────────────────────
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -1101,7 +1114,7 @@ Requirements:
       : ["Tầng Trệt"];
 
   // ── Status label ───────────────────────────────────────────────────────
-  const canvasStatusLabel = isGenerating
+  const _canvasStatusLabel = isGenerating
     ? "Đang tạo mặt bằng..."
     : floorPlan
     ? null

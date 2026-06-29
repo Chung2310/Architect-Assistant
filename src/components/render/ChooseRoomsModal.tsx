@@ -32,7 +32,7 @@ interface ChooseRoomsModalProps {
 // Map room names to their labels and icons
 const ROOM_META: Record<
   string,
-  { label: string; icon: React.ComponentType<any> }
+  { label: string; icon: React.ComponentType<{ className?: string }> }
 > = {
   "Phòng khách": { label: "Phòng khách", icon: Sofa },
   "Phòng bếp": { label: "Phòng bếp", icon: Utensils },
@@ -61,7 +61,8 @@ export const ChooseRoomsModal: React.FC<ChooseRoomsModalProps> = ({
 
   // Initialize rooms selection
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return;
+    const timer = setTimeout(() => {
       if (initialSelection && Object.keys(initialSelection).length > 0) {
         setRoomsByFloor(JSON.parse(JSON.stringify(initialSelection)));
       } else {
@@ -82,8 +83,9 @@ export const ChooseRoomsModal: React.FC<ChooseRoomsModalProps> = ({
         }
         setRoomsByFloor(defaults);
       }
-    }
-    setActiveDropdownFloor(null);
+      setActiveDropdownFloor(null);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [isOpen, floorsCount, initialSelection]);
 
   // Close dropdown on click outside
@@ -115,7 +117,7 @@ export const ChooseRoomsModal: React.FC<ChooseRoomsModalProps> = ({
       const target = list.find((r) => r.name === roomName);
       if (!target) return prev;
 
-      let updated = [];
+      let updated: RoomSelection[];
       if (target.count <= 1) {
         // Remove room
         updated = list.filter((r) => r.name !== roomName);
@@ -133,7 +135,7 @@ export const ChooseRoomsModal: React.FC<ChooseRoomsModalProps> = ({
     setRoomsByFloor((prev) => {
       const list = prev[floorNum] || [];
       const exists = list.find((r) => r.name === roomName);
-      let updated = [];
+      let updated: RoomSelection[];
       if (exists) {
         updated = list.map((r) =>
           r.name === roomName ? { ...r, count: r.count + 1 } : r
@@ -168,7 +170,7 @@ export const ChooseRoomsModal: React.FC<ChooseRoomsModalProps> = ({
 
   const handleConfirm = () => {
     const floors = Object.keys(roomsByFloor).map(Number).sort((a, b) => a - b);
-    let compiledString = "";
+    let compiledString: string;
 
     if (floors.length === 1) {
       const list = roomsByFloor[floors[0]] || [];
