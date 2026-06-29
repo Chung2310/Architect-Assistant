@@ -11,6 +11,7 @@ import { Render } from './components/Render';
 import { Video } from './components/Video';
 import { Login } from './components/Login';
 import { Promo } from './components/Promo';
+import { FloorPlanEditor } from './components/render/FloorPlanEditor';
 import { AdminPanel } from './components/AdminPanel';
 import { ApiKeySetup } from './components/ApiKeySetup';
 import { Toaster } from 'sonner';
@@ -77,6 +78,7 @@ function AppContent() {
           <Route path="/tools/virtual-staging" element={<VirtualStaging />} />
           <Route path="/tools/visual" element={<Visual />} />
           <Route path="/tools/rendering" element={<Render />} />
+          <Route path="/tools/floor-plan" element={<FloorPlanEditor />} />
           <Route path="/tools/video" element={<Video />} />
           <Route path="/promo" element={<Promo />} />
           <Route path="/admin" element={<AdminPanel />} />
