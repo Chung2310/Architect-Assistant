@@ -55,11 +55,41 @@ function summarizeContents(contents: unknown): string {
     .join(" | ");
 }
 
+function mapToOpenRouterModel(modelName: string): string {
+  if (!modelName) {
+    return "google/gemini-2.5-flash";
+  }
+  
+  if (modelName.includes("/")) {
+    return modelName;
+  }
+
+  const name = modelName.toLowerCase().trim();
+
+  const mapping: Record<string, string> = {
+    "gemini-2.5-flash": "google/gemini-2.5-flash",
+    "gemini-2.0-flash": "google/gemini-2.0-flash",
+    "gemini-1.5-flash": "google/gemini-flash-1.5",
+    "gemini-1.5-pro": "google/gemini-pro-1.5",
+    "gemini-1.5-flash-8b": "google/gemini-flash-1.5-8b",
+    "gemini-2.0-flash-exp": "google/gemini-2.0-flash-exp",
+    "gemini-2.0-flash-thinking-exp": "google/gemini-2.0-flash-thinking-exp",
+    "gemini-2.0-pro-exp": "google/gemini-2.0-pro-exp",
+    "gemini-2.5-pro": "google/gemini-2.5-pro",
+  };
+
+  if (mapping[name]) {
+    return mapping[name];
+  }
+
+  return `google/${modelName}`;
+}
+
 export const geminiService = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async generate(params: Record<string, any>, _userApiKey?: string): Promise<any> {
     const modelName = (params.model as string) || "";
-    const systemInstruction = params.systemInstruction;
+    const systemInstruction = params.systemInstruction || params.config?.systemInstruction || params.generationConfig?.systemInstruction;
     const isImageModel =
       modelName.includes("image-preview") ||
       modelName.includes("imagen") ||
@@ -72,6 +102,7 @@ export const geminiService = {
       modelName === "igen-image-flash" ||
       modelName === "gemini-3-pro-image" ||
       modelName === "gemini-3.1-flash-image" ||
+      modelName === "gemini-3.1-flash-image-preview" ||
       modelName.startsWith("imagen-");
 
     // Luôn luôn sử dụng API Key từ biến môi trường .env (không dùng key cá nhân/key từ DB của user nữa)
@@ -89,9 +120,11 @@ export const geminiService = {
     }
     logger.info(`[Gemini Service] Using API key prefix: ${apiKey ? apiKey.substring(0, 10) + '...' : 'None'} (Length: ${apiKey.length}, Valid: ${apiKey ? isValidGeminiKey(apiKey) : false})`);
     const piapiKey = process.env.PIAPI_API_KEY;
+    const openRouterKey = process.env.OPENROUTER_API_KEY || "";
     logger.info(
       `[Gemini Service] Request summary - model: ${modelName}, hasSystemInstruction: ${!!systemInstruction}, contents: ${summarizeContents(params.contents)}`
     );
+
 
     // ─── XỬ LÝ MODEL HÌNH ẢNH / VIDEO QUA PIAPI ─────────────────────────────────
     if (piapiKey && (isImageModel || isVideoModel) && !isGeminiNativeImageModel) {
@@ -288,7 +321,8 @@ export const geminiService = {
       const isFlashVariant =
         modelName === "nano-banana-2" ||
         modelName === "igen-image-flash" ||
-        modelName === "gemini-3.1-flash-image";
+        modelName === "gemini-3.1-flash-image" ||
+        modelName === "gemini-3.1-flash-image-preview";
 
       const IMAGE_GEN_MODEL = isFlashVariant ? "gemini-3.1-flash-image" : "gemini-3-pro-image";
       logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL} (variant: ${isFlashVariant ? 'flash' : 'pro'}), aspect: ${aspectRatio}`);
@@ -369,6 +403,93 @@ export const geminiService = {
         })),
         // Cũng giữ candidates để tương thích ngược
         candidates: response.candidates,
+      };
+    }
+
+    // ── 3. TEXT MODEL via OpenRouter (bắt buộc nếu có OPENROUTER_API_KEY) ──
+    if (openRouterKey && !isImageModel && !isVideoModel) {
+      const openRouterModel = mapToOpenRouterModel(modelName);
+      logger.info(`[Gemini Service] ✅ Provider: OpenRouter → ${openRouterModel}`);
+
+      // Chuyển đổi định dạng contents của Gemini sang messages của OpenAI/OpenRouter
+      type OAIMessage = { role: string; content: string };
+      const messages: OAIMessage[] = [];
+
+      // System instruction
+      if (systemInstruction) {
+        messages.push({ role: "system", content: String(systemInstruction) });
+      }
+
+      // Contents array
+      const contentsArr = Array.isArray(params.contents)
+        ? params.contents
+        : params.contents ? [params.contents] : [];
+
+      for (const item of contentsArr) {
+        if (!item || typeof item !== "object") continue;
+        const role = (item as { role?: string }).role === "model" ? "assistant" : "user";
+        const parts = (item as { parts?: Array<{ text?: string }> }).parts || [];
+        const text = parts.map(p => p.text || "").join("");
+        if (text.trim()) messages.push({ role, content: text.trim() });
+      }
+
+      if (messages.length === 0) {
+        const rawText = extractTextFromContents(params.contents);
+        if (rawText) messages.push({ role: "user", content: rawText });
+      }
+
+      if (messages.length === 0) {
+        throw new Error("Không có nội dung để gửi đến OpenRouter.");
+      }
+
+      const requestBody: Record<string, any> = {
+        model: openRouterModel,
+        messages
+      };
+
+      // Ép kiểu JSON nếu frontend yêu cầu JSON
+      const isJsonRequested =
+        params.config?.responseMimeType === "application/json" ||
+        params.generationConfig?.responseMimeType === "application/json" ||
+        params.config?.response_mime_type === "application/json";
+
+      if (isJsonRequested) {
+        requestBody.response_format = { type: "json_object" };
+      }
+
+      logger.info(`[Gemini Service] OpenRouter request: ${messages.length} messages, forced JSON: ${isJsonRequested}`);
+
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openRouterKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://staging-architect.igentechsolutions.com",
+          "X-Title": "iGen Architect Assistant",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`OpenRouter API error ${response.status}: ${errText}`);
+      }
+
+      const data = await response.json() as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      const textResult = data.choices?.[0]?.message?.content || "";
+      logger.info(`[Gemini Service] OpenRouter response received (${textResult.length} chars): ${textResult.slice(0, 100)}...`);
+
+      return {
+        candidates: [{
+          content: {
+            parts: [{ text: textResult }],
+            role: "model",
+          },
+          finishReason: "STOP",
+        }],
+        text: textResult,
       };
     }
 
