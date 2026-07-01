@@ -16,7 +16,91 @@ export const piapiService = {
     prompt: string,
     model: string,
     options?: { aspectRatio?: string; image?: string; numImages?: number; jobType?: string }
-  ): Promise<{ taskId: string; isMock: boolean; mockUrl?: string }> {
+  ): Promise<{ taskId: string; isMock: boolean; mockUrl?: string; outputUrl?: string }> {
+    const openRouterKey = process.env.OPENROUTER_API_KEY || "";
+    if (openRouterKey && (model === "nano-banana-2" || model === "igen-image-flash" || model === "nano-banana-pro")) {
+      console.log(`[OpenRouter Image Task] Creating image synchronously for model: ${model}`);
+      const taskType = model === "igen-image-flash" ? "nano-banana-2" : model;
+      let openRouterModel = "google/gemini-3.1-flash-image-preview";
+      if (taskType === "nano-banana-pro") {
+        openRouterModel = "google/gemini-3-pro-image-preview";
+      }
+
+      // Normalize aspect ratio to OpenRouter-allowed values for Gemini image models
+      const allowedAspects = [
+        "1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"
+      ];
+      let aspect = options?.aspectRatio || "1:1";
+      if (aspect === "Tự động" || aspect === "auto" || !allowedAspects.includes(aspect)) {
+        aspect = "1:1";
+      }
+
+      const headers: Record<string, string> = {
+        "Authorization": `Bearer ${openRouterKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://staging-architect.igentechsolutions.com",
+        "X-Title": "iGen Architect Assistant",
+      };
+
+      const body: Record<string, any> = {
+        model: openRouterModel,
+        prompt,
+        response_format: "b64_json",
+        aspect_ratio: aspect
+      };
+
+      if (options?.image) {
+        body.input_references = [{
+          type: "image_url",
+          image_url: {
+            url: options.image
+          }
+        }];
+      }
+
+      try {
+        console.log(`[OpenRouter Image Task] Requesting OpenRouter image endpoint. Model: ${openRouterModel}`);
+        const response = await fetch("https://openrouter.ai/api/v1/images", {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`OpenRouter image generation failed: ${response.status} - ${errorText}`);
+        }
+
+        const json = (await response.json()) as {
+          data?: Array<{ b64_json?: string; url?: string }>;
+        };
+
+        const b64 = json.data?.[0]?.b64_json;
+        const imgUrl = json.data?.[0]?.url;
+
+        let finalImageUrl = "";
+        if (b64) {
+          const fileStr = `data:image/png;base64,${b64}`;
+          finalImageUrl = await cloudinaryService.uploadMedia(fileStr, "renders");
+        } else if (imgUrl) {
+          finalImageUrl = await cloudinaryService.uploadMedia(imgUrl, "renders");
+        } else {
+          throw new Error("Không nhận được dữ liệu hình ảnh từ OpenRouter Image API");
+        }
+
+        console.log(`[OpenRouter Image Task] Successfully generated and uploaded image: ${finalImageUrl}`);
+        const seed = Math.floor(Math.random() * 1000000);
+        return {
+          taskId: `openrouter-${seed}`,
+          isMock: false,
+          outputUrl: finalImageUrl
+        };
+      } catch (error) {
+        console.error("[OpenRouter Image Task] Error generating image:", error);
+        throw error;
+      }
+    }
+
     if (!PIAPI_API_KEY) {
       console.log(`[PiAPI Image Task] Running in MOCK mode (No PIAPI_API_KEY). Model: ${model}`);
       const seed = Math.floor(Math.random() * 1000000);
@@ -193,6 +277,9 @@ export const piapiService = {
     const taskResult = await this.createImageTask(prompt, model, options);
     if (taskResult.isMock) {
       return { url: taskResult.mockUrl || "", isMock: true };
+    }
+    if (taskResult.outputUrl) {
+      return { url: taskResult.outputUrl, isMock: false };
     }
 
     const taskId = taskResult.taskId;

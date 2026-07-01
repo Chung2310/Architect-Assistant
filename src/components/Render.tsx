@@ -53,14 +53,14 @@ const MODELS = [
 
 const GEMINI_MODELS = [
   {
-    id: "gemini-3-pro-image",
-    name: "iGen 3 Pro Image",
+    id: "nano-banana-pro",
+    name: "Nano Banana Pro (PiAPI)",
     isPro: true,
   },
   {
-    id: "gemini-3.1-flash-image",
-    name: "iGen 3.1 Flash Image",
-    isPro: false,
+    id: "nano-banana-2",
+    name: "Nano Banana 2 (Gemini 3.1 Flash Image)",
+    isPro: true,
   },
 ];
 
@@ -228,7 +228,7 @@ const EditTabContent: React.FC = () => {
   // States for "Sửa Tổng Thể"
   const [prompt, setPrompt] = useState("");
   const [selectedModel, setSelectedModel] = useState(
-    "gemini-3-pro-image",
+    "nano-banana-pro",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
   const [numImages, setNumImages] = useState(1);
@@ -4793,7 +4793,7 @@ const UtilitiesTabContent: React.FC = () => {
   const [inputImage, setInputImage] = useState<string | null>(null);
   const [inputImage2, setInputImage2] = useState<string | null>(null);
   const [utilityModel, setUtilityModel] = useState(
-    "gemini-3-pro-image",
+    "nano-banana-pro",
   );
   const [utilityResolution, setUtilityResolution] = useState("1K");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -5030,7 +5030,7 @@ const UtilitiesTabContent: React.FC = () => {
       const modelToUse =
         activeUtility === "mood"
           ? utilityModel
-          : "gemini-3.1-flash-image";
+          : "nano-banana-2";
       const ai = await getAIClient(modelToUse);
       const imageData = await getImageBase64(inputImage, true);
 

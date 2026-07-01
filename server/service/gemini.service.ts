@@ -98,8 +98,6 @@ export const geminiService = {
     const isVideoModel = modelName.includes("veo");
 
     const isGeminiNativeImageModel =
-      modelName === "nano-banana-2" ||
-      modelName === "igen-image-flash" ||
       modelName === "gemini-3-pro-image" ||
       modelName === "gemini-3.1-flash-image" ||
       modelName === "gemini-3.1-flash-image-preview" ||
@@ -319,8 +317,6 @@ export const geminiService = {
       // - nano-banana-2 / igen-image-flash / gemini-3.1-flash-image → Flash (nhanh hơn, rẻ hơn)
       // - Các model khác → Pro (chất lượng cao hơn)
       const isFlashVariant =
-        modelName === "nano-banana-2" ||
-        modelName === "igen-image-flash" ||
         modelName === "gemini-3.1-flash-image" ||
         modelName === "gemini-3.1-flash-image-preview";
 

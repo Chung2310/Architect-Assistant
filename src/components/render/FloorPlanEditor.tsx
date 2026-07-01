@@ -4,7 +4,8 @@ import {
   Download, Sparkles, ZoomIn, ZoomOut, RotateCw,
   Send, CheckCircle2, Circle as LucideCircle,
   Maximize2, Plus, Minus, ChevronLeft, Trash2,
-  X, Search, Check, ChevronDown, ArrowLeft, Settings2
+  X, Search, Check, ChevronDown, ArrowLeft, Settings2, ChevronRight,
+  Bath, Bed, WashingMachine, Car, Dumbbell, Utensils, Sofa, Briefcase, Trees, Gamepad
 } from "lucide-react";
 
 import { motion, AnimatePresence } from "motion/react";
@@ -94,6 +95,7 @@ interface GatherInfo {
   floors?: number;
   area?: string;
   shape?: string;
+  shapePoints?: { x: number; y: number }[];
   rooms?: string;
   extras?: string;
   projectType?: string;
@@ -137,6 +139,49 @@ const ROOM_COLORS: Record<string, string> = {
   default: "#60a5fa",
 };
 
+const SHAPE_TEMPLATES_FALLBACK = [
+  { name: "Rectangle", points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }] },
+  { name: "L-Shape (Top-Right)", points: [{ x: 0, y: 0 }, { x: 65, y: 0 }, { x: 65, y: 35 }, { x: 100, y: 35 }, { x: 100, y: 100 }, { x: 0, y: 100 }] },
+  { name: "U-Shape", points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 70, y: 100 }, { x: 70, y: 80 }, { x: 30, y: 80 }, { x: 30, y: 100 }, { x: 0, y: 100 }] },
+  { name: "T-Shape", points: [{ x: 25, y: 0 }, { x: 75, y: 0 }, { x: 75, y: 35 }, { x: 100, y: 35 }, { x: 100, y: 100 }, { x: 0, y: 100 }, { x: 0, y: 35 }, { x: 25, y: 35 }] },
+  { name: "H-Shape", points: [{ x: 0, y: 0 }, { x: 30, y: 0 }, { x: 30, y: 25 }, { x: 70, y: 25 }, { x: 70, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 70, y: 100 }, { x: 70, y: 75 }, { x: 30, y: 75 }, { x: 30, y: 100 }, { x: 0, y: 100 }] },
+  { name: "Cross", points: [{ x: 30, y: 0 }, { x: 70, y: 0 }, { x: 70, y: 30 }, { x: 100, y: 30 }, { x: 100, y: 70 }, { x: 70, y: 70 }, { x: 70, y: 100 }, { x: 30, y: 100 }, { x: 30, y: 70 }, { x: 0, y: 70 }, { x: 0, y: 30 }, { x: 30, y: 30 }] },
+  { name: "L-Shape (Bottom-Left)", points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 35, y: 100 }, { x: 35, y: 65 }, { x: 0, y: 65 }] },
+  { name: "L-Shape (Bottom-Right)", points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 65 }, { x: 65, y: 65 }, { x: 65, y: 100 }, { x: 0, y: 100 }] },
+];
+
+function getDefaultPointsForShape(shapeName: string, w: number, l: number): { x: number; y: number }[] {
+  const normName = shapeName.toLowerCase();
+  let template = SHAPE_TEMPLATES_FALLBACK[0]; // Rectangle fallback
+  
+  if (normName.includes("l-shape") || normName.includes("chữ l") || normName.includes("l shape")) {
+    if (normName.includes("bottom-left")) template = SHAPE_TEMPLATES_FALLBACK[6];
+    else if (normName.includes("bottom-right")) template = SHAPE_TEMPLATES_FALLBACK[7];
+    else template = SHAPE_TEMPLATES_FALLBACK[1]; // default Top-Right
+  } else if (normName.includes("u-shape") || normName.includes("chữ u") || normName.includes("u shape")) {
+    template = SHAPE_TEMPLATES_FALLBACK[2];
+  } else if (normName.includes("t-shape") || normName.includes("chữ t") || normName.includes("t shape")) {
+    template = SHAPE_TEMPLATES_FALLBACK[3];
+  } else if (normName.includes("h-shape") || normName.includes("chữ h") || normName.includes("h shape")) {
+    template = SHAPE_TEMPLATES_FALLBACK[4];
+  } else if (normName.includes("cross") || normName.includes("chữ thập")) {
+    template = SHAPE_TEMPLATES_FALLBACK[5];
+  }
+
+  let xmin = 100, xmax = 0, ymin = 100, ymax = 0;
+  template.points.forEach(p => {
+    xmin = Math.min(xmin, p.x); xmax = Math.max(xmax, p.x);
+    ymin = Math.min(ymin, p.y); ymax = Math.max(ymax, p.y);
+  });
+  const tw = xmax - xmin;
+  const th = ymax - ymin;
+
+  return template.points.map(p => ({
+    x: tw > 0 ? ((p.x - xmin) / tw) * w : 0,
+    y: th > 0 ? ((p.y - ymin) / th) * l : 0,
+  }));
+}
+
 function getRoomColor(name: string): string {
   for (const [k, v] of Object.entries(ROOM_COLORS)) {
     if (name.includes(k)) return v;
@@ -174,6 +219,16 @@ const FURNITURE_METADATA: Record<string, {
     styles: [
       { name: "Treo tường tối giản", value: "wall_mounted" },
       { name: "Kệ tủ bệt dài", value: "floor_cabinet" }
+    ]
+  },
+  bed_dresser: {
+    name: "Tủ ngăn kéo",
+    materials: [
+      { name: "Gỗ Sồi Tự Nhiên", value: "natural_oak", color: "#d6c2a4" },
+      { name: "Gỗ Óc Chó", value: "walnut", color: "#5c4033" }
+    ],
+    styles: [
+      { name: "Hiện đại", value: "modern" }
     ]
   },
   bed_bed: {
@@ -247,6 +302,173 @@ const FURNITURE_METADATA: Record<string, {
       { name: "Sedan gia đình", value: "sedan" },
       { name: "SUV thể thao đa dụng", value: "suv" }
     ]
+  },
+  living_chair: {
+    name: "Ghế bành",
+    materials: [
+      { name: "Vải Nỉ Xám", value: "grey_fabric", color: "#94a3b8" },
+      { name: "Da Bò Nâu", value: "brown_leather", color: "#854d0e" }
+    ],
+    styles: [
+      { name: "Hiện Đại", value: "modern" }
+    ]
+  },
+  bed_nightstand: {
+    name: "Tủ đầu giường",
+    materials: [
+      { name: "Gỗ Sồi Natural", value: "oak", color: "#eab308" }
+    ],
+    styles: [
+      { name: "Đơn giản", value: "simple" }
+    ]
+  },
+  kitchen_cooktop: {
+    name: "Bếp nấu",
+    materials: [
+      { name: "Kính đen cường lực", value: "black_glass", color: "#1e293b" }
+    ],
+    styles: [
+      { name: "Bếp âm", value: "built_in" }
+    ]
+  },
+  kitchen_sink: {
+    name: "Bồn rửa bát",
+    materials: [
+      { name: "Inox 304", value: "steel", color: "#94a3b8" }
+    ],
+    styles: [
+      { name: "Bồn đôi", value: "double" }
+    ]
+  },
+  kitchen_fridge: {
+    name: "Tủ lạnh",
+    materials: [
+      { name: "Thép không gỉ", value: "steel", color: "#cbd5e1" }
+    ],
+    styles: [
+      { name: "Side by Side", value: "side_by_side" }
+    ]
+  },
+  wc_toilet: {
+    name: "Bồn cầu",
+    materials: [
+      { name: "Sứ trắng", value: "white_ceramic", color: "#ffffff" }
+    ],
+    styles: [
+      { name: "Liền khối", value: "one_piece" }
+    ]
+  },
+  wc_lavabo: {
+    name: "Chậu rửa mặt",
+    materials: [
+      { name: "Sứ trắng", value: "white_ceramic", color: "#ffffff" }
+    ],
+    styles: [
+      { name: "Treo tường", value: "wall_hung" }
+    ]
+  },
+  wc_mirror: {
+    name: "Gương phòng tắm",
+    materials: [
+      { name: "Kính tráng gương", value: "glass", color: "#ffffff" }
+    ],
+    styles: [
+      { name: "Đèn LED", value: "led" }
+    ]
+  },
+  office_desk: {
+    name: "Bàn làm việc",
+    materials: [
+      { name: "Gỗ công nghiệp", value: "mdf", color: "#cbd5e1" }
+    ],
+    styles: [
+      { name: "Văn phòng", value: "office" }
+    ]
+  },
+  stairs: {
+    name: "Cầu thang",
+    materials: [
+      { name: "Gỗ căm xe", value: "wood", color: "#854d0e" }
+    ],
+    styles: [
+      { name: "Thẳng", value: "straight" }
+    ]
+  },
+  plant_pots: {
+    name: "Chậu cây cảnh",
+    materials: [
+      { name: "Chậu đất nung", value: "clay", color: "#c2410c" }
+    ],
+    styles: [
+      { name: "Cây phát tài", value: "default" }
+    ]
+  },
+  gym_treadmill: {
+    name: "Máy chạy bộ",
+    materials: [
+      { name: "Thép & Nhựa", value: "metal_plastic", color: "#1e293b" }
+    ],
+    styles: [
+      { name: "Điện tử", value: "electric" }
+    ]
+  },
+  entry_bench: {
+    name: "Ghế băng",
+    materials: [
+      { name: "Gỗ Sồi Tự Nhiên", value: "natural_oak", color: "#d6c2a4" }
+    ],
+    styles: [
+      { name: "Băng ghế đệm nỉ", value: "cushioned" }
+    ]
+  },
+  entry_coat_stand: {
+    name: "Móc treo quần áo",
+    materials: [
+      { name: "Thép sơn đen", value: "black_steel", color: "#1e293b" },
+      { name: "Gỗ tự nhiên", value: "natural_wood", color: "#a16207" }
+    ],
+    styles: [
+      { name: "Cây đứng độc lập", value: "freestanding" }
+    ]
+  },
+  entry_console_mirror: {
+    name: "Bàn phụ có gương",
+    materials: [
+      { name: "Gỗ Óc Chó & Kính", value: "walnut_glass", color: "#5c4033" }
+    ],
+    styles: [
+      { name: "Hiện đại tối giản", value: "minimalist" }
+    ]
+  },
+  laundry_machines: {
+    name: "Máy giặt sấy",
+    materials: [
+      { name: "Trắng Sứ", value: "white_porcelain", color: "#ffffff" },
+      { name: "Xám Titan", value: "titanium_grey", color: "#475569" }
+    ],
+    styles: [
+      { name: "Song song", value: "side_by_side" },
+      { name: "Xếp chồng", value: "stacked" }
+    ]
+  },
+  laundry_sink: {
+    name: "Chậu giặt",
+    materials: [
+      { name: "Sứ Trắng", value: "white_ceramic", color: "#ffffff" },
+      { name: "Đá Nhân Tạo", value: "stone", color: "#cbd5e1" }
+    ],
+    styles: [
+      { name: "Bồn rửa có bàn chà", value: "washboard" }
+    ]
+  },
+  recreation_pool_table: {
+    name: "Bàn Bi-a",
+    materials: [
+      { name: "Vải nỉ xanh", value: "felt", color: "#15803d" }
+    ],
+    styles: [
+      { name: "Standard 9ft", value: "standard" }
+    ]
   }
 };
 
@@ -311,6 +533,9 @@ function getFurnitureColor(item: FurnitureItem): string {
     if (item.material === "oak_wood") return "#ca8a04";
     if (item.material === "white_quartz") return "#f8fafc";
     if (item.material === "grey_stone") return "#64748b";
+    if (item.material === "titanium_grey") return "#475569";
+    if (item.material === "natural_wood") return "#a16207";
+    if (item.material === "black_steel") return "#1e293b";
   }
   return "white";
 }
@@ -412,10 +637,176 @@ function getRoomFlooringColor(room: Room): string {
   return "white";
 }
 
+const FURNITURE_CATEGORIES = [
+  {
+    name: "Phòng tắm",
+    items: [
+      {
+        type: "wc_bathtub",
+        name: "Bồn tắm",
+        subItems: [
+          { type: "wc_bathtub", name: "Bồn tắm xây", style: "jacuzzi", w: 1.6, h: 0.8 },
+          { type: "wc_bathtub", name: "Bồn tắm độc lập", style: "freestanding", w: 1.6, h: 0.8 }
+        ]
+      },
+      {
+        type: "wc_shower",
+        name: "Vòi hoa sen",
+        subItems: [
+          { type: "wc_shower", name: "Vòi sen lớn", w: 1.2, h: 1.2 },
+          { type: "wc_shower", name: "Vòi sen vừa", w: 0.9, h: 0.9 },
+          { type: "wc_shower", name: "Vòi sen nhỏ", w: 0.8, h: 0.8 }
+        ]
+      },
+      { type: "wc_toilet", name: "Bồn cầu", w: 0.42, h: 0.65 },
+      {
+        type: "wc_lavabo",
+        name: "Bàn đá chậu rửa",
+        subItems: [
+          { type: "wc_lavabo", name: "Chậu đôi", style: "double", w: 1.4, h: 0.6 },
+          { type: "wc_lavabo", name: "Chậu đơn", style: "single", w: 0.7, h: 0.6 }
+        ]
+      }
+    ]
+  },
+  {
+    name: "Phòng ngủ",
+    items: [
+      {
+        type: "bed_bed",
+        name: "Giường ngủ",
+        subItems: [
+          { type: "bed_bed", name: "Giường Cal-King", style: "cal_king", w: 2.13, h: 1.83 },
+          { type: "bed_bed", name: "Cũi em bé", style: "crib", w: 1.3, h: 0.7 },
+          { type: "bed_bed", name: "Giường đôi (Full)", style: "full", w: 1.9, h: 1.37 },
+          { type: "bed_bed", name: "Giường King", style: "king", w: 2.03, h: 1.93 },
+          { type: "bed_bed", name: "Giường Queen", style: "queen", w: 2.03, h: 1.52 },
+          { type: "bed_bed", name: "Giường đơn (Twin)", style: "twin", w: 1.9, h: 0.99 }
+        ]
+      },
+      { type: "bed_dresser", name: "Tủ ngăn kéo", w: 1.2, h: 0.5 },
+      { type: "bed_nightstand", name: "Tủ đầu giường", w: 0.5, h: 0.5 },
+      { type: "bed_wardrobe", name: "Tủ quần áo", w: 1.5, h: 0.6 }
+    ]
+  },
+  {
+    name: "Lối vào & Giặt giũ",
+    items: [
+      { type: "entry_bench", name: "Ghế băng", w: 1.2, h: 0.45 },
+      { type: "entry_coat_stand", name: "Móc treo quần áo", w: 0.45, h: 0.45 },
+      { type: "entry_console_mirror", name: "Bàn phụ có gương", w: 1.0, h: 0.4 },
+      {
+        type: "laundry_machines",
+        name: "Máy giặt sấy",
+        subItems: [
+          { type: "laundry_machines", name: "Đặt song song", style: "side_by_side", w: 1.4, h: 0.7 },
+          { type: "laundry_machines", name: "Đặt xếp chồng", style: "stacked", w: 0.7, h: 0.7 }
+        ]
+      },
+      { type: "laundry_sink", name: "Chậu giặt", w: 0.65, h: 0.6 }
+    ]
+  },
+  {
+    name: "Nhà xe & Kho",
+    items: [
+      { type: "entry_coat_stand", name: "Giá treo quần áo", w: 1.2, h: 0.5 },
+      { type: "garage_generic_object", name: "Đồ dùng khác", w: 0.8, h: 0.8 },
+      { type: "garage_hvac", name: "Cục nóng điều hòa", w: 0.9, h: 0.4 },
+      {
+        type: "garage_car",
+        name: "Xe ô tô",
+        subItems: [
+          { type: "garage_car", name: "Xe Sedan", style: "sedan", w: 1.8, h: 4.2 },
+          { type: "garage_car", name: "Xe SUV", style: "suv", w: 2.0, h: 4.8 }
+        ]
+      },
+      { type: "garage_water_heater", name: "Máy nước nóng", w: 0.5, h: 0.5 }
+    ]
+  },
+  {
+    name: "Phòng Gym",
+    items: [
+      { type: "gym_bike", name: "Xe đạp tập thể dục", w: 1.1, h: 0.6 },
+      { type: "gym_bench", name: "Ghế tập gym", w: 1.2, h: 0.5 },
+      { type: "gym_treadmill", name: "Máy chạy bộ", w: 1.6, h: 0.8 },
+      { type: "gym_weight_rack", name: "Giá để tạ", w: 1.0, h: 0.5 },
+      { type: "gym_yoga_mat", name: "Thảm tập Yoga", w: 1.8, h: 0.6 }
+    ]
+  },
+  {
+    name: "Bếp & Phòng ăn",
+    items: [
+      { type: "kitchen_counter", name: "Bàn bếp / Hệ tủ bếp", w: 2.4, h: 0.6 },
+      { type: "kitchen_cooktop", name: "Bếp nấu", w: 0.7, h: 0.35 },
+      { type: "kitchen_sink", name: "Bồn rửa bát", w: 0.5, h: 0.35 },
+      { type: "kitchen_fridge", name: "Tủ lạnh", w: 0.65, h: 0.65 },
+      { type: "dining_table", name: "Bàn ăn", w: 1.4, h: 0.9 }
+    ]
+  },
+  {
+    name: "Phòng khách",
+    items: [
+      {
+        type: "living_sofa",
+        name: "Ghế Sofa",
+        subItems: [
+          { type: "living_sofa", name: "Sofa góc chữ L", style: "sectional", w: 2.6, h: 1.6 },
+          { type: "living_sofa", name: "Sofa 3 chỗ", style: "three_seater", w: 2.1, h: 0.9 },
+          { type: "living_sofa", name: "Sofa 2 chỗ", style: "two_seater", w: 1.6, h: 0.9 }
+        ]
+      },
+      { type: "living_tv", name: "Kệ tivi", w: 1.6, h: 0.25 },
+      { type: "living_chair", name: "Ghế bành", w: 0.65, h: 0.65 },
+      { type: "living_bookshelf", name: "Kệ sách", w: 1.0, h: 0.35 },
+      { type: "living_credenza", name: "Tủ kệ trang trí", w: 1.4, h: 0.4 },
+      { type: "living_coffee_table", name: "Bàn trà", w: 1.0, h: 0.6 },
+      { type: "living_side_table", name: "Bàn bên / Bàn góc", w: 0.5, h: 0.5 }
+    ]
+  },
+  {
+    name: "Phòng làm việc",
+    items: [
+      { type: "office_filing_cabinet", name: "Tủ tài liệu / Tủ hồ sơ", w: 0.6, h: 0.5 },
+      { type: "office_chair", name: "Ghế văn phòng", w: 0.6, h: 0.6 },
+      {
+        type: "office_desk",
+        name: "Bàn làm việc",
+        subItems: [
+          { type: "office_desk", name: "Bàn giám đốc", style: "executive", w: 1.8, h: 0.9 },
+          { type: "office_desk", name: "Bàn làm việc đơn", style: "standard", w: 1.4, h: 0.7 },
+          { type: "office_desk", name: "Bàn góc chữ L", style: "l_shape", w: 1.6, h: 1.2 }
+        ]
+      }
+    ]
+  },
+  {
+    name: "Ngoài trời",
+    items: [
+      { type: "outdoor_bbq", name: "Bếp nướng BBQ", w: 1.0, h: 0.6 },
+      {
+        type: "outdoor_lounge_chair",
+        name: "Ghế nằm thư giãn",
+        subItems: [
+          { type: "outdoor_lounge_chair", name: "Ghế tắm nắng", style: "sun_lounger", w: 0.7, h: 1.8 },
+          { type: "outdoor_lounge_chair", name: "Ghế bành mây", style: "wicker", w: 0.8, h: 0.8 }
+        ]
+      },
+      { type: "outdoor_dining_set", name: "Bộ bàn ghế ngoài trời", w: 1.6, h: 1.6 },
+      { type: "plant_pots", name: "Cây cảnh ngoài trời", w: 0.5, h: 0.5 }
+    ]
+  },
+  {
+    name: "Giải trí",
+    items: [
+      { type: "recreation_pool_table", name: "Bàn Bi-a", w: 1.6, h: 2.8 }
+    ]
+  }
+];
+
 // ══════════════════════════════════════════════════════════════════════════
 export const FloorPlanEditor: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, socket } = useAuth();
 
   // ── Chat state ──────────────────────────────────────────────────────────
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -455,10 +846,14 @@ export const FloorPlanEditor: React.FC = () => {
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
   const [selectedFurnitureRoomId, setSelectedFurnitureRoomId] = useState<string | null>(null);
+  const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
   const [draggedRoomId, setDraggedRoomId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number; w: number; h: number }>({ x: 0, y: 0, w: 0, h: 0 });
   const [renderResult, setRenderResult] = useState<string | null>(null);
   const [isRendering3D, setIsRendering3D] = useState(false);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [renderProgress, setRenderProgress] = useState<number>(0);
+  const [renderStatusMessage, setRenderStatusMessage] = useState<string>("");
   const [showShapeModal, setShowShapeModal] = useState(false);
   const [showRoomsModal, setShowRoomsModal] = useState(false);
   const [autoRenderPending, setAutoRenderPending] = useState(false);
@@ -501,6 +896,7 @@ export const FloorPlanEditor: React.FC = () => {
   const [historyStack, setHistoryStack] = useState<FloorPlanData[]>([]);
   const [redoStack, setRedoStack] = useState<FloorPlanData[]>([]);
   const [showDimensions, setShowDimensions] = useState(true);
+  const [showLabels, setShowLabels] = useState(false);
 
   const getSelectedFurniture = () => {
     if (!selectedFurnitureId || !floorPlan) return null;
@@ -641,6 +1037,74 @@ export const FloorPlanEditor: React.FC = () => {
     },
     []
   );
+
+  // Listen to socket updates for the active rendering job
+  useEffect(() => {
+    if (!socket || !activeJobId) return;
+
+    const handleJobUpdate = (updatedJob: any) => {
+      const jobId = updatedJob._id || updatedJob.id;
+      if (jobId === activeJobId) {
+        setRenderProgress(updatedJob.progress || 0);
+        setRenderStatusMessage(updatedJob.statusMessage || "");
+        if (updatedJob.status === "completed") {
+          const finalUrl = updatedJob.outputImageUrls?.[0];
+          if (finalUrl) {
+            setRenderResult(finalUrl);
+            toast.success("Render 3D hoàn tất!");
+            addMessage("assistant", "✅ Phối cảnh 3D đã hoàn thành! Bạn có thể tải về bên dưới.");
+          }
+          setIsRendering3D(false);
+          setActiveJobId(null);
+        } else if (updatedJob.status === "failed" || updatedJob.status === "error") {
+          toast.error(updatedJob.statusMessage || "Lỗi render.");
+          addMessage("assistant", "❌ Lỗi render 3D. Vui lòng thử lại.");
+          setIsRendering3D(false);
+          setActiveJobId(null);
+        }
+      }
+    };
+
+    socket.on("renderJobUpdated", handleJobUpdate);
+    return () => {
+      socket.off("renderJobUpdated", handleJobUpdate);
+    };
+  }, [socket, activeJobId, addMessage]);
+
+  // Polling fallback for render job status
+  useEffect(() => {
+    if (!activeJobId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await apiClient.get<ApiResponse<any>>(`/api/v1/render-jobs/${activeJobId}`);
+        if (res.success && res.data) {
+          const job = res.data;
+          setRenderProgress(job.progress || 0);
+          setRenderStatusMessage(job.statusMessage || "");
+          if (job.status === "completed") {
+            const finalUrl = job.outputImageUrls?.[0];
+            if (finalUrl) {
+              setRenderResult(finalUrl);
+              toast.success("Render 3D hoàn tất!");
+              addMessage("assistant", "✅ Phối cảnh 3D đã hoàn thành! Bạn có thể tải về bên dưới.");
+            }
+            setIsRendering3D(false);
+            setActiveJobId(null);
+          } else if (job.status === "failed" || job.status === "error") {
+            toast.error(job.statusMessage || "Lỗi render.");
+            addMessage("assistant", "❌ Lỗi render 3D. Vui lòng thử lại.");
+            setIsRendering3D(false);
+            setActiveJobId(null);
+          }
+        }
+      } catch (e) {
+        console.error("Error polling render job:", e);
+      }
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [activeJobId, addMessage]);
 
   // ── Gemini 2.5 Flash Conversational Handler ────────────────────────
   const handleSend = async () => {
@@ -805,7 +1269,7 @@ Trả về JSON thuần túý, TUYỆT ĐỐI KHÔNG thêm text ngoài:
   };
 
   // ── Shape selected from modal ───────────────────────────────────────────
-  const handleShapeSelected = async (shapeName: string, width?: number, length?: number) => {
+  const handleShapeSelected = async (shapeName: string, points?: { x: number; y: number }[], width?: number, length?: number) => {
     setShowShapeModal(false);
 
     const w = width ?? gatherInfo.landWidth ?? 5;
@@ -817,6 +1281,7 @@ Trả về JSON thuần túý, TUYỆT ĐỐI KHÔNG thêm text ngoài:
     const newInfo: GatherInfo = {
       ...gatherInfo,
       shape: shapeName,
+      shapePoints: points,
       landWidth: w,
       landLength: l,
       area: `${w}x${l}m`,
@@ -875,31 +1340,125 @@ Trả về JSON thuần túý, TUYỆT ĐỐI KHÔNG thêm text ngoài:
     const rooms = info.rooms || "2 phòng ngủ, 1 WC, phòng khách, bếp";
     const extras = info.extras || "phong cách hiện đại";
 
+    const shapePoints = info.shapePoints || getDefaultPointsForShape(shape, landW, landL);
+    let shapeInstruction = "";
+    
+    // Add custom cutout rule description based on shape name
+    let cutoutDescription = "";
+    const normName = shape.toLowerCase();
+    if (normName.includes("l-shape (top-right)") || normName.includes("l-shape") || normName.includes("chữ l")) {
+      if (normName.includes("bottom-left")) {
+        cutoutDescription = `Vùng khuyết góc dưới bên trái (x từ 0m đến ${(0.35 * landW).toFixed(2)}m và y từ ${(0.65 * landL).toFixed(2)}m đến ${landL}m) là khoảng trống ngoài ranh giới, TUYỆT ĐỐI KHÔNG được đặt phòng nào ở đây.`;
+      } else if (normName.includes("bottom-right")) {
+        cutoutDescription = `Vùng khuyết góc dưới bên phải (x từ ${(0.65 * landW).toFixed(2)}m đến ${landW}m và y từ ${(0.65 * landL).toFixed(2)}m đến ${landL}m) là khoảng trống ngoài ranh giới, TUYỆT ĐỐI KHÔNG được đặt phòng nào ở đây.`;
+      } else {
+        // default Top-Right
+        cutoutDescription = `Vùng khuyết góc trên bên phải (x từ ${(0.65 * landW).toFixed(2)}m đến ${landW}m và y từ 0m đến ${(0.35 * landL).toFixed(2)}m) là khoảng trống ngoài ranh giới, TUYỆT ĐỐI KHÔNG được đặt phòng nào ở đây.`;
+      }
+    } else if (normName.includes("u-shape") || normName.includes("chữ u")) {
+      cutoutDescription = `Vùng khuyết ở giữa phía dưới (x từ ${(0.3 * landW).toFixed(2)}m đến ${(0.7 * landW).toFixed(2)}m và y từ ${(0.8 * landL).toFixed(2)}m đến ${landL}m) là khoảng trống ngoài ranh giới, TUYỆT ĐỐI KHÔNG được đặt phòng ở đây.`;
+    } else if (normName.includes("t-shape") || normName.includes("chữ t")) {
+      cutoutDescription = `Có 2 vùng khuyết ngoài ranh giới: Góc trên bên trái (x từ 0m đến ${(0.25 * landW).toFixed(2)}m và y từ 0m đến ${(0.35 * landL).toFixed(2)}m) và Góc trên bên phải (x từ ${(0.75 * landW).toFixed(2)}m đến ${landW}m và y từ 0m đến ${(0.35 * landL).toFixed(2)}m). TUYỆT ĐỐI KHÔNG đặt phòng nào ở hai góc này.`;
+    } else if (normName.includes("h-shape") || normName.includes("chữ h")) {
+      cutoutDescription = `Có 2 vùng khuyết ngoài ranh giới: Giữa phía trên (x từ ${(0.3 * landW).toFixed(2)}m đến ${(0.7 * landW).toFixed(2)}m và y từ 0m đến ${(0.25 * landL).toFixed(2)}m) và Giữa phía dưới (x từ ${(0.3 * landW).toFixed(2)}m đến ${(0.7 * landW).toFixed(2)}m và y từ ${(0.75 * landL).toFixed(2)}m đến ${landL}m). TUYỆT ĐỐI KHÔNG đặt phòng nào ở hai khoảng khuyết này.`;
+    } else if (normName.includes("cross") || normName.includes("chữ thập")) {
+      cutoutDescription = `Bốn góc xung quanh bị khuyết ngoài ranh giới (chỉ được thiết kế các phòng xếp theo dạng chữ thập cộng (+) nằm trong lõi và các nhánh ranh giới). TUYỆT ĐỐI KHÔNG đặt phòng ở các góc ngoài ranh giới này.`;
+    }
+
+    if (shapePoints && shapePoints.length > 0) {
+      const pointsDesc = shapePoints.map(p => `(${p.x.toFixed(2)}m, ${p.y.toFixed(2)}m)`).join(" -> ");
+      shapeInstruction = `
+- Đa giác ranh giới của mặt bằng đất (hình dạng ${shape}) có các đỉnh tọa độ theo thứ tự là: ${pointsDesc}.
+- ${cutoutDescription}
+- Quy tắc bắt buộc: Mọi phòng được sinh ra phải nằm HOÀN TOÀN bên trong ranh giới đa giác này. Không được có bất kỳ phần nào của bất kỳ phòng nào vượt ra ngoài ranh giới đa giác này hoặc nằm trong vùng khuyết. Kích thước ngoài của các phòng ghép lại phải tạo ra đúng hình dạng ${shape} đã chọn.`;
+    } else {
+      shapeInstruction = `
+- Mặt bằng đất là hình chữ nhật kích thước ${landW}m x ${landL}m. Các phòng phải nằm hoàn toàn trong phạm vi x ∈ [0, ${landW}] và y ∈ [0, ${landL}].`;
+    }
+
     const generatedPlans: FloorPlanData[] = [];
+
+    // Build per-floor room strings from roomSelection (structured) when available
+    const getRoomsForFloor = (floorIndex: number): string => {
+      const floorNum = floorIndex + 1; // roomSelection is 1-indexed
+      if (info.roomSelection && info.roomSelection[floorNum] && info.roomSelection[floorNum].length > 0) {
+        return info.roomSelection[floorNum]
+          .map((r) => `${r.count} ${r.name}`)
+          .join(", ");
+      }
+      // Fallback: if totalFloors = 1 or no per-floor selection, use the full rooms string
+      if (totalFloors === 1) return rooms;
+      // For multi-floor fallback, try to parse from the combined rooms string by floor label
+      const floorLabel = floorIndex === 0 ? "Tầng trệt" : `Tầng ${floorIndex}`;
+      const regex = new RegExp(`${floorLabel}:\\s*([^.]+)`, "i");
+      const match = rooms.match(regex);
+      return match ? match[1].trim() : rooms;
+    };
 
     try {
       for (let floor = 0; floor < totalFloors; floor++) {
         const floorLabel = floor === 0 ? "Tầng Trệt" : `Tầng ${floor}`;
+        const floorRooms = getRoomsForFloor(floor);
         const promptModel = "gemini-2.5-flash";
         const ai = await getAIClient(promptModel);
 
-        const aiPrompt = `Bạn là Kiến trúc sư trưởng chuyên thiết kế nhà ở Việt Nam.
-Nhiệm vụ: Tạo phương án phân chia mặt bằng cho ${floorLabel} của một công trình.
+        const aiPrompt = `Bạn là Kiến trúc sư AI chuyên thiết kế mặt bằng nhà ở Việt Nam.
+Nhiệm vụ: Tạo phương án phân chia mặt bằng tối ưu cho ${floorLabel} của một công trình.
 
 Thông tin đầu vào:
 - Kích thước lô đất: ${landW}m x ${landL}m
-- Hình dạng: ${shape}
-- Yêu cầu phòng: ${rooms}
+- Hình dạng mặt bằng: ${shape}
+${shapeInstruction}
+- Yêu cầu phòng cho ${floorLabel}: ${floorRooms}
 - Phong cách / yêu cầu bổ sung: ${extras}
 - Tổng số tầng: ${totalFloors} tầng
 
-Quy tắc thiết kế bắt buộc (TUÂN THỦ TUYỆT ĐỐI):
-1. CHỈ tạo đúng các phòng đã được yêu cầu cụ thể: "${rooms}". TUYỆT ĐỐI KHÔNG thêm phòng phụ ngoài yêu cầu và KHÔNG được tự ý bớt phòng.
-2. Các phòng bắt buộc phải được thiết kế LIỀN MẠCH, TIẾP GIÁP TRỰC TIẾP và KHÍT NHAU (phòng này phải chia sẻ chung cạnh tường với các phòng lân cận). TUYỆT ĐỐI KHÔNG thiết kế các phòng tách rời, rời rạc hoặc đứng độc lập rời xa nhau.
-3. Tất cả tọa độ x, y, w, h tính bằng mét (số thực).
-4. x ∈ [0, ${landW}], y ∈ [0, ${landL}]. Phòng KHÔNG được vượt ra ngoài ranh giới đất. Các phòng không được đè chồng lên nhau (overlap).
-5. Để lại hành lang/lối đi hợp lý kết nối các phòng (ít nhất 1-1.2m), đảm bảo giao thông liền mạch trong khối nhà thống nhất.
-6. Chọn màu HEX nhạt và đẹp cho mỗi phòng.
+QUY TẮC THIẾT KẾ BẮT BUỘC (TUÂN THỦ TUYỆT ĐỐI):
+
+1. YÊU CẦU PHÒNG & KHÔNG ĐỂ THỪA ĐẤT:
+   - CHỈ tạo đúng các phòng đã được yêu cầu cụ thể cho ${floorLabel}: "${floorRooms}". TUYỆT ĐỐI KHÔNG thêm phòng phụ ngoài yêu cầu và KHÔNG được tự ý bớt phòng. Mảng "rooms" trả về phải gồm chính xác số lượng và loại phòng này, không tự ý thêm phòng thờ, phòng sinh hoạt chung, hành lang (hành lang được thiết kế như khoảng trống giao thông giữa các phòng, không khai báo thành thực thể phòng trong JSON trừ khi được yêu cầu), phòng làm việc, vv nếu không có trong yêu cầu.
+   - KHÔNG ĐỂ THỪA ĐẤT: Tổng diện tích các phòng cộng lại và ghép lại phải bao phủ hoàn toàn diện tích cho phép của lô đất (đa giác ranh giới). Không được để trống bất kỳ góc nào hay để chừa đất trống ở các góc biên ranh giới.
+   - PHÂN BỔ DIỆN TÍCH THÔNG MINH: Để lấp đầy diện tích đất mà không thêm phòng phụ, hãy TỰ ĐỘNG TĂNG KÍCH THƯỚC của các phòng được yêu cầu sao cho tổng chiều rộng và chiều dài của các phòng ghép lại vừa khít với ranh giới đất ở mọi hướng.
+
+2. KÍCH THƯỚC TỐI THIỂU BẮT BUỘC CHO TỪNG LOẠI PHÒNG (phải đảm bảo đủ diện tích để bố trí nội thất):
+   - Phòng khách (living room): tối thiểu 3.0m x 4.0m (12m²), ưu tiên 4m x 5m trở lên
+   - Phòng ngủ đơn / nhỏ (single bedroom): tối thiểu 2.5m x 3.0m (7.5m²)
+   - Phòng ngủ đôi / master (double/master bedroom): tối thiểu 3.0m x 3.5m (10.5m²), ưu tiên 3.5m x 4.5m
+   - Phòng bếp (kitchen): tối thiểu 2.5m x 3.0m (7.5m²), thường 3m x 4m
+   - Phòng ăn (dining room): tối thiểu 2.5m x 3.0m (7.5m²)
+   - Phòng vệ sinh / WC nhỏ (half bathroom): tối thiểu 1.2m x 1.8m (2.2m²)
+   - Phòng tắm đầy đủ (full bathroom): tối thiểu 1.8m x 2.5m (4.5m²)
+   - Phòng làm việc (office/study): tối thiểu 2.5m x 3.0m (7.5m²)
+   - Garage / nhà xe: tối thiểu 3.0m x 5.5m (16.5m²)
+   - Phòng giặt (laundry): tối thiểu 1.5m x 2.0m (3.0m²)
+   - Sảnh / lối vào (entry/foyer): tối thiểu 1.5m x 2.0m (3.0m²)
+   - Hành lang / lối đi: rộng tối thiểu 1.0m
+   Lưu ý: nếu lô đất nhỏ không đủ để đạt kích thước khuyến nghị, hãy ưu tiên đạt kích thước TỐI THIỂU và phân bổ phần diện tích còn lại cho các phòng chính lớn hơn.
+
+3. QUY TẮC BỐ TRÍ CÁC PHÒNG CHUẨN CÔNG NĂNG:
+   - Phòng khách: Đặt gần cửa chính/lối vào, làm trung tâm kết nối các khu vực, thuận tiện tiếp cận các phòng khác.
+   - Phòng bếp: Đặt liền kề hoặc gần phòng ăn. Không đặt bếp làm lối đi bắt buộc để vào các phòng khác. Hạn chế đặt sát phòng ngủ nếu còn phương án tốt hơn.
+   - Phòng ăn: Liền kề phòng bếp và kết nối thuận tiện với phòng khách.
+   - Phòng ngủ: Gần phòng vệ sinh, đảm bảo sự riêng tư, hạn chế mở cửa trực tiếp ra phòng khách nếu có hành lang thay thế, và không làm lối đi sang phòng khác.
+   - Phòng vệ sinh (Toilet/WC): Phải đặt rất gần hoặc tiếp giáp phòng ngủ. Không đặt ngay trước cửa chính hoặc ở giữa phòng khách. Có thể dùng chung cho nhiều phòng ngủ nếu hợp lý.
+   - Phòng làm việc: Đặt ở khu vực yên tĩnh, tách biệt với phòng khách.
+   - Phòng giặt: Gần khu vực sân hoặc ban công nếu có.
+
+4. LUỒNG GIAO THÔNG & ÁNH SÁNG:
+   - Có thể đi từ cửa chính đến mọi phòng mà không phải đi xuyên qua phòng ngủ. Hạn chế đi xuyên qua bếp để đến các khu vực khác. Đường di chuyển ngắn, rõ ràng, hợp lý.
+   - Ưu tiên các phòng chính (phòng khách, phòng ngủ) tiếp xúc với mặt ngoài công trình để có cửa sổ đón ánh sáng tự nhiên nhiều nhất.
+
+5. HÌNH HỌC & ĐỘ LIỀN MẠCH:
+   - Ưu tiên các phòng có hình chữ nhật hoặc hình vuông.
+   - Các phòng bắt buộc phải thiết kế LIỀN MẠCH, TIẾP GIÁP TRỰC TIẾP và KHÍT NHAU (chia sẻ cạnh tường chung). KHÔNG chồng lấn (overlap) và không tạo góc chết hoặc không gian khó sử dụng.
+   - Tọa độ x, y, w, h tính bằng mét (số thực). Tên phòng (name) ghi rõ bằng tiếng Việt (ví dụ: 'Phòng khách', 'Phòng ngủ 1', 'Phòng ngủ 2', 'Phòng bếp', 'Phòng ăn', 'Toilet 1', 'Toilet 2').
+
+6. THỨ TỰ ƯU TIÊN KHI CÓ XUNG ĐỘT PHƯƠNG ÁN:
+   1. Công năng sử dụng.
+   2. Luồng giao thông.
+   3. Mức độ riêng tư.
+   4. Hiệu quả sử dụng diện tích.
+   5. Thẩm mỹ và tính cân đối.
 
 Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
 {
@@ -926,13 +1485,38 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
           const validatedRooms: Room[] = parsed.rooms.map(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (r: any, idx: number) => {
-              const rw = Math.max(1, Math.min(landW, parseFloat(r.w) || 2));
-              const rh = Math.max(1, Math.min(landL, parseFloat(r.h) || 2));
+              const name = (r.name || "Phòng").toLowerCase();
+              // Minimum room sizes per room type (to fit furniture)
+              let minW = 1.5;
+              let minH = 1.5;
+              if (name.includes("khách") || name.includes("living") || name.includes("sinh hoạt")) {
+                minW = 3.0; minH = 3.5;
+              } else if (name.includes("ngủ") || name.includes("bed")) {
+                minW = 2.5; minH = 3.0;
+              } else if (name.includes("bếp") || name.includes("kitchen")) {
+                minW = 2.0; minH = 2.5;
+              } else if (name.includes("ăn") || name.includes("dining")) {
+                minW = 2.5; minH = 2.5;
+              } else if (name.includes("tắm") || name.includes("wc") || name.includes("toilet") || name.includes("vệ sinh")) {
+                minW = 1.2; minH = 1.6;
+              } else if (name.includes("gara") || name.includes("garage") || name.includes("xe")) {
+                minW = 2.8; minH = 5.0;
+              } else if (name.includes("giặt") || name.includes("laundry")) {
+                minW = 1.5; minH = 1.8;
+              } else if (name.includes("làm việc") || name.includes("office")) {
+                minW = 2.5; minH = 2.5;
+              } else if (name.includes("sảnh") || name.includes("lối vào") || name.includes("entry")) {
+                minW = 1.5; minH = 1.8;
+              } else if (name.includes("hành lang") || name.includes("lối đi")) {
+                minW = 1.0; minH = 2.0;
+              }
+              const rw = Math.max(minW, Math.min(landW, parseFloat(r.w) || minW));
+              const rh = Math.max(minH, Math.min(landL, parseFloat(r.h) || minH));
               const roomObj = {
                 id: `room_${floor}_${idx}_${Date.now()}`,
                 name: r.name || "Phòng",
-                x: Math.max(0, Math.min(landW - 1, parseFloat(r.x) || 0)),
-                y: Math.max(0, Math.min(landL - 1, parseFloat(r.y) || 0)),
+                x: Math.max(0, Math.min(landW - rw, parseFloat(r.x) || 0)),
+                y: Math.max(0, Math.min(landL - rh, parseFloat(r.y) || 0)),
                 w: rw,
                 h: rh,
                 color: r.color || getRoomColor(r.name || ""),
@@ -944,7 +1528,7 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
             }
           );
           const openings: Opening[] = validatedRooms.slice(1).map((room, i) => ({
-            id: `open_${floor}_${i}`,
+            id: `open_${floor}_${i}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
             type: "door",
             x: room.x + Math.min(room.w / 2, 0.5),
             y: room.y,
@@ -1024,6 +1608,7 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
       setSelectedRoomId(null);
       setSelectedFurnitureId(null);
       setSelectedFurnitureRoomId(null);
+      setSelectedOpeningId(null);
     }
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1159,64 +1744,72 @@ User prompt: "${enhancedPrompt}"`
       }
 
       const renderPrompt = `You are a professional 3D architectural visualizer.
-Convert this 2D floor plan into a hyper-realistic 3D interior perspective render for the [${roomForRender}].
-The property includes: ${roomsDesc}.
+Your task is to transform the provided 3D spatial layout preview of the [${roomForRender}] into a hyper-realistic, photorealistic interior render.
 Style: ${gatherInfo.extras || "Modern Vietnamese contemporary"}.
+
+Strict Layout & Furniture Preservation Guidelines:
+- The input image is a 3D layout preview of the room. You MUST strictly preserve the exact layout, structure, and positions of all walls, doors, windows, and furniture items visible.
+- Do NOT add, remove, or rearrange any furniture.
+- A sofa in the preview must remain a sofa of the exact same size, shape, and orientation.
+- A dining table with chairs must remain a dining table with the exact same count and arrangement of chairs (e.g. a 6-seat dining table must render with exactly 6 seats in the same positions).
+- Do not substitute furniture for different types (e.g. keep wardrobes as wardrobes, beds as beds).
+- Keep the exact proportions and dimensions of all items.
+
 Requirements:
-- Natural light flooding in, warm shadows, 8K photorealistic quality.
-- Elegant modern furniture, natural materials (wood, marble, fabric).
+- Natural light flooding in, warm shadows, 8K photorealistic quality, realistic textures (polished wood, fabric, metal, marble).
 - Magazine-quality composition (ArchDaily style).
-- NO floor plan lines, NO dimension text, pure 3D photorealistic render only.${cameraPrompt}${customRoomPrompt}${customFurniturePrompt}`;
+- Pure photorealistic render only, absolutely NO lines, sketch boundaries, dimensions, or UI text from the preview interface.${cameraPrompt}${customRoomPrompt}${customFurniturePrompt}`;
 
-      const cleanBase64 = base64Image.replace(/^data:image\/[a-zA-Z0-9]+;base64,/, "");
-      const response = await generateContentWithRetry(ai, {
-        model: selectedModel,
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { inlineData: { data: cleanBase64, mimeType: "image/png" } },
-              { text: renderPrompt },
-            ],
-          },
-        ],
-        config: { imageConfig: { aspectRatio: "4:3", imageSize: "1K" } },
-      });
+      // Post asynchronous render job to backend queue
+      const jobData = {
+        userId: user?._id || "",
+        type: "Floorplan to 3D",
+        inputImageUrls: [_imageUrl],
+        referenceImageUrls: [],
+        status: "pending",
+        progress: 10,
+        statusMessage: "Khởi tạo...",
+        createdAt: new Date().toISOString(),
+        settings: {
+          prompt: renderPrompt,
+          numImages: 1,
+          aspectRatio: (activeTab === "visualize" && selectedCameraRoomId && cameras[selectedCameraRoomId]?.aspectRatio) || "4:3",
+          model: "nano-banana-2",
+          resolution: "1K",
+        },
+      };
 
-      let generatedUrl: string | null = null;
-      for (const part of response.candidates?.[0]?.content?.parts || []) {
-        if (part.inlineData) {
-          generatedUrl = `data:${part.inlineData.mimeType || "image/png"};base64,${part.inlineData.data}`;
-          break;
-        }
+      const jobRes = await apiClient.post<ApiResponse<any>>("/api/v1/render-jobs", jobData);
+      if (!jobRes.success || !jobRes.data) {
+        throw new Error("Không thể khởi tạo render job trên server.");
       }
 
-      if (!generatedUrl) throw new Error("AI không trả về ảnh render.");
-
-      // Upload result
-      let finalUrl = generatedUrl;
-      if (user) {
-        try {
-          const res = await apiClient.post<ApiResponse<{ url: string }>>(
-            "/api/v1/media/upload",
-            { file: generatedUrl, folder: "renders" }
-          );
-          finalUrl = res.data.url;
-        } catch {
-          // fallback
+      const newJob = jobRes.data;
+      const jobId = newJob._id || newJob.id;
+      if (newJob.status === "completed") {
+        const finalUrl = newJob.outputImageUrls?.[0];
+        if (finalUrl) {
+          setRenderResult(finalUrl);
+          toast.success("Render 3D hoàn tất!");
+          addMessage("assistant", "✅ Phối cảnh 3D đã hoàn thành! Bạn có thể tải về bên dưới.");
         }
+        setIsRendering3D(false);
+        setActiveJobId(null);
+      } else {
+        setActiveJobId(jobId);
+        setRenderProgress(newJob.progress || 10);
+        setRenderStatusMessage(newJob.statusMessage || "Khởi tạo...");
+        
+        addMessage("assistant", "🎨 Đang gửi yêu cầu tạo phối cảnh 3D lên hệ thống...");
+        toast.info("Đã gửi yêu cầu kết xuất 3D!");
       }
-
-      setRenderResult(finalUrl);
-      addMessage("assistant", "✅ Phối cảnh 3D đã hoàn thành! Bạn có thể tải về bên dưới.");
-      toast.success("Render 3D hoàn tất!");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       console.error("Render 3D error:", e);
       addMessage("assistant", "❌ Lỗi render 3D. Vui lòng thử lại.");
       toast.error(e.message || "Lỗi render.");
-    } finally {
       setIsRendering3D(false);
+      setActiveJobId(null);
     }
   }, [floorPlan, selectedRoomId, gatherInfo, user, addMessage]);
 
@@ -1255,197 +1848,210 @@ Requirements:
     const lowerName = room.name.toLowerCase();
     const rw = room.w;
     const rh = room.h;
+    const area = rw * rh;
 
-    if (lowerName.includes("khách") || lowerName.includes("living")) {
-      const sofaW = Math.min(rw * 0.7, 130 / METER_TO_PX);
-      const sofaH = Math.min(rh * 0.32, 48 / METER_TO_PX);
-      const tvW = Math.min(rw * 0.55, 100 / METER_TO_PX);
-      items.push({
-        id: `living_tv_${Date.now()}_0`,
-        type: "living_tv",
-        x: rw / 2,
-        y: 14 / METER_TO_PX,
-        w: tvW,
-        h: 10 / METER_TO_PX
-      });
-      items.push({
-        id: `living_sofa_${Date.now()}_1`,
-        type: "living_sofa",
-        x: rw / 2,
-        y: rh * 0.72,
-        w: sofaW,
-        h: sofaH
-      });
-      if (rw * METER_TO_PX > 150) {
-        items.push({
-          id: `living_chair_${Date.now()}_2`,
-          type: "living_chair",
-          x: rw * 0.88,
-          y: rh * 0.65,
-          w: 32 / METER_TO_PX,
-          h: 32 / METER_TO_PX
-        });
+    // Wall margin: furniture edge stays at least M from any wall
+    const M = 0.12;
+    // Clamp furniture center so edges = center ± size/2 are within [M, room_dim - M]
+    const cx = (center: number, size: number) =>
+      Math.max(M + size / 2, Math.min(rw - M - size / 2, center));
+    const cy = (center: number, size: number) =>
+      Math.max(M + size / 2, Math.min(rh - M - size / 2, center));
+    // Unique ID helper
+    const uid = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+
+    // ── Phòng khách / Living Room ──────────────────────────────────────────
+    if (lowerName.includes("khách") || lowerName.includes("living") || lowerName.includes("sinh hoạt chung") || lowerName.includes("family")) {
+      // Scale sofa to room: small rooms get compact sofa
+      const sofaW = area < 12 ? Math.min(rw * 0.7, 1.8) : Math.min(rw * 0.65, 2.6);
+      const sofaH = area < 12 ? Math.min(rh * 0.22, 0.75) : Math.min(rh * 0.22, 0.95);
+      const tvW   = Math.min(sofaW * 0.85, rw * 0.55);
+      const tvH   = 0.18;
+      // TV top wall
+      items.push({ id: uid("tv"),    type: "living_tv",    x: cx(rw/2, tvW),              y: cy(M+tvH/2, tvH),                  w: tvW,   h: tvH });
+      // Sofa bottom wall
+      items.push({ id: uid("sofa"),  type: "living_sofa",  x: cx(rw/2, sofaW),            y: cy(rh-M-sofaH/2, sofaH),           w: sofaW, h: sofaH });
+      // Armchair right side (only if there's enough width after sofa)
+      if (rw > sofaW + 0.8) {
+        const chW = Math.min(0.65, rw - sofaW - M * 3);
+        items.push({ id: uid("chair"), type: "living_chair", x: cx(rw-M-chW/2, chW),      y: cy(rh - M - sofaH/2, chW),         w: chW,   h: chW });
       }
+
+    // ── Phòng ngủ / Bedroom ────────────────────────────────────────────────
     } else if (lowerName.includes("ngủ") || lowerName.includes("bed")) {
-      const bedW = Math.min(rw * 0.55, 90 / METER_TO_PX);
-      const bedH = Math.min(rh * 0.65, 100 / METER_TO_PX);
-      const wardrobeW = Math.min(rw * 0.85, 120 / METER_TO_PX);
-      items.push({
-        id: `bed_wardrobe_${Date.now()}_0`,
-        type: "bed_wardrobe",
-        x: rw / 2,
-        y: 10 / METER_TO_PX,
-        w: wardrobeW,
-        h: 16 / METER_TO_PX
-      });
-      items.push({
-        id: `bed_nightstand_l_${Date.now()}_1`,
-        type: "bed_nightstand",
-        x: rw / 2 - bedW / 2 - 22 / METER_TO_PX + 9 / METER_TO_PX,
-        y: rh / 2 - bedH / 2 + 9 / METER_TO_PX,
-        w: 18 / METER_TO_PX,
-        h: 18 / METER_TO_PX
-      });
-      items.push({
-        id: `bed_nightstand_r_${Date.now()}_2`,
-        type: "bed_nightstand",
-        x: rw / 2 + bedW / 2 + 4 / METER_TO_PX + 9 / METER_TO_PX,
-        y: rh / 2 - bedH / 2 + 9 / METER_TO_PX,
-        w: 18 / METER_TO_PX,
-        h: 18 / METER_TO_PX
-      });
-      items.push({
-        id: `bed_bed_${Date.now()}_3`,
-        type: "bed_bed",
-        x: rw / 2,
-        y: rh * 0.55,
-        w: bedW,
-        h: bedH
-      });
-    } else if (lowerName.includes("bếp") || lowerName.includes("kitchen")) {
-      const counterDepth = 14 / METER_TO_PX;
-      const counterLenH = Math.min(rw - 20 / METER_TO_PX, 100 / METER_TO_PX);
-      const counterLenV = Math.min(rh * 0.5, 60 / METER_TO_PX);
-      items.push({
-        id: `kitchen_counter_${Date.now()}_0`,
-        type: "kitchen_counter",
-        x: 8 / METER_TO_PX,
-        y: 8 / METER_TO_PX,
-        w: counterLenH,
-        h: counterLenV
-      });
-      items.push({
-        id: `kitchen_cooktop_${Date.now()}_1`,
-        type: "kitchen_cooktop",
-        x: counterLenH * 0.4,
-        y: 8 / METER_TO_PX + counterDepth / 2,
-        w: 32 / METER_TO_PX,
-        h: 10 / METER_TO_PX
-      });
-      items.push({
-        id: `kitchen_sink_${Date.now()}_2`,
-        type: "kitchen_sink",
-        x: counterLenH * 0.72,
-        y: 8 / METER_TO_PX + counterDepth / 2,
-        w: 18 / METER_TO_PX,
-        h: 10 / METER_TO_PX
-      });
-      items.push({
-        id: `kitchen_fridge_${Date.now()}_3`,
-        type: "kitchen_fridge",
-        x: 8 / METER_TO_PX + counterDepth / 2,
-        y: counterLenV + 20 / METER_TO_PX,
-        w: 18 / METER_TO_PX,
-        h: 32 / METER_TO_PX
-      });
-      if (rw > 100 / METER_TO_PX && rh > 100 / METER_TO_PX) {
-        const tW = Math.min(rw * 0.4, 70 / METER_TO_PX);
-        const tH = Math.min(rh * 0.3, 45 / METER_TO_PX);
-        items.push({
-          id: `kitchen_table_${Date.now()}_4`,
-          type: "dining_table",
-          x: rw * 0.65,
-          y: rh * 0.55,
-          w: tW,
-          h: tH
-        });
+      // Bed size based on room width
+      const bedW = rw < 3.0 ? Math.min(rw * 0.7, 1.4)  // single / small double
+                 : rw < 4.0 ? Math.min(rw * 0.6, 1.6)  // double
+                 : Math.min(rw * 0.55, 1.8);            // queen/king
+      const bedH = Math.min(rh * 0.45, 2.1);
+      const wardH = 0.55;
+      const wardW = Math.min(rw - M * 2, rw * 0.85, 2.4);
+      // Wardrobe along top wall
+      items.push({ id: uid("ward"), type: "bed_wardrobe",   x: cx(rw/2, wardW),           y: cy(M+wardH/2, wardH),               w: wardW, h: wardH });
+      // Bed: placed below wardrobe, roughly in lower half
+      const bedY = cy(wardH + M + bedH/2 + (rh - wardH - M*2 - bedH) * 0.4, bedH);
+      items.push({ id: uid("bed"),  type: "bed_bed",         x: cx(rw/2, bedW),            y: bedY,                               w: bedW,  h: bedH });
+      // Nightstands only if horizontal space allows
+      const nsSize = Math.min(0.42, (rw - bedW - M * 4) / 2);
+      if (nsSize >= 0.3) {
+        const bedCX = cx(rw/2, bedW);
+        items.push({ id: uid("nsl"), type: "bed_nightstand", x: cx(bedCX - bedW/2 - nsSize/2 - M, nsSize), y: bedY, w: nsSize, h: nsSize });
+        items.push({ id: uid("nsr"), type: "bed_nightstand", x: cx(bedCX + bedW/2 + nsSize/2 + M, nsSize), y: bedY, w: nsSize, h: nsSize });
       }
+      // Dresser for larger rooms
+      if (area > 14) {
+        const drW = Math.min(0.9, rw * 0.25);
+        const drH = 0.45;
+        items.push({ id: uid("dr"), type: "bed_dresser", x: cx(rw - M - drW/2, drW), y: cy(wardH + M + drH/2, drH), w: drW, h: drH });
+      }
+
+    // ── Phòng bếp / Kitchen ────────────────────────────────────────────────
+    } else if (lowerName.includes("bếp") || lowerName.includes("kitchen") || lowerName.includes("pantry") || lowerName.includes("kho bếp")) {
+      const cD = 0.6; // counter depth
+      const cW = Math.min(rw - M * 2, rw * 0.9); // counter width
+      const cY = cy(M + cD/2, cD);
+      // Full counter top wall
+      items.push({ id: uid("cnt"), type: "kitchen_counter", x: cx(rw/2, cW),               y: cY,                                 w: cW,    h: cD });
+      // Cooktop on left 1/3 of counter
+      const ctpW = Math.min(0.65, cW * 0.35);
+      items.push({ id: uid("ctp"), type: "kitchen_cooktop", x: cx(M + cW*0.25, ctpW),      y: cY,                                 w: ctpW,  h: 0.32 });
+      // Sink on right 1/3 of counter
+      const snkW = Math.min(0.5, cW * 0.28);
+      items.push({ id: uid("snk"), type: "kitchen_sink",    x: cx(rw - M - cW*0.2, snkW),  y: cY,                                 w: snkW,  h: 0.32 });
+      // Fridge bottom-left (if room tall enough)
+      if (rh > 2.5) {
+        const frW = 0.65; const frH = 0.68;
+        items.push({ id: uid("fr"),  type: "kitchen_fridge",  x: cx(M+frW/2, frW),          y: cy(rh-M-frH/2, frH),               w: frW,   h: frH });
+      }
+
+    // ── Phòng ăn / Dining ─────────────────────────────────────────────────
     } else if (lowerName.includes("ăn") || lowerName.includes("dining")) {
-      const tW = Math.min(rw * 0.55, 90 / METER_TO_PX);
-      const tH = Math.min(rh * 0.4, 55 / METER_TO_PX);
-      items.push({
-        id: `dining_table_${Date.now()}_0`,
-        type: "dining_table",
-        x: rw / 2,
-        y: rh / 2,
-        w: tW,
-        h: tH
-      });
-    } else if (lowerName.includes("tắm") || lowerName.includes("wc") || lowerName.includes("toilet") || lowerName.includes("vệ sinh")) {
-      const hasSpace = rw * METER_TO_PX > 70 && rh * METER_TO_PX > 70;
-      items.push({
-        id: `wc_toilet_${Date.now()}_0`,
-        type: "wc_toilet",
-        x: 16 / METER_TO_PX,
-        y: rh * 0.65,
-        w: 18 / METER_TO_PX,
-        h: 20 / METER_TO_PX
-      });
-      items.push({
-        id: `wc_lavabo_${Date.now()}_1`,
-        type: "wc_lavabo",
-        x: 16 / METER_TO_PX,
-        y: rh * 0.25,
-        w: 24 / METER_TO_PX,
-        h: 16 / METER_TO_PX
-      });
-      items.push({
-        id: `wc_mirror_${Date.now()}_2`,
-        type: "wc_mirror",
-        x: 4 / METER_TO_PX + 12 / METER_TO_PX,
-        y: rh * 0.25 - 22 / METER_TO_PX + 7 / METER_TO_PX,
-        w: 24 / METER_TO_PX,
-        h: 14 / METER_TO_PX
-      });
-      if (hasSpace) {
-        const btW = Math.min(rw * 0.28, 30 / METER_TO_PX);
-        const btH = Math.min(rh * 0.28, 40 / METER_TO_PX);
-        items.push({
-          id: `wc_bathtub_${Date.now()}_3`,
-          type: "wc_bathtub",
-          x: rw * 0.62,
-          y: rh * 0.35,
-          w: btW,
-          h: btH
-        });
+      const tW = Math.min(rw * 0.60, 1.8);
+      const tH = Math.min(rh * 0.50, 1.1);
+      items.push({ id: uid("dt"), type: "dining_table", x: cx(rw/2, tW), y: cy(rh/2, tH), w: tW, h: tH });
+
+    // ── Phòng tắm lớn / Full Bathroom ─────────────────────────────────────
+    } else if (lowerName.includes("tắm lớn") || lowerName.includes("full bath")) {
+      const lavW = 0.55; const lavH = 0.45;
+      const toiW = 0.42; const toiH = 0.65;
+      const mirW = 0.55; const mirH = 0.18;
+      items.push({ id: uid("lav"), type: "wc_lavabo",  x: cx(M+lavW/2, lavW), y: cy(M+lavH*1.5, lavH),        w: lavW, h: lavH });
+      items.push({ id: uid("mir"), type: "wc_mirror",  x: cx(M+mirW/2, mirW), y: cy(M+mirH/2, mirH),           w: mirW, h: mirH });
+      items.push({ id: uid("toi"), type: "wc_toilet",  x: cx(M+toiW/2, toiW), y: cy(rh-M-toiH/2, toiH),       w: toiW, h: toiH });
+      if (rw >= 1.6 && rh >= 2.0) {
+        const btW = Math.min(rw*0.42, 0.8); const btH = Math.min(rh*0.45, 1.6);
+        items.push({ id: uid("bt"), type: "wc_bathtub", x: cx(rw-M-btW/2, btW), y: cy(rh/2, btH),             w: btW,  h: btH });
+      } else if (rw >= 1.0) {
+        const shW = Math.min(rw*0.45, 0.9); const shH = shW;
+        items.push({ id: uid("sh"), type: "wc_shower",  x: cx(rw-M-shW/2, shW), y: cy(M+shH/2, shH),          w: shW,  h: shH });
       }
+
+    // ── Phòng vệ sinh phụ / Half Bathroom / WC ────────────────────────────
+    } else if (lowerName.includes("vệ sinh") || lowerName.includes("wc") || lowerName.includes("toilet") || lowerName.includes("tắm")) {
+      const lavW = Math.min(0.55, rw * 0.5); const lavH = Math.min(0.45, rh * 0.3);
+      const toiW = Math.min(0.42, rw * 0.45); const toiH = Math.min(0.65, rh * 0.38);
+      const mirW = lavW; const mirH = 0.15;
+      items.push({ id: uid("mir"), type: "wc_mirror",  x: cx(M+mirW/2, mirW), y: cy(M+mirH/2, mirH),           w: mirW, h: mirH });
+      items.push({ id: uid("lav"), type: "wc_lavabo",  x: cx(M+lavW/2, lavW), y: cy(M+mirH+M+lavH/2, lavH),    w: lavW, h: lavH });
+      items.push({ id: uid("toi"), type: "wc_toilet",  x: cx(M+toiW/2, toiW), y: cy(rh-M-toiH/2, toiH),       w: toiW, h: toiH });
+      // Shower stall if room is wide enough on right side
+      if (rw >= 1.8) {
+        const shW = Math.min(rw*0.38, 0.9); const shH = Math.min(rh*0.4, 0.9);
+        items.push({ id: uid("sh"), type: "wc_shower",  x: cx(rw-M-shW/2, shW), y: cy(rh/2, shH),             w: shW,  h: shH });
+      }
+
+    // ── Nhà xe / Gara ──────────────────────────────────────────────────────
     } else if (lowerName.includes("gara") || lowerName.includes("garage") || lowerName.includes("xe")) {
-      const carW = Math.min(rw * 0.5, 70 / METER_TO_PX);
-      const carH = Math.min(rh * 0.8, 120 / METER_TO_PX);
-      items.push({
-        id: `garage_car_${Date.now()}_0`,
-        type: "garage_car",
-        x: rw / 2,
-        y: rh / 2,
-        w: carW,
-        h: carH
-      });
+      const carW = Math.min(rw - M*2, 2.0);
+      const carH = Math.min(rh - M*2, 4.5);
+      items.push({ id: uid("car"), type: "garage_car", x: cx(rw/2, carW), y: cy(rh/2, carH), w: carW, h: carH });
+
+    // ── Phòng làm việc / Office ────────────────────────────────────────────
     } else if (lowerName.includes("làm việc") || lowerName.includes("office") || lowerName.includes("study")) {
-      const deskW = Math.min(rw * 0.65, 100 / METER_TO_PX);
-      const deskH = Math.min(rh * 0.3, 40 / METER_TO_PX);
-      items.push({
-        id: `office_desk_${Date.now()}_0`,
-        type: "office_desk",
-        x: rw / 2,
-        y: rh * 0.45,
-        w: deskW,
-        h: deskH
-      });
+      const dW = Math.min(rw - M*2, 1.5); const dH = Math.min(rh*0.28, 0.72);
+      items.push({ id: uid("desk"), type: "office_desk", x: cx(rw/2, dW), y: cy(M+dH/2, dH), w: dW, h: dH });
+      // Bookshelf/chair if room large enough
+      if (area > 9) {
+        const chW = 0.55;
+        items.push({ id: uid("ch"), type: "living_chair", x: cx(rw/2, chW), y: cy(rh*0.6, chW), w: chW, h: chW });
+      }
+
+    // ── Phòng tập gym / Home Gym ───────────────────────────────────────────
+    } else if (lowerName.includes("gym") || lowerName.includes("tập")) {
+      const tmW = Math.min(rw*0.55, 0.8); const tmH = Math.min(rh*0.55, 1.8);
+      items.push({ id: uid("tm"), type: "gym_treadmill", x: cx(M+tmW/2, tmW), y: cy(rh/2, tmH), w: tmW, h: tmH });
+
+    // ── Phòng giặt ủi / Laundry ────────────────────────────────────────────
+    } else if (lowerName.includes("giặt") || lowerName.includes("laundry")) {
+      const mW = Math.min(rw * 0.55, 1.4); const mH = 0.65;
+      items.push({ id: uid("lm"), type: "laundry_machines", x: cx(M+mW/2, mW), y: cy(M+mH/2, mH), w: mW, h: mH });
+      if (rh > 2.0) {
+        const snkW = 0.5; const snkH = 0.45;
+        items.push({ id: uid("ls"), type: "laundry_sink", x: cx(M+snkW/2, snkW), y: cy(mH+M*2+snkH/2, snkH), w: snkW, h: snkH });
+      }
+
+    // ── Lối vào / Sảnh / Entry / Mudroom / Porch ───────────────────────────
+    } else if (lowerName.includes("lối vào") || lowerName.includes("sảnh") || lowerName.includes("entry") || lowerName.includes("mudroom") || lowerName.includes("porch") || lowerName.includes("hiên")) {
+      const bW = Math.min(rw * 0.6, 1.2); const bH = 0.45;
+      items.push({ id: uid("bch"), type: "entry_bench",       x: cx(rw/2, bW),        y: cy(M+bH/2, bH),            w: bW,  h: bH });
+      const cmW = 0.35; const cmH = 0.35;
+      items.push({ id: uid("cs"),  type: "entry_coat_stand",  x: cx(rw-M-cmW/2, cmW), y: cy(M+cmH/2, cmH),          w: cmW, h: cmH });
+      if (rw > 2.0) {
+        const cMirW = Math.min(rw*0.4, 0.9); const cMirH = Math.min(rh*0.55, 1.5);
+        items.push({ id: uid("cm"), type: "entry_console_mirror", x: cx(M+cMirW/2, cMirW), y: cy(rh/2, cMirH),      w: cMirW, h: cMirH });
+      }
+
+    // ── Phòng thay đồ / Walk-in Closet ─────────────────────────────────────
+    } else if (lowerName.includes("thay đồ") || lowerName.includes("walk-in") || lowerName.includes("walk in")) {
+      // Row of wardrobes along top wall
+      const wW = Math.min(rw - M*2, 2.4); const wH = 0.6;
+      items.push({ id: uid("w1"), type: "bed_wardrobe", x: cx(rw/2, wW), y: cy(M+wH/2, wH), w: wW, h: wH });
+      // Second row along bottom wall if room deep enough
+      if (rh > 2.0) {
+        items.push({ id: uid("w2"), type: "bed_wardrobe", x: cx(rw/2, wW), y: cy(rh-M-wH/2, wH), w: wW, h: wH });
+      }
+
+    // ── Phòng chơi game / Giải trí / Game Room ─────────────────────────────
+    } else if (lowerName.includes("game") || lowerName.includes("giải trí") || lowerName.includes("chơi")) {
+      const sofaW = Math.min(rw * 0.65, 2.2); const sofaH = Math.min(rh * 0.22, 0.9);
+      const tvW   = Math.min(sofaW * 0.8, 1.8); const tvH = 0.18;
+      items.push({ id: uid("tv"),   type: "living_tv",   x: cx(rw/2, tvW),   y: cy(M+tvH/2, tvH),        w: tvW,   h: tvH });
+      items.push({ id: uid("sofa"), type: "living_sofa", x: cx(rw/2, sofaW), y: cy(rh-M-sofaH/2, sofaH), w: sofaW, h: sofaH });
+
+    // ── Ban công / Sân thượng / Balcony / Terrace ──────────────────────────
+    } else if (lowerName.includes("ban công") || lowerName.includes("sân thượng") || lowerName.includes("balcon") || lowerName.includes("terrace")) {
+      // Small outdoor chairs
+      const chW = Math.min(0.6, rw * 0.3); const chH = chW;
+      if (rw > 1.5) {
+        items.push({ id: uid("ch1"), type: "living_chair", x: cx(rw*0.3, chW), y: cy(rh/2, chH), w: chW, h: chH });
+        items.push({ id: uid("ch2"), type: "living_chair", x: cx(rw*0.7, chW), y: cy(rh/2, chH), w: chW, h: chH });
+      } else {
+        items.push({ id: uid("ch1"), type: "living_chair", x: cx(rw/2, chW), y: cy(rh/2, chH), w: chW, h: chH });
+      }
+
+    // ── Hành lang / Lối đi / Hallway ──────────────────────────────────────
+    } else if (lowerName.includes("hành lang") || lowerName.includes("lối đi") || lowerName.includes("hallway")) {
+      // No furniture in hallways (they're circulation paths)
+      // Optional: small console if corridor is wide (>= 1.2m)
+      if (Math.min(rw, rh) >= 1.2) {
+        const cMirW = Math.min(Math.min(rw, rh) * 0.6, 0.8);
+        const cMirH = Math.min(Math.max(rw, rh) * 0.35, 1.2);
+        items.push({ id: uid("cm"), type: "entry_console_mirror", x: cx(rw/2, cMirW), y: cy(M+cMirH/2, cMirH), w: cMirW, h: cMirH });
+      }
+
+    // ── Sân vườn / Garden ─────────────────────────────────────────────────
+    } else if (lowerName.includes("sân vườn") || lowerName.includes("garden")) {
+      // Outdoor seating
+      const chW = Math.min(0.65, rw * 0.2);
+      items.push({ id: uid("ch1"), type: "living_chair", x: cx(rw*0.25, chW), y: cy(rh*0.4, chW), w: chW, h: chW });
+      items.push({ id: uid("ch2"), type: "living_chair", x: cx(rw*0.75, chW), y: cy(rh*0.4, chW), w: chW, h: chW });
     }
+
     return items;
   }
 
   // ── Draw furniture graphics ──────────────────────────────────────────────
+
   function drawFurnitureGraphics(item: FurnitureItem, scale: number) {
     const iw = item.w * scale;
     const ih = item.h * scale;
@@ -1454,243 +2060,758 @@ Requirements:
     switch (item.type) {
       case "living_tv":
         return (
-          <>
+          <Group>
             {/* Console Table */}
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#1e293b" strokeWidth={1.5} cornerRadius={2} />
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={2} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
             {/* TV Screen */}
-            <Rect x={-iw * 0.85 / 2} y={-2} width={iw * 0.85} height={4} fill="#1e293b" stroke="#1e293b" strokeWidth={1} cornerRadius={1} />
-          </>
+            <Rect x={-iw * 0.85 / 2} y={-2} width={iw * 0.85} height={4} fill="#090d16" stroke="#0f172a" strokeWidth={1} cornerRadius={1} />
+            {/* Shelf lines */}
+            <Line points={[-iw / 2 + 10, -ih / 4, iw / 2 - 10, -ih / 4]} stroke="#475569" strokeWidth={0.8} />
+          </Group>
         );
       case "living_sofa":
         return (
-          <>
+          <Group>
             {/* Main Sofa Body */}
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#1e293b" strokeWidth={1.5} cornerRadius={6} />
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={6} shadowColor="#0f172a" shadowBlur={5} shadowOpacity={0.12} shadowOffset={{ x: 1.5, y: 1.5 }} />
             {/* Cushions and details */}
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={9} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={2} />
-            <Rect x={-iw / 2} y={-ih / 2} width={9} height={ih} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={2} />
-            <Rect x={iw / 2 - 9} y={-ih / 2} width={9} height={ih} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={2} />
-            <Line points={[-iw / 2 + 9, ih / 2 - 12, iw / 2 - 9, ih / 2 - 12]} stroke="#1e293b" strokeWidth={0.8} />
-            <Line points={[-iw / 6, -ih / 2 + 9, -iw / 6, ih / 2]} stroke="#1e293b" strokeWidth={0.8} />
-            <Line points={[iw / 6, -ih / 2 + 9, iw / 6, ih / 2]} stroke="#1e293b" strokeWidth={0.8} />
+            <Rect x={-iw / 2 + 1.5} y={-ih / 2 + 1.5} width={iw - 3} height={10} fill="#f1f5f9" stroke="#475569" strokeWidth={0.8} cornerRadius={2} />
+            <Rect x={-iw / 2 + 1.5} y={-ih / 2 + 1.5} width={9} height={ih - 3} fill="#f1f5f9" stroke="#475569" strokeWidth={0.8} cornerRadius={3} />
+            <Rect x={iw / 2 - 10.5} y={-ih / 2 + 1.5} width={9} height={ih - 3} fill="#f1f5f9" stroke="#475569" strokeWidth={0.8} cornerRadius={3} />
+            <Line points={[-iw / 6, -ih / 2 + 10.5, -iw / 6, ih / 2 - 1.5]} stroke="#475569" strokeWidth={0.8} />
+            <Line points={[iw / 6, -ih / 2 + 10.5, iw / 6, ih / 2 - 1.5]} stroke="#475569" strokeWidth={0.8} />
             {/* Coffee Table */}
-            <Rect x={-iw * 0.45 / 2} y={-ih * 1.65} width={iw * 0.45} height={ih * 0.72} fill={fillColor} stroke="#1e293b" strokeWidth={1.2} cornerRadius={3} />
-            <Rect x={-iw * 0.35 / 2} y={-ih * 1.55} width={iw * 0.35} height={ih * 0.52} fill="white" stroke="#1e293b" strokeWidth={0.8} cornerRadius={2} />
-          </>
+            <Rect x={-iw * 0.45 / 2} y={-ih * 1.65} width={iw * 0.45} height={ih * 0.72} fill={fillColor} stroke="#0f172a" strokeWidth={1.2} cornerRadius={3} shadowColor="#0f172a" shadowBlur={3} shadowOpacity={0.08} shadowOffset={{ x: 1, y: 1 }} />
+            <Rect x={-iw * 0.35 / 2} y={-ih * 1.55} width={iw * 0.35} height={ih * 0.52} fill="#ffffff" stroke="#475569" strokeWidth={0.8} cornerRadius={2} />
+          </Group>
         );
       case "living_chair":
         return (
-          <>
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#1e293b" strokeWidth={1.2} cornerRadius={4} />
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={7} fill="white" stroke="#1e293b" strokeWidth={0.8} cornerRadius={2} />
-            <Rect x={-iw / 2} y={-ih / 2} width={7} height={ih} fill="white" stroke="#1e293b" strokeWidth={0.8} cornerRadius={2} />
-          </>
+          <Group>
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={5} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
+            {/* Backrest */}
+            <Rect x={-iw / 2 + 1.5} y={-ih / 2 + 1.5} width={iw - 3} height={8} fill="#f1f5f9" stroke="#475569" strokeWidth={0.8} cornerRadius={2} />
+            {/* Armrests */}
+            <Rect x={-iw / 2 + 1.5} y={-ih / 2 + 1.5} width={8} height={ih - 3} fill="#f1f5f9" stroke="#475569" strokeWidth={0.8} cornerRadius={2} />
+            <Rect x={iw / 2 - 9.5} y={-ih / 2 + 1.5} width={8} height={ih - 3} fill="#f1f5f9" stroke="#475569" strokeWidth={0.8} cornerRadius={2} />
+          </Group>
         );
       case "bed_wardrobe":
         return (
-          <>
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#1e293b" strokeWidth={1.5} cornerRadius={2} />
-            <Line points={[-iw / 6, -ih / 2 + 1, -iw / 6, ih / 2 - 1]} stroke="#1e293b" strokeWidth={0.8} />
-            <Line points={[iw / 6, -ih / 2 + 1, iw / 6, ih / 2 - 1]} stroke="#1e293b" strokeWidth={0.8} />
-            <Circle x={-iw / 4} y={0} radius={1.5} fill="white" stroke="#1e293b" strokeWidth={1} />
-            <Circle x={iw / 12} y={0} radius={1.5} fill="white" stroke="#1e293b" strokeWidth={1} />
-            <Circle x={iw * 5 / 12} y={0} radius={1.5} fill="white" stroke="#1e293b" strokeWidth={1} />
-          </>
+          <Group>
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={2} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.08} shadowOffset={{ x: 1, y: 1 }} />
+            <Line points={[-iw / 6, -ih / 2 + 1, -iw / 6, ih / 2 - 1]} stroke="#475569" strokeWidth={0.8} />
+            <Line points={[iw / 6, -ih / 2 + 1, iw / 6, ih / 2 - 1]} stroke="#475569" strokeWidth={0.8} />
+            <Circle x={-iw / 4} y={0} radius={1.5} fill="#e2e8f0" stroke="#0f172a" strokeWidth={1} />
+            <Circle x={iw / 12} y={0} radius={1.5} fill="#e2e8f0" stroke="#0f172a" strokeWidth={1} />
+            <Circle x={iw * 5 / 12} y={0} radius={1.5} fill="#e2e8f0" stroke="#0f172a" strokeWidth={1} />
+          </Group>
         );
       case "bed_nightstand":
         return (
-          <>
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#1e293b" strokeWidth={1.2} cornerRadius={2} />
-            <Rect x={-iw / 2 + 3} y={-ih / 2 + 5} width={iw - 6} height={4} fill="white" stroke="#1e293b" strokeWidth={0.8} cornerRadius={1} />
-          </>
+          <Group>
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.2} cornerRadius={2} shadowColor="#0f172a" shadowBlur={3} shadowOpacity={0.08} shadowOffset={{ x: 0.8, y: 0.8 }} />
+            <Rect x={-iw * 0.4} y={-ih / 2 + 4} width={iw * 0.8} height={4} fill="#cbd5e1" stroke="#0f172a" strokeWidth={0.8} cornerRadius={1} />
+          </Group>
         );
       case "bed_bed":
-        if (item.style === "tatami") {
+        {
+          const isTatami = item.style === "tatami";
           return (
-            <>
-              {/* Outer Tatami Platform Base */}
-              <Rect x={-iw / 2 - 6} y={-ih / 2 - 2} width={iw + 12} height={ih + 8} fill="#f5ebe0" stroke="#a16207" strokeWidth={1} cornerRadius={1} />
-              <Line points={[-iw / 2 - 6, ih / 2 - 10, iw / 2 + 6, ih / 2 - 10]} stroke="#a16207" strokeWidth={0.8} />
-              
-              {/* Inner Bed Frame */}
-              <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#1e293b" strokeWidth={1.5} cornerRadius={2} />
-              {/* Headboard */}
-              <Rect x={-iw / 2} y={-ih / 2} width={iw} height={7} fill="white" stroke="#1e293b" strokeWidth={1} />
-              {/* Pillows */}
-              <Rect x={-iw * 0.44} y={-ih * 0.38} width={iw * 0.36} height={ih * 0.15} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={2} />
-              <Rect x={iw * 0.08} y={-ih * 0.38} width={iw * 0.36} height={ih * 0.15} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={2} />
-              {/* Blanket */}
-              <Rect x={-iw / 2 + 2} y={ih * 0.06} width={iw - 4} height={ih * 0.42} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={1} />
-            </>
+            <Group>
+              {isTatami && (
+                <>
+                  {/* Tatami wooden deck platform */}
+                  <Rect x={-iw / 2 - 6} y={-ih / 2 - 2} width={iw + 12} height={ih + 8} fill="#f5ebe0" stroke="#854d0e" strokeWidth={1.2} cornerRadius={2} shadowColor="#0f172a" shadowBlur={5} shadowOpacity={0.12} shadowOffset={{ x: 2, y: 2 }} />
+                  <Line points={[-iw / 2 - 6, ih / 2 - 10, iw / 2 + 6, ih / 2 - 10]} stroke="#a16207" strokeWidth={0.8} />
+                </>
+              )}
+              {/* Bed Mattress Frame */}
+              <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={4} shadowColor="#0f172a" shadowBlur={isTatami ? 3 : 5} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
+              {/* Wood Headboard */}
+              <Rect x={-iw / 2} y={-ih / 2} width={iw} height={8} fill="#e2e8f0" stroke="#0f172a" strokeWidth={1} cornerRadius={1} />
+              {/* Pillow Left */}
+              <Rect x={-iw * 0.44} y={-ih * 0.38} width={iw * 0.36} height={ih * 0.16} fill="#ffffff" stroke="#475569" strokeWidth={0.8} cornerRadius={3} />
+              {/* Pillow Right */}
+              <Rect x={iw * 0.08} y={-ih * 0.38} width={iw * 0.36} height={ih * 0.16} fill="#ffffff" stroke="#475569" strokeWidth={0.8} cornerRadius={3} />
+              {/* Duvet / Blanket sheet */}
+              <Rect x={-iw / 2 + 2} y={ih * 0.04} width={iw - 4} height={ih * 0.44} fill="#f8fafc" stroke="#475569" strokeWidth={0.8} cornerRadius={2} />
+              {/* Folds/Stripes on duvet */}
+              <Line points={[-iw / 2 + 2, ih * 0.04, iw / 2 - 2, ih * 0.04]} stroke="#0f172a" strokeWidth={1.5} />
+              <Line points={[-iw / 3, ih * 0.09, -iw / 3, ih * 0.45]} stroke="#e2e8f0" strokeWidth={1} />
+              <Line points={[0, ih * 0.09, 0, ih * 0.45]} stroke="#e2e8f0" strokeWidth={1} />
+              <Line points={[iw / 3, ih * 0.09, iw / 3, ih * 0.45]} stroke="#e2e8f0" strokeWidth={1} />
+            </Group>
           );
         }
-        return (
-          <>
-            {/* Bed Frame */}
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#1e293b" strokeWidth={1.5} cornerRadius={4} />
-            {/* Headboard */}
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={7} fill="white" stroke="#1e293b" strokeWidth={1} />
-            {/* Pillows */}
-            <Rect x={-iw * 0.44} y={-ih * 0.38} width={iw * 0.36} height={ih * 0.15} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={4} />
-            <Rect x={iw * 0.08} y={-ih * 0.38} width={iw * 0.36} height={ih * 0.15} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={4} />
-            {/* Blanket */}
-            <Line points={[-iw / 2 + 4, -ih * 0.18, iw / 2 - 4, -ih * 0.18]} stroke="#1e293b" strokeWidth={0.8} />
-            <Rect x={-iw / 2 + 2} y={ih * 0.06} width={iw - 4} height={ih * 0.42} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={2} />
-            <Line points={[-iw / 2 + 2, ih * 0.06, iw / 2 - 2, ih * 0.06]} stroke="#1e293b" strokeWidth={1.5} />
-          </>
-        );
       case "kitchen_counter":
         return (
-          <>
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={14} fill={fillColor} stroke="#1e293b" strokeWidth={1.5} />
-            <Rect x={-iw / 2} y={-ih / 2} width={14} height={ih} fill={fillColor} stroke="#1e293b" strokeWidth={1.5} />
-          </>
+          <Group>
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={14} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} />
+            <Rect x={-iw / 2} y={-ih / 2} width={14} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} />
+          </Group>
         );
       case "kitchen_cooktop":
         return (
-          <>
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#1e293b" strokeWidth={0.8} cornerRadius={1} />
-            <Circle x={-9} y={-1} radius={3.5} fill="white" stroke="#1e293b" strokeWidth={1} />
-            <Circle x={-9} y={-1} radius={1.5} fill="#1e293b" />
-            <Circle x={1} y={-1} radius={3.5} fill="white" stroke="#1e293b" strokeWidth={1} />
-            <Circle x={1} y={-1} radius={1.5} fill="#1e293b" />
-            <Circle x={-9} y={6} radius={3.5} fill="white" stroke="#1e293b" strokeWidth={1} />
-            <Circle x={-9} y={6} radius={1.5} fill="#1e293b" />
-            <Circle x={1} y={6} radius={3.5} fill="white" stroke="#1e293b" strokeWidth={1} />
-            <Circle x={1} y={6} radius={1.5} fill="#1e293b" />
-          </>
+          <Group>
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1} cornerRadius={1} />
+            {/* Burners as light filled circles with thin outline */}
+            <Circle x={-iw / 4} y={-ih / 4} radius={6} fill="#f8fafc" stroke="#0f172a" strokeWidth={0.8} />
+            <Circle x={-iw / 4} y={-ih / 4} radius={2.2} fill="#cbd5e1" stroke="#475569" strokeWidth={0.5} />
+            <Circle x={iw / 4} y={-ih / 4} radius={6} fill="#f8fafc" stroke="#0f172a" strokeWidth={0.8} />
+            <Circle x={iw / 4} y={-ih / 4} radius={2.2} fill="#cbd5e1" stroke="#475569" strokeWidth={0.5} />
+            <Circle x={-iw / 4} y={ih / 4} radius={6} fill="#f8fafc" stroke="#0f172a" strokeWidth={0.8} />
+            <Circle x={-iw / 4} y={ih / 4} radius={2.2} fill="#cbd5e1" stroke="#475569" strokeWidth={0.5} />
+            <Circle x={iw / 4} y={ih / 4} radius={6} fill="#f8fafc" stroke="#0f172a" strokeWidth={0.8} />
+            <Circle x={iw / 4} y={ih / 4} radius={2.2} fill="#cbd5e1" stroke="#475569" strokeWidth={0.5} />
+          </Group>
         );
       case "kitchen_sink":
         return (
-          <>
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#1e293b" strokeWidth={1} cornerRadius={2} />
-            <Rect x={-iw / 2 + 2} y={-ih / 2 + 1} width={iw - 4} height={ih - 2} fill="white" stroke="#1e293b" strokeWidth={0.8} cornerRadius={1} />
-            <Circle x={0} y={0} radius={2} fill="#1e293b" />
-            <Line points={[0, -4, 0, -8, 5, -8]} stroke="#1e293b" strokeWidth={1.5} />
-          </>
+          <Group>
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.2} cornerRadius={2} />
+            {/* Sink Basin */}
+            <Rect x={-iw / 2 + 3} y={-ih / 2 + 3} width={iw - 6} height={ih - 6} fill="#f1f5f9" stroke="#475569" strokeWidth={1} cornerRadius={2} />
+            {/* Faucet */}
+            <Circle x={0} y={-ih / 2 + 5} radius={2} fill="#94a3b8" stroke="#0f172a" strokeWidth={0.8} />
+            <Line points={[0, -ih / 2 + 5, 0, -ih / 2 + 13]} stroke="#94a3b8" strokeWidth={2} lineCap="round" />
+          </Group>
         );
       case "kitchen_fridge":
         return (
-          <>
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#1e293b" strokeWidth={1.5} cornerRadius={3} />
-            <Line points={[-iw / 2, 0, iw / 2, 0]} stroke="#1e293b" strokeWidth={0.8} />
-            <Line points={[iw / 2 - 3, -ih / 3, iw / 2 - 3, -ih / 10]} stroke="#1e293b" strokeWidth={1.5} />
-            <Line points={[iw / 2 - 3, ih / 6, iw / 2 - 3, ih * 0.4]} stroke="#1e293b" strokeWidth={1.5} />
-          </>
+          <Group>
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={3} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.08} shadowOffset={{ x: 1, y: 1 }} />
+            <Line points={[-iw / 2, 0, iw / 2, 0]} stroke="#0f172a" strokeWidth={1} />
+            <Line points={[iw / 2 - 3, -ih / 3, iw / 2 - 3, -ih / 10]} stroke="#475569" strokeWidth={2} lineCap="round" />
+            <Line points={[iw / 2 - 3, ih / 6, iw / 2 - 3, ih * 0.4]} stroke="#475569" strokeWidth={2} lineCap="round" />
+          </Group>
         );
       case "dining_table":
-        if (item.style === "round") {
-          const rRadius = Math.min(iw, ih) * 0.35;
+        {
+          const isRound = item.style === "round";
+          const tableColor = fillColor;
+          if (isRound) {
+            const rRadius = Math.min(iw, ih) * 0.35;
+            return (
+              <Group>
+                {/* Chairs around */}
+                <Circle x={0} y={-rRadius - 6} radius={5} fill="#ffffff" stroke="#475569" strokeWidth={1} />
+                <Circle x={0} y={rRadius + 6} radius={5} fill="#ffffff" stroke="#475569" strokeWidth={1} />
+                <Circle x={-rRadius - 6} y={0} radius={5} fill="#ffffff" stroke="#475569" strokeWidth={1} />
+                <Circle x={rRadius + 6} y={0} radius={5} fill="#ffffff" stroke="#475569" strokeWidth={1} />
+                
+                <Circle x={-rRadius * 0.707 - 4} y={-rRadius * 0.707 - 4} radius={5} fill="#ffffff" stroke="#475569" strokeWidth={1} />
+                <Circle x={rRadius * 0.707 + 4} y={-rRadius * 0.707 - 4} radius={5} fill="#ffffff" stroke="#475569" strokeWidth={1} />
+                <Circle x={-rRadius * 0.707 - 4} y={rRadius * 0.707 + 4} radius={5} fill="#ffffff" stroke="#475569" strokeWidth={1} />
+                <Circle x={rRadius * 0.707 + 4} y={rRadius * 0.707 + 4} radius={5} fill="#ffffff" stroke="#475569" strokeWidth={1} />
+
+                {/* Round Table Top */}
+                <Circle x={0} y={0} radius={rRadius} fill={tableColor} stroke="#0f172a" strokeWidth={1.5} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
+              </Group>
+            );
+          }
           return (
-            <>
-              {/* Round Table */}
-              <Circle x={0} y={0} radius={rRadius} fill={fillColor} stroke="#1e293b" strokeWidth={1.5} />
+            <Group>
+              {/* Side chairs */}
+              <Rect x={-iw * 0.3} y={-ih / 2 - 8} width={12} height={6} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={1.5} />
+              <Rect x={iw * 0.1} y={-ih / 2 - 8} width={12} height={6} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={1.5} />
+              <Rect x={-iw * 0.3} y={ih / 2 + 2} width={12} height={6} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={1.5} />
+              <Rect x={iw * 0.1} y={ih / 2 + 2} width={12} height={6} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={1.5} />
               
-              {/* Chairs around it */}
-              <Circle x={0} y={-rRadius - 7} radius={6} fill="white" stroke="#1e293b" strokeWidth={1} />
-              <Circle x={0} y={rRadius + 7} radius={6} fill="white" stroke="#1e293b" strokeWidth={1} />
-              <Circle x={-rRadius - 7} y={0} radius={6} fill="white" stroke="#1e293b" strokeWidth={1} />
-              <Circle x={rRadius + 7} y={0} radius={6} fill="white" stroke="#1e293b" strokeWidth={1} />
-              
-              {/* 45 degree chairs */}
-              <Circle x={-rRadius * 0.707 - 5} y={-rRadius * 0.707 - 5} radius={6} fill="white" stroke="#1e293b" strokeWidth={1} />
-              <Circle x={rRadius * 0.707 + 5} y={-rRadius * 0.707 - 5} radius={6} fill="white" stroke="#1e293b" strokeWidth={1} />
-              <Circle x={-rRadius * 0.707 - 5} y={rRadius * 0.707 + 5} radius={6} fill="white" stroke="#1e293b" strokeWidth={1} />
-              <Circle x={rRadius * 0.707 + 5} y={rRadius * 0.707 + 5} radius={6} fill="white" stroke="#1e293b" strokeWidth={1} />
-            </>
+              <Rect x={-iw / 2 - 8} y={-6} width={6} height={12} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={1.5} />
+              <Rect x={iw / 2 + 2} y={-6} width={6} height={12} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={1.5} />
+
+              {/* Table Top */}
+              <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={tableColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={3} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
+            </Group>
           );
         }
-        return (
-          <>
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#1e293b" strokeWidth={1.5} cornerRadius={4} />
-            <Rect x={-iw * 0.3} y={-ih / 2 - 9} width={13} height={7} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={2} />
-            <Rect x={iw * 0.1} y={-ih / 2 - 9} width={13} height={7} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={2} />
-            <Rect x={-iw * 0.3} y={ih / 2 + 2} width={13} height={7} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={2} />
-            <Rect x={iw * 0.1} y={ih / 2 + 2} width={13} height={7} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={2} />
-            <Rect x={-iw / 2 - 9} y={-ih * 0.2} width={7} height={13} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={2} />
-            <Rect x={iw / 2 + 2} y={-ih * 0.2} width={7} height={13} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={2} />
-          </>
-        );
       case "wc_toilet":
         return (
-          <>
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={9} fill="white" stroke="#1e293b" strokeWidth={1.5} cornerRadius={2} />
-            <Rect x={-iw * 0.8 / 2} y={-ih / 2 + 9} width={iw * 0.8} height={ih - 9} fill={fillColor} stroke="#1e293b" strokeWidth={1.5} cornerRadius={8} />
-            <Rect x={-iw * 0.55 / 2} y={-ih / 2 + 11} width={iw * 0.55} height={ih - 13} fill="white" stroke="#1e293b" strokeWidth={0.8} cornerRadius={6} />
-          </>
+          <Group>
+            {/* Tank */}
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={9} fill="#ffffff" stroke="#0f172a" strokeWidth={1.5} cornerRadius={1.5} shadowColor="#0f172a" shadowBlur={3} shadowOpacity={0.08} shadowOffset={{ x: 0.8, y: 0.8 }} />
+            {/* Bowl outer */}
+            <Rect x={-iw * 0.8 / 2} y={-ih / 2 + 9} width={iw * 0.8} height={ih - 9} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={8} />
+            {/* Bowl inner */}
+            <Rect x={-iw * 0.55 / 2} y={-ih / 2 + 11} width={iw * 0.55} height={ih - 14} fill="#ffffff" stroke="#475569" strokeWidth={0.8} cornerRadius={6} />
+            {/* Flush button */}
+            <Rect x={-4} y={-ih / 2 + 3} width={8} height={3} fill="#cbd5e1" stroke="#0f172a" strokeWidth={0.5} cornerRadius={0.5} />
+          </Group>
         );
       case "wc_lavabo":
-        return (
-          <>
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#1e293b" strokeWidth={1.5} cornerRadius={3} />
-            <Rect x={-iw * 0.75 / 2} y={-ih * 0.75 / 2} width={iw * 0.75} height={ih * 0.75} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={5} />
-            <Rect x={-iw * 0.58 / 2} y={-ih * 0.56 / 2} width={iw * 0.58} height={ih * 0.56} fill="white" stroke="#1e293b" strokeWidth={0.8} cornerRadius={4} />
-            <Circle x={0} y={0} radius={2} fill="#1e293b" />
-            <Circle x={0} y={-ih * 0.38} radius={2} fill="white" stroke="#1e293b" strokeWidth={0.8} />
-            <Line points={[0, -ih * 0.25, 0, -ih * 0.06]} stroke="#1e293b" strokeWidth={1} />
-          </>
-        );
-      case "wc_mirror":
-        return (
-          <>
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#1e293b" strokeWidth={1} cornerRadius={2} />
-            <Rect x={-iw / 2 + 2} y={-ih / 2 + 2} width={iw - 4} height={ih - 4} fill="white" stroke="#1e293b" strokeWidth={0.5} cornerRadius={1} />
-          </>
-        );
-      case "wc_bathtub":
-        if (item.style === "jacuzzi") {
+        {
+          const isDouble = item.w >= 1.0 || item.style === "double";
           return (
-            <>
-              {/* Square Jacuzzi */}
-              <Rect x={-iw} y={-ih} width={iw * 2} height={ih * 2} fill={fillColor} stroke="#1e293b" strokeWidth={1.5} cornerRadius={4} />
-              <Rect x={-iw + 4} y={-ih + 4} width={(iw - 4) * 2} height={(ih - 4) * 2} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={3} />
-              <Circle x={0} y={0} radius={Math.min(iw, ih) * 0.75} fill="white" stroke="#1e293b" strokeWidth={0.8} />
-              <Circle x={0} y={0} radius={3} fill="#1e293b" />
-              <Circle x={-iw + 10} y={0} radius={1.5} fill="#1e293b" />
-              <Circle x={iw - 10} y={0} radius={1.5} fill="#1e293b" />
-              <Circle x={0} y={-ih + 10} radius={1.5} fill="#1e293b" />
-              <Circle x={0} y={ih - 10} radius={1.5} fill="#1e293b" />
-            </>
+            <Group>
+              <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={3} shadowColor="#0f172a" shadowBlur={3} shadowOpacity={0.08} shadowOffset={{ x: 0.8, y: 0.8 }} />
+              {isDouble ? (
+                <>
+                  {/* Left Basin */}
+                  <Rect x={-iw / 2 + 4} y={-ih * 0.78 / 2} width={iw / 2 - 6} height={ih * 0.78} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={5} />
+                  <Rect x={-iw / 2 + 6} y={-ih * 0.58 / 2} width={iw / 2 - 10} height={ih * 0.58} fill="#ffffff" stroke="#94a3b8" strokeWidth={0.8} cornerRadius={4} />
+                  <Circle x={-iw / 4} y={0} radius={1.5} fill="#475569" />
+                  <Line points={[-iw / 4, -ih * 0.28, -iw / 4, -ih * 0.05]} stroke="#94a3b8" strokeWidth={1.5} lineCap="round" />
+                  
+                  {/* Right Basin */}
+                  <Rect x={2} y={-ih * 0.78 / 2} width={iw / 2 - 6} height={ih * 0.78} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={5} />
+                  <Rect x={4} y={-ih * 0.58 / 2} width={iw / 2 - 10} height={ih * 0.58} fill="#ffffff" stroke="#94a3b8" strokeWidth={0.8} cornerRadius={4} />
+                  <Circle x={iw / 4} y={0} radius={1.5} fill="#475569" />
+                  <Line points={[iw / 4, -ih * 0.28, iw / 4, -ih * 0.05]} stroke="#94a3b8" strokeWidth={1.5} lineCap="round" />
+                </>
+              ) : (
+                <>
+                  {/* Single Basin */}
+                  <Rect x={-iw * 0.78 / 2} y={-ih * 0.78 / 2} width={iw * 0.78} height={ih * 0.78} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={5} />
+                  <Rect x={-iw * 0.58 / 2} y={-ih * 0.58 / 2} width={iw * 0.58} height={ih * 0.58} fill="#ffffff" stroke="#94a3b8" strokeWidth={0.8} cornerRadius={4} />
+                  <Circle x={0} y={0} radius={1.5} fill="#475569" />
+                  <Line points={[0, -ih * 0.28, 0, -ih * 0.05]} stroke="#94a3b8" strokeWidth={1.5} lineCap="round" />
+                </>
+              )}
+            </Group>
           );
         }
+      case "wc_mirror":
         return (
-          <>
-            <Rect x={-iw} y={-ih} width={iw * 2} height={ih * 2} fill={fillColor} stroke="#1e293b" strokeWidth={1.5} cornerRadius={10} />
-            <Rect x={-iw + 3} y={-ih + 3} width={(iw - 3) * 2} height={(ih - 3) * 2} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={8} />
-            <Circle x={iw - 8} y={ih - 8} radius={2.5} fill="#1e293b" />
-            <Circle x={-iw + 8} y={-ih + 8} radius={2.5} fill="white" stroke="#1e293b" strokeWidth={0.8} />
-          </>
+          <Group>
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1} cornerRadius={2} />
+            <Rect x={-iw / 2 + 2} y={-ih / 2 + 2} width={iw - 4} height={ih - 4} fill="#ffffff" stroke="#cbd5e1" strokeWidth={0.5} cornerRadius={1} />
+          </Group>
         );
+      case "wc_shower":
+        return (
+          <Group>
+            {/* Glass enclosure */}
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={1} shadowColor="#0f172a" shadowBlur={3} shadowOpacity={0.08} shadowOffset={{ x: 0.8, y: 0.8 }} />
+            {/* Drain */}
+            <Circle x={0} y={0} radius={4} fill="#e2e8f0" stroke="#475569" strokeWidth={0.8} />
+            <Circle x={0} y={0} radius={1.5} fill="#090d16" />
+            {/* Shower head symbol on one wall */}
+            <Line points={[0, -ih / 2, 0, -ih / 2 + 8]} stroke="#94a3b8" strokeWidth={1.8} lineCap="round" />
+            <Line points={[-4, -ih / 2 + 8, 4, -ih / 2 + 8]} stroke="#475569" strokeWidth={1.2} />
+            {/* Diagonal line to indicate glass door entry */}
+            <Line points={[-iw / 2, ih / 2, -iw / 2 + 10, ih / 2 - 10]} stroke="#0f172a" strokeWidth={1} dash={[2, 2]} />
+          </Group>
+        );
+      case "wc_bathtub":
+        {
+          const isJacuzzi = item.style === "jacuzzi";
+          if (isJacuzzi) {
+            return (
+              <Group>
+                <Rect x={-iw} y={-ih} width={iw * 2} height={ih * 2} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={4} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
+                <Rect x={-iw + 4} y={-ih + 4} width={(iw - 4) * 2} height={(ih - 4) * 2} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={3} />
+                <Circle x={0} y={0} radius={Math.min(iw, ih) * 0.75} fill="#f1f5f9" stroke="#475569" strokeWidth={0.8} />
+                <Circle x={0} y={0} radius={3} fill="#0f172a" />
+                <Circle x={-iw + 10} y={0} radius={1.5} fill="#475569" />
+                <Circle x={iw - 10} y={0} radius={1.5} fill="#475569" />
+                <Circle x={0} y={-ih + 10} radius={1.5} fill="#475569" />
+                <Circle x={0} y={ih - 10} radius={1.5} fill="#475569" />
+              </Group>
+            );
+          }
+          return (
+            <Group>
+              <Rect x={-iw} y={-ih} width={iw * 2} height={ih * 2} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={10} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
+              <Rect x={-iw + 4} y={-ih + 4} width={(iw - 4) * 2} height={(ih - 4) * 2} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={8} />
+              <Circle x={iw - 8} y={ih - 8} radius={2.5} fill="#94a3b8" />
+              <Line points={[iw - 8, ih - 8, iw - 15, ih - 15]} stroke="#94a3b8" strokeWidth={1.5} lineCap="round" />
+            </Group>
+          );
+        }
       case "garage_car":
         return (
-          <>
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#1e293b" strokeWidth={1.5} cornerRadius={10} />
-            <Line points={[-iw / 2 + 6, -ih * 0.35, iw / 2 - 6, -ih * 0.35]} stroke="#1e293b" strokeWidth={1} />
-            <Rect x={-iw * 0.75 / 2} y={-ih * 0.22} width={iw * 0.75} height={ih * 0.15} fill="#bae6fd" stroke="#1e293b" strokeWidth={1.2} cornerRadius={3} />
-            <Rect x={-iw * 0.7 / 2} y={-ih * 0.05} width={iw * 0.7} height={ih * 0.3} fill="#bae6fd" stroke="#1e293b" strokeWidth={1} cornerRadius={4} />
-            <Rect x={-iw * 0.75 / 2} y={ih * 0.28} width={iw * 0.75} height={ih * 0.1} fill="#bae6fd" stroke="#1e293b" strokeWidth={1} cornerRadius={2} />
-            <Rect x={-iw / 2 + 4} y={-ih / 2 + 1} width={8} height={4} fill="white" stroke="#1e293b" strokeWidth={0.5} cornerRadius={1} />
-            <Rect x={iw / 2 - 12} y={-ih / 2 + 1} width={8} height={4} fill="white" stroke="#1e293b" strokeWidth={0.5} cornerRadius={1} />
-            <Rect x={-iw / 2 + 4} y={ih / 2 - 5} width={8} height={4} fill="white" stroke="#1e293b" strokeWidth={0.5} cornerRadius={1} />
-            <Rect x={iw / 2 - 12} y={ih / 2 - 5} width={8} height={4} fill="white" stroke="#1e293b" strokeWidth={0.5} cornerRadius={1} />
-            <Rect x={-iw / 2 - 3} y={-ih * 0.25} width={3} height={10} fill="white" stroke="#1e293b" strokeWidth={0.5} cornerRadius={1} />
-            <Rect x={iw / 2} y={-ih * 0.25} width={3} height={10} fill="white" stroke="#1e293b" strokeWidth={0.5} cornerRadius={1} />
-          </>
+          <Group>
+            {/* Wheels shadow / bottom wheels */}
+            <Rect x={-iw / 2 - 2} y={-ih * 0.35} width={4} height={12} fill="#0f172a" cornerRadius={1} />
+            <Rect x={iw / 2 - 2} y={-ih * 0.35} width={4} height={12} fill="#0f172a" cornerRadius={1} />
+            <Rect x={-iw / 2 - 2} y={ih * 0.25} width={4} height={12} fill="#0f172a" cornerRadius={1} />
+            <Rect x={iw / 2 - 2} y={ih * 0.25} width={4} height={12} fill="#0f172a" cornerRadius={1} />
+            
+            {/* Main Car Body */}
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={10} shadowColor="#0f172a" shadowBlur={5} shadowOpacity={0.15} shadowOffset={{ x: 1.5, y: 1.5 }} />
+            
+            {/* Windshield & Windows */}
+            <Rect x={-iw * 0.75 / 2} y={-ih * 0.25} width={iw * 0.75} height={ih * 0.12} fill="#bae6fd" stroke="#0f172a" strokeWidth={1} cornerRadius={2} />
+            <Rect x={-iw * 0.7 / 2} y={-ih * 0.08} width={iw * 0.7} height={ih * 0.34} fill="#f1f5f9" stroke="#0f172a" strokeWidth={1} cornerRadius={3} />
+            <Rect x={-iw * 0.75 / 2} y={ih * 0.28} width={iw * 0.75} height={ih * 0.08} fill="#bae6fd" stroke="#0f172a" strokeWidth={1} cornerRadius={1} />
+            
+            {/* Headlights */}
+            <Rect x={-iw / 2 + 4} y={-ih / 2 + 1} width={6} height={3} fill="#eab308" stroke="#0f172a" strokeWidth={0.5} cornerRadius={1} />
+            <Rect x={iw / 2 - 10} y={-ih / 2 + 1} width={6} height={3} fill="#eab308" stroke="#0f172a" strokeWidth={0.5} cornerRadius={1} />
+            
+            {/* Side Mirrors */}
+            <Rect x={-iw / 2 - 4} y={-ih * 0.25} width={4} height={3} fill={fillColor} stroke="#0f172a" strokeWidth={0.8} cornerRadius={1} />
+            <Rect x={iw / 2} y={-ih * 0.25} width={4} height={3} fill={fillColor} stroke="#0f172a" strokeWidth={0.8} cornerRadius={1} />
+            
+            {/* Car grill line */}
+            <Line points={[-iw / 4, -ih / 2 + 2, iw / 4, -ih / 2 + 2]} stroke="#475569" strokeWidth={1} />
+          </Group>
         );
       case "office_desk":
-        return (
-          <>
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#1e293b" strokeWidth={1.5} cornerRadius={3} />
-            <Rect x={-iw * 0.25} y={-ih / 2 - 14} width={iw * 0.5} height={11} fill="white" stroke="#1e293b" strokeWidth={1} cornerRadius={2} />
-            <Rect x={-3} y={-ih / 2 - 3} width={6} height={4} fill="#1e293b" />
-            <Rect x={-iw * 0.2} y={-ih / 2 + 6} width={iw * 0.4} height={6} fill="white" stroke="#1e293b" strokeWidth={0.8} cornerRadius={1} />
-            <Group x={0} y={ih / 2 + 18}>
-              <Circle x={0} y={0} radius={16} fill="white" stroke="#1e293b" strokeWidth={1.2} />
-              <Circle x={0} y={0} radius={4} fill="white" stroke="#1e293b" strokeWidth={0.8} />
-              <Rect x={-20} y={-5} width={4} height={10} fill="white" stroke="#1e293b" strokeWidth={0.5} cornerRadius={1} />
-              <Rect x={16} y={-5} width={4} height={10} fill="white" stroke="#1e293b" strokeWidth={0.5} cornerRadius={1} />
+        {
+          const isL = item.style === "l_shape";
+          const isExec = item.style === "executive";
+          if (isL) {
+            return (
+              <Group>
+                {/* Main Desk top */}
+                <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih * 0.5} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={2} />
+                {/* Return part of L-desk (drawn on right side) */}
+                <Rect x={iw / 2 - ih * 0.5} y={-ih / 2} width={ih * 0.5} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={2} />
+                {/* Keyboard & Monitor on main desk */}
+                <Rect x={-iw * 0.2} y={-ih / 2 + 6} width={iw * 0.4} height={5} fill="#ffffff" stroke="#475569" strokeWidth={0.8} cornerRadius={1} />
+                <Rect x={-iw * 0.25} y={-ih / 2 + 1} width={iw * 0.5} height={2} fill="#090d16" stroke="#0f172a" strokeWidth={1} cornerRadius={1} />
+                {/* Chair */}
+                <Group x={-iw / 6} y={ih / 4}>
+                  <Circle x={0} y={0} radius={6} fill="#ffffff" stroke="#0f172a" strokeWidth={1.2} />
+                  <Rect x={-8} y={-1.5} width={1.5} height={3} fill="#475569" stroke="#0f172a" strokeWidth={0.5} />
+                  <Rect x={6.5} y={-1.5} width={1.5} height={3} fill="#475569" stroke="#0f172a" strokeWidth={0.5} />
+                </Group>
+              </Group>
+            );
+          }
+          if (isExec) {
+            return (
+              <Group>
+                {/* Main Table top with shadow */}
+                <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.8} cornerRadius={4} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
+                {/* Drawers left/right side lines */}
+                <Line points={[-iw / 2 + 12, -ih / 2, -iw / 2 + 12, ih / 2]} stroke="#475569" strokeWidth={1.2} />
+                <Line points={[iw / 2 - 12, -ih / 2, iw / 2 - 12, ih / 2]} stroke="#475569" strokeWidth={1.2} />
+                {/* Large Monitor & keyboard */}
+                <Rect x={-iw * 0.2} y={-ih / 2 + 10} width={iw * 0.4} height={7} fill="#ffffff" stroke="#475569" strokeWidth={0.8} cornerRadius={1} />
+                <Rect x={-iw * 0.3} y={-ih / 2 + 2} width={iw * 0.6} height={3} fill="#090d16" stroke="#0f172a" strokeWidth={1.2} cornerRadius={1} />
+                {/* Executive Chair behind it */}
+                <Group x={0} y={ih / 2 + 10}>
+                  <Circle x={0} y={0} radius={9} fill="#1e293b" stroke="#0f172a" strokeWidth={1.5} />
+                  <Rect x={-11} y={-3} width={2} height={6} fill="#475569" stroke="#0f172a" strokeWidth={0.5} cornerRadius={0.5} />
+                  <Rect x={9} y={-3} width={2} height={6} fill="#475569" stroke="#0f172a" strokeWidth={0.5} cornerRadius={0.5} />
+                </Group>
+              </Group>
+            );
+          }
+          // Standard/Default desk
+          return (
+            <Group>
+              <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={3} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
+              <Rect x={-iw * 0.25} y={-ih / 2 + 8} width={iw * 0.5} height={6} fill="#ffffff" stroke="#475569" strokeWidth={0.8} cornerRadius={1} />
+              <Rect x={-iw * 0.35} y={-ih / 2 + 1} width={iw * 0.7} height={3} fill="#090d16" stroke="#0f172a" strokeWidth={1} cornerRadius={1} />
+              <Group x={0} y={ih / 2 + 9}>
+                <Circle x={0} y={0} radius={8} fill="#ffffff" stroke="#0f172a" strokeWidth={1.2} />
+                <Rect x={-10} y={-2} width={2} height={4} fill="#475569" stroke="#0f172a" strokeWidth={0.5} cornerRadius={0.5} />
+                <Rect x={8} y={-2} width={2} height={4} fill="#475569" stroke="#0f172a" strokeWidth={0.5} cornerRadius={0.5} />
+              </Group>
             </Group>
-          </>
+          );
+        }
+      case "office_filing_cabinet":
+        return (
+          <Group>
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={2} />
+            {/* Drawers separation lines */}
+            <Line points={[-iw / 2 + 2, -ih / 6, iw / 2 - 2, -ih / 6]} stroke="#475569" strokeWidth={1} />
+            <Line points={[-iw / 2 + 2, ih / 6, iw / 2 - 2, ih / 6]} stroke="#475569" strokeWidth={1} />
+            {/* Handles */}
+            <Rect x={-8} y={-ih / 3 - 1} width={16} height={2} fill="#cbd5e1" stroke="#0f172a" strokeWidth={0.8} cornerRadius={0.5} />
+            <Rect x={-8} y={-1} width={16} height={2} fill="#cbd5e1" stroke="#0f172a" strokeWidth={0.8} cornerRadius={0.5} />
+            <Rect x={-8} y={ih / 3 - 1} width={16} height={2} fill="#cbd5e1" stroke="#0f172a" strokeWidth={0.8} cornerRadius={0.5} />
+          </Group>
+        );
+      case "office_chair":
+        return (
+          <Group>
+            {/* Swivel base lines (cross style) */}
+            <Line points={[-iw / 2 + 4, -ih / 2 + 4, iw / 2 - 4, ih / 2 - 4]} stroke="#0f172a" strokeWidth={2} />
+            <Line points={[-iw / 2 + 4, ih / 2 - 4, iw / 2 - 4, -ih / 2 + 4]} stroke="#0f172a" strokeWidth={2} />
+            {/* Main seat cushion */}
+            <Circle x={0} y={0} radius={Math.min(iw, ih) / 2.2} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} shadowColor="#0f172a" shadowBlur={3} shadowOpacity={0.1} />
+            {/* Armrests */}
+            <Rect x={-iw / 2 + 1} y={-ih / 4} width={3} height={ih / 2} fill="#1e293b" stroke="#0f172a" strokeWidth={1} cornerRadius={1} />
+            <Rect x={iw / 2 - 4} y={-ih / 4} width={3} height={ih / 2} fill="#1e293b" stroke="#0f172a" strokeWidth={1} cornerRadius={1} />
+            {/* Curved backrest */}
+            <Rect x={-iw / 3} y={ih / 2 - 6} width={iw * 2 / 3} height={4} fill="#090d16" stroke="#0f172a" strokeWidth={1} cornerRadius={1.5} />
+          </Group>
+        );
+      case "outdoor_bbq":
+        return (
+          <Group>
+            {/* BBQ Grill frame - uses fillColor (normally white/light) to avoid being too black */}
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={3} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.15} />
+            {/* Side trays */}
+            <Rect x={-iw / 2 - 3} y={-ih / 4} width={3} height={ih / 2} fill="#cbd5e1" stroke="#0f172a" strokeWidth={0.8} />
+            <Rect x={iw / 2} y={-ih / 4} width={3} height={ih / 2} fill="#cbd5e1" stroke="#0f172a" strokeWidth={0.8} />
+            {/* Grill mesh area - charcoal gray */}
+            <Rect x={-iw / 2 + 4} y={-ih / 2 + 4} width={iw - 8} height={ih - 8} fill="#334155" stroke="#0f172a" strokeWidth={0.8} />
+            {/* Grill slats */}
+            <Line points={[-iw / 2 + 8, -ih / 2 + 6, iw / 2 - 8, -ih / 2 + 6]} stroke="#ffffff" strokeWidth={0.8} />
+            <Line points={[-iw / 2 + 8, -ih / 4, iw / 2 - 8, -ih / 4]} stroke="#ffffff" strokeWidth={0.8} />
+            <Line points={[-iw / 2 + 8, 0, iw / 2 - 8, 0]} stroke="#ffffff" strokeWidth={0.8} />
+            <Line points={[-iw / 2 + 8, ih / 4, iw / 2 - 8, ih / 4]} stroke="#ffffff" strokeWidth={0.8} />
+            <Line points={[-iw / 2 + 8, ih / 2 - 6, iw / 2 - 8, ih / 2 - 6]} stroke="#ffffff" strokeWidth={0.8} />
+            {/* Knobs */}
+            <Circle x={-iw / 4} y={ih / 2 - 2} radius={1.5} fill="#ef4444" />
+            <Circle x={0} y={ih / 2 - 2} radius={1.5} fill="#ffffff" />
+            <Circle x={iw / 4} y={ih / 2 - 2} radius={1.5} fill="#ffffff" />
+          </Group>
+        );
+      case "outdoor_lounge_chair":
+        {
+          const isSun = item.style === "sun_lounger";
+          if (isSun) {
+            return (
+              <Group>
+                {/* Sun Lounger Base */}
+                <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={2} />
+                {/* Woven strip patterns */}
+                <Line points={[-iw / 2, -ih / 3, iw / 2, -ih / 3]} stroke="#cbd5e1" strokeWidth={1} />
+                <Line points={[-iw / 2, -ih / 6, iw / 2, -ih / 6]} stroke="#cbd5e1" strokeWidth={1} />
+                <Line points={[-iw / 2, 0, iw / 2, 0]} stroke="#cbd5e1" strokeWidth={1} />
+                <Line points={[-iw / 2, ih / 6, iw / 2, ih / 6]} stroke="#cbd5e1" strokeWidth={1} />
+                <Line points={[-iw / 2, ih / 3, iw / 2, ih / 3]} stroke="#cbd5e1" strokeWidth={1} />
+                {/* Pillow */}
+                <Rect x={-iw / 2 + 3} y={-ih / 2 + 4} width={iw - 6} height={6} fill="#ffffff" stroke="#0f172a" strokeWidth={0.8} cornerRadius={1.5} />
+              </Group>
+            );
+          }
+          // Wicker Chair
+          return (
+            <Group>
+              <Circle x={0} y={0} radius={Math.min(iw, ih) / 2} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} />
+              {/* Radial wicker lines */}
+              <Line points={[-iw / 3, -ih / 3, iw / 3, ih / 3]} stroke="#b45309" strokeWidth={0.8} />
+              <Line points={[-iw / 3, ih / 3, iw / 3, -ih / 3]} stroke="#b45309" strokeWidth={0.8} />
+              <Line points={[0, -ih / 2, 0, ih / 2]} stroke="#b45309" strokeWidth={0.8} />
+              <Line points={[-iw / 2, 0, iw / 2, 0]} stroke="#b45309" strokeWidth={0.8} />
+              {/* Cushion */}
+              <Circle x={0} y={0} radius={Math.min(iw, ih) / 3.2} fill="#ffffff" stroke="#0f172a" strokeWidth={1} />
+            </Group>
+          );
+        }
+      case "outdoor_dining_set":
+        return (
+          <Group>
+            {/* Table */}
+            <Rect x={-iw / 3} y={-ih / 3} width={iw * 2 / 3} height={ih * 2 / 3} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={2} shadowColor="#0f172a" shadowBlur={3} shadowOpacity={0.08} />
+            {/* 4 chairs around the table */}
+            {/* Top chair */}
+            <Rect x={-iw / 6} y={-ih / 2 + 1} width={iw / 3} height={3} fill="#cbd5e1" stroke="#0f172a" strokeWidth={1} cornerRadius={0.5} />
+            {/* Bottom chair */}
+            <Rect x={-iw / 6} y={ih / 2 - 4} width={iw / 3} height={3} fill="#cbd5e1" stroke="#0f172a" strokeWidth={1} cornerRadius={0.5} />
+            {/* Left chair */}
+            <Rect x={-iw / 2 + 1} y={-ih / 6} width={3} height={ih / 3} fill="#cbd5e1" stroke="#0f172a" strokeWidth={1} cornerRadius={0.5} />
+            {/* Right chair */}
+            <Rect x={iw / 2 - 4} y={-ih / 6} width={3} height={ih / 3} fill="#cbd5e1" stroke="#0f172a" strokeWidth={1} cornerRadius={0.5} />
+            {/* Umbrella in the center */}
+            <Circle x={0} y={0} radius={8} fill="#38bdf8" stroke="#0f172a" strokeWidth={1} />
+            <Line points={[-6, -6, 6, 6]} stroke="#ffffff" strokeWidth={1} />
+            <Line points={[-6, 6, 6, -6]} stroke="#ffffff" strokeWidth={1} />
+            <Circle x={0} y={0} radius={2} fill="#ffffff" stroke="#0f172a" strokeWidth={0.8} />
+          </Group>
+        );
+      case "stairs":
+        return (
+          <Group>
+            {/* Stair boundaries */}
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={1} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.08} shadowOffset={{ x: 1, y: 1 }} />
+            {/* Stair steps lines */}
+            <Line points={[-iw / 2, -ih * 0.3, iw / 2, -ih * 0.3]} stroke="#475569" strokeWidth={1} />
+            <Line points={[-iw / 2, -ih * 0.1, iw / 2, -ih * 0.1]} stroke="#475569" strokeWidth={1} />
+            <Line points={[-iw / 2, ih * 0.1, iw / 2, ih * 0.1]} stroke="#475569" strokeWidth={1} />
+            <Line points={[-iw / 2, ih * 0.3, iw / 2, ih * 0.3]} stroke="#475569" strokeWidth={1} />
+            {/* Direction Arrow */}
+            <Line points={[0, ih * 0.4, 0, -ih * 0.4]} stroke="#0f172a" strokeWidth={1.2} />
+            <Line points={[-4, -ih * 0.4 + 4, 0, -ih * 0.4, 4, -ih * 0.4 + 4]} stroke="#0f172a" strokeWidth={1.2} />
+          </Group>
+        );
+      case "plant_pots":
+        return (
+          <Group>
+            {/* Pot */}
+            <Circle x={0} y={0} radius={6} fill="#c2410c" stroke="#0f172a" strokeWidth={1} shadowColor="#0f172a" shadowBlur={3} shadowOpacity={0.1} shadowOffset={{ x: 0.8, y: 0.8 }} />
+            {/* Leaves */}
+            <Circle x={0} y={0} radius={3} fill="#15803d" />
+            <Line points={[0, 0, -10, -5]} stroke="#15803d" strokeWidth={2} lineCap="round" />
+            <Line points={[0, 0, 10, -5]} stroke="#15803d" strokeWidth={2} lineCap="round" />
+            <Line points={[0, 0, -5, 10]} stroke="#15803d" strokeWidth={2} lineCap="round" />
+            <Line points={[0, 0, 5, 10]} stroke="#15803d" strokeWidth={2} lineCap="round" />
+            <Line points={[0, 0, 0, -11]} stroke="#15803d" strokeWidth={2} lineCap="round" />
+          </Group>
+        );
+      case "gym_treadmill":
+        return (
+          <Group>
+            {/* Treadmill Frame */}
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={2} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
+            {/* Running belt - light gray */}
+            <Rect x={-iw * 0.7 / 2} y={-ih / 2 + 6} width={iw * 0.7} height={ih - 12} fill="#cbd5e1" stroke="#475569" strokeWidth={0.8} />
+            {/* Belt tracks */}
+            <Line points={[-iw * 0.7 / 2, -ih / 4, iw * 0.7 / 2, -ih / 4]} stroke="#94a3b8" strokeWidth={0.8} />
+            <Line points={[-iw * 0.7 / 2, 0, iw * 0.7 / 2, 0]} stroke="#94a3b8" strokeWidth={0.8} />
+            <Line points={[-iw * 0.7 / 2, ih / 4, iw * 0.7 / 2, ih / 4]} stroke="#94a3b8" strokeWidth={0.8} />
+            {/* Handles */}
+            <Line points={[-iw / 2 + 2, -ih / 2 + 10, -iw / 2 + 2, -ih / 2 + 2, iw / 2 - 2, -ih / 2 + 2, iw / 2 - 2, -ih / 2 + 10]} stroke="#0f172a" strokeWidth={2} lineJoin="round" />
+            {/* Console */}
+            <Rect x={-iw * 0.4 / 2} y={-ih / 2 + 1} width={iw * 0.4} height={4} fill="#090d16" stroke="#0f172a" strokeWidth={0.8} cornerRadius={0.5} />
+          </Group>
+        );
+      case "recreation_pool_table":
+        return (
+          <Group>
+            {/* Table wood frame */}
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill="#854d0e" stroke="#0f172a" strokeWidth={1.5} cornerRadius={2} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
+            {/* Green felt */}
+            <Rect x={-iw / 2 + 4} y={-ih / 2 + 4} width={iw - 8} height={ih - 8} fill="#15803d" stroke="#0f172a" strokeWidth={1} />
+            {/* Pockets */}
+            <Circle x={-iw / 2 + 5} y={-ih / 2 + 5} radius={2.5} fill="#090d16" />
+            <Circle x={iw / 2 - 5} y={-ih / 2 + 5} radius={2.5} fill="#090d16" />
+            <Circle x={-iw / 2 + 5} y={ih / 2 - 5} radius={2.5} fill="#090d16" />
+            <Circle x={iw / 2 - 5} y={ih / 2 - 5} radius={2.5} fill="#090d16" />
+            <Circle x={0} y={-ih / 2 + 4} radius={2} fill="#090d16" />
+            <Circle x={0} y={ih / 2 - 4} radius={2} fill="#090d16" />
+          </Group>
+        );
+      case "bed_dresser":
+        return (
+          <Group>
+            {/* Main dresser box */}
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={2} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.08} shadowOffset={{ x: 1, y: 1 }} />
+            {/* Drawer line details */}
+            <Line points={[-iw / 6, -ih / 2 + 1, -iw / 6, ih / 2 - 1]} stroke="#475569" strokeWidth={0.8} />
+            <Line points={[iw / 6, -ih / 2 + 1, iw / 6, ih / 2 - 1]} stroke="#475569" strokeWidth={0.8} />
+            {/* Drawer handles */}
+            <Rect x={-iw / 3 - 3} y={-1} width={6} height={2} fill="#cbd5e1" stroke="#0f172a" strokeWidth={0.8} cornerRadius={0.5} />
+            <Rect x={-3} y={-1} width={6} height={2} fill="#cbd5e1" stroke="#0f172a" strokeWidth={0.8} cornerRadius={0.5} />
+            <Rect x={iw / 3 - 3} y={-1} width={6} height={2} fill="#cbd5e1" stroke="#0f172a" strokeWidth={0.8} cornerRadius={0.5} />
+          </Group>
+        );
+      case "entry_bench":
+        return (
+          <Group>
+            {/* Bench seat */}
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={3} />
+            {/* Cushion / slatted wood lines */}
+            <Line points={[-iw / 2 + 6, 0, iw / 2 - 6, 0]} stroke="#475569" strokeWidth={1} />
+            <Line points={[-iw / 2 + 6, -ih / 4, iw / 2 - 6, -ih / 4]} stroke="#475569" strokeWidth={0.8} />
+            <Line points={[-iw / 2 + 6, ih / 4, iw / 2 - 6, ih / 4]} stroke="#475569" strokeWidth={0.8} />
+          </Group>
+        );
+      case "entry_coat_stand":
+        return (
+          <Group>
+            {/* Heavy base */}
+            <Circle x={0} y={0} radius={Math.min(iw, ih) * 0.4} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} />
+            {/* Vertical column center */}
+            <Circle x={0} y={0} radius={3} fill="#475569" />
+            {/* 4 hooks pointing in cardinal directions */}
+            <Line points={[0, 0, 0, -ih * 0.45]} stroke="#0f172a" strokeWidth={1.5} lineCap="round" />
+            <Line points={[0, 0, 0, ih * 0.45]} stroke="#0f172a" strokeWidth={1.5} lineCap="round" />
+            <Line points={[0, 0, -iw * 0.45, 0]} stroke="#0f172a" strokeWidth={1.5} lineCap="round" />
+            <Line points={[0, 0, iw * 0.45, 0]} stroke="#0f172a" strokeWidth={1.5} lineCap="round" />
+            {/* Hook ends */}
+            <Circle x={0} y={-ih * 0.45} radius={1.5} fill="#e2e8f0" />
+            <Circle x={0} y={ih * 0.45} radius={1.5} fill="#e2e8f0" />
+            <Circle x={-iw * 0.45} y={0} radius={1.5} fill="#e2e8f0" />
+            <Circle x={iw * 0.45} y={0} radius={1.5} fill="#e2e8f0" />
+          </Group>
+        );
+      case "entry_console_mirror":
+        return (
+          <Group>
+            {/* Console table top */}
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={1} />
+            {/* Wall mirror line behind it */}
+            <Line points={[-iw * 0.8 / 2, -ih / 2, iw * 0.8 / 2, -ih / 2]} stroke="#38bdf8" strokeWidth={3} />
+            <Line points={[-iw * 0.8 / 2, -ih / 2, iw * 0.8 / 2, -ih / 2]} stroke="#0f172a" strokeWidth={1} />
+            {/* Decorative items on console */}
+            <Circle x={-iw / 4} y={0} radius={3} fill="#22c55e" stroke="#15803d" strokeWidth={0.8} /> {/* plant bowl */}
+            <Rect x={iw / 4 - 3} y={-2} width={6} height={4} fill="#e2e8f0" stroke="#475569" strokeWidth={0.5} /> {/* tray */}
+          </Group>
+        );
+      case "laundry_machines":
+        {
+          const isStacked = item.style === "stacked";
+          return (
+            <Group>
+              {isStacked ? (
+                <>
+                  {/* Single machine outline but with double door and panel lines to represent stacking */}
+                  <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={3} />
+                  {/* Large drum door */}
+                  <Circle x={0} y={ih * 0.08} radius={Math.min(iw, ih) * 0.32} fill="#cbd5e1" stroke="#0f172a" strokeWidth={1.2} />
+                  <Circle x={-2} y={ih * 0.08} radius={Math.min(iw, ih) * 0.2} fill="#bae6fd" opacity={0.6} />
+                  {/* Stacking panel indicator line */}
+                  <Line points={[-iw / 2 + 2, -ih / 2 + 7, iw / 2 - 2, -ih / 2 + 7]} stroke="#475569" strokeWidth={0.8} />
+                  {/* Controls */}
+                  <Circle x={-iw / 4} y={-ih / 2 + 3.5} radius={1.5} fill="#0f172a" />
+                  <Circle x={-iw / 4 + 6} y={-ih / 2 + 3.5} radius={1} fill="#475569" />
+                  <Circle x={iw / 4} y={-ih / 2 + 3.5} radius={1.5} fill="#ef4444" />
+                </>
+              ) : (
+                <>
+                  {/* Side-by-side: Two separate units side by side */}
+                  {/* Left unit: Washer */}
+                  <Rect x={-iw / 2} y={-ih / 2} width={iw / 2 - 1} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={2} />
+                  <Circle x={-iw / 4} y={ih * 0.08} radius={Math.min(iw / 2, ih) * 0.32} fill="#f1f5f9" stroke="#475569" strokeWidth={1} />
+                  <Rect x={-iw / 2 + 3} y={-ih / 2 + 3} width={iw / 2 - 7} height={4} fill="#e2e8f0" />
+                  <Circle x={-iw / 3} y={-ih / 2 + 5} radius={1} fill="#475569" />
+                  
+                  {/* Right unit: Dryer */}
+                  <Rect x={1} y={-ih / 2} width={iw / 2 - 1} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={2} />
+                  <Circle x={iw / 4} y={ih * 0.08} radius={Math.min(iw / 2, ih) * 0.32} fill="#f1f5f9" stroke="#475569" strokeWidth={1} />
+                  <Rect x={4} y={-ih / 2 + 3} width={iw / 2 - 7} height={4} fill="#e2e8f0" />
+                  <Circle x={iw / 3} y={-ih / 2 + 5} radius={1} fill="#475569" />
+                </>
+              )}
+            </Group>
+          );
+        }
+      case "laundry_sink":
+        return (
+          <Group>
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={2} />
+            {/* Basin */}
+            <Rect x={-iw / 2 + 3} y={-ih / 2 + 3} width={iw - 6} height={ih - 6} fill="#f1f5f9" stroke="#475569" strokeWidth={1} cornerRadius={1} />
+            {/* Washboard ribbed lines pattern on one side */}
+            <Line points={[-iw / 4, -ih / 4, -iw / 4, ih / 4]} stroke="#cbd5e1" strokeWidth={1} />
+            <Line points={[-iw / 4 + 3, -ih / 4, -iw / 4 + 3, ih / 4]} stroke="#cbd5e1" strokeWidth={1} />
+            <Line points={[-iw / 4 + 6, -ih / 4, -iw / 4 + 6, ih / 4]} stroke="#cbd5e1" strokeWidth={1} />
+            {/* Faucet */}
+            <Circle x={iw / 4} y={-ih / 2 + 5} radius={1.5} fill="#cbd5e1" stroke="#0f172a" strokeWidth={0.8} />
+            <Line points={[iw / 4, -ih / 2 + 5, iw / 4, -ih / 2 + 11]} stroke="#cbd5e1" strokeWidth={1.5} lineCap="round" />
+          </Group>
+        );
+      case "garage_clothing_rack":
+        return (
+          <Group>
+            {/* Rack base */}
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={2} />
+            {/* Hanging bar */}
+            <Line points={[-iw / 2 + 6, 0, iw / 2 - 6, 0]} stroke="#475569" strokeWidth={2} />
+            {/* Clothes hangars */}
+            <Line points={[-iw / 3, -4, -iw / 3, 4]} stroke="#cbd5e1" strokeWidth={1} />
+            <Line points={[-iw / 6, -4, -iw / 6, 4]} stroke="#cbd5e1" strokeWidth={1} />
+            <Line points={[0, -4, 0, 4]} stroke="#cbd5e1" strokeWidth={1} />
+            <Line points={[iw / 6, -4, iw / 6, 4]} stroke="#cbd5e1" strokeWidth={1} />
+            <Line points={[iw / 3, -4, iw / 3, 4]} stroke="#cbd5e1" strokeWidth={1} />
+          </Group>
+        );
+      case "garage_generic_object":
+        return (
+          <Group>
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={2} shadowColor="#0f172a" shadowBlur={3} shadowOpacity={0.08} shadowOffset={{ x: 0.8, y: 0.8 }} />
+            <Line points={[-iw / 2, -ih / 2, iw / 2, ih / 2]} stroke="#475569" strokeWidth={1} />
+            <Line points={[-iw / 2, ih / 2, iw / 2, -ih / 2]} stroke="#475569" strokeWidth={1} />
+          </Group>
+        );
+      case "garage_hvac":
+        return (
+          <Group>
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={2} />
+            {/* Grille lines */}
+            <Line points={[-iw / 2 + 4, -ih / 4, iw / 2 - 4, -ih / 4]} stroke="#475569" strokeWidth={1} />
+            <Line points={[-iw / 2 + 4, 0, iw / 2 - 4, 0]} stroke="#475569" strokeWidth={1} />
+            <Line points={[-iw / 2 + 4, ih / 4, iw / 2 - 4, ih / 4]} stroke="#475569" strokeWidth={1} />
+            {/* Fan circle */}
+            <Circle x={-iw / 6} y={0} radius={Math.min(iw, ih) * 0.35} fill="#e2e8f0" stroke="#0f172a" strokeWidth={1} />
+            <Circle x={-iw / 6} y={0} radius={2} fill="#0f172a" />
+          </Group>
+        );
+      case "garage_water_heater":
+        return (
+          <Group>
+            <Circle x={0} y={0} radius={Math.min(iw, ih) / 2} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} />
+            {/* Center cap */}
+            <Circle x={0} y={0} radius={Math.min(iw, ih) / 5} fill="#ffffff" stroke="#475569" strokeWidth={0.8} />
+            {/* Hot/cold pipe dots */}
+            <Circle x={-Math.min(iw, ih) / 8} y={-Math.min(iw, ih) / 8} radius={1.5} fill="#ef4444" />
+            <Circle x={Math.min(iw, ih) / 8} y={-Math.min(iw, ih) / 8} radius={1.5} fill="#0ea5e9" />
+          </Group>
+        );
+      case "gym_bike":
+        return (
+          <Group>
+            {/* Flywheel - light gray */}
+            <Circle x={-iw / 3} y={0} radius={ih * 0.35} fill="#94a3b8" stroke="#0f172a" strokeWidth={1.2} />
+            {/* Frame */}
+            <Line points={[-iw / 3, 0, 0, 0, iw / 3, -ih / 4]} stroke="#0f172a" strokeWidth={2.5} />
+            {/* Pedals */}
+            <Circle x={0} y={0} radius={4} fill="#e2e8f0" stroke="#0f172a" strokeWidth={1} />
+            {/* Seat */}
+            <Rect x={iw / 3 - 4} y={-ih / 3 - 4} width={8} height={4} fill="#090d16" cornerRadius={1} />
+            {/* Handlebars */}
+            <Line points={[-iw / 3, -ih / 4, -iw / 3 - 4, -ih / 3]} stroke="#0f172a" strokeWidth={1.8} />
+          </Group>
+        );
+      case "gym_bench":
+        return (
+          <Group>
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={3} />
+            {/* Padding split lines */}
+            <Line points={[-iw / 4, -ih / 2, -iw / 4, ih / 2]} stroke="#475569" strokeWidth={1} />
+            {/* Leg supports */}
+            <Rect x={-iw / 2} y={-ih / 2 - 2} width={2} height={ih + 4} fill="#1e293b" />
+            <Rect x={iw / 2 - 2} y={-ih / 2 - 2} width={2} height={ih + 4} fill="#1e293b" />
+          </Group>
+        );
+      case "gym_weight_rack":
+        return (
+          <Group>
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={1.5} />
+            {/* Racks */}
+            <Line points={[-iw / 2, -ih / 4, iw / 2, -ih / 4]} stroke="#475569" strokeWidth={1.2} />
+            <Line points={[-iw / 2, ih / 4, iw / 2, ih / 4]} stroke="#475569" strokeWidth={1.2} />
+            {/* Dumbbell shapes */}
+            <Circle x={-iw / 3} y={-ih / 4} radius={2} fill="#0f172a" />
+            <Circle x={-iw / 3 + 6} y={-ih / 4} radius={2} fill="#0f172a" />
+            <Circle x={0} y={-ih / 4} radius={2.5} fill="#0f172a" />
+            <Circle x={iw / 3} y={-ih / 4} radius={3} fill="#0f172a" />
+          </Group>
+        );
+      case "gym_yoga_mat":
+        return (
+          <Group>
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.2} cornerRadius={1} />
+            {/* Rolled up lines on one end */}
+            <Line points={[iw / 2 - 4, -ih / 2, iw / 2 - 4, ih / 2]} stroke="#475569" strokeWidth={0.8} />
+            <Line points={[iw / 2 - 2, -ih / 2, iw / 2 - 2, ih / 2]} stroke="#475569" strokeWidth={1.2} />
+          </Group>
+        );
+      case "living_bookshelf":
+        return (
+          <Group>
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={1} />
+            {/* Books */}
+            <Rect x={-iw / 2 + 3} y={-ih / 2 + 2} width={4} height={ih - 4} fill="#ef4444" />
+            <Rect x={-iw / 2 + 8} y={-ih / 2 + 2} width={3} height={ih - 4} fill="#0ea5e9" />
+            <Rect x={-iw / 2 + 12} y={-ih / 2 + 2} width={5} height={ih - 4} fill="#eab308" />
+            <Rect x={-iw / 2 + 18} y={-ih / 2 + 2} width={4} height={ih - 4} fill="#10b981" />
+            <Rect x={iw / 4} y={-ih / 2 + 2} width={4} height={ih - 4} fill="#6366f1" />
+          </Group>
+        );
+      case "living_credenza":
+        return (
+          <Group>
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={2} />
+            {/* Sliding doors details */}
+            <Line points={[0, -ih / 2, 0, ih / 2]} stroke="#0f172a" strokeWidth={1} />
+            <Circle x={-iw / 6} y={0} radius={2} fill="#cbd5e1" stroke="#0f172a" strokeWidth={0.8} />
+            <Circle x={iw / 6} y={0} radius={2} fill="#cbd5e1" stroke="#0f172a" strokeWidth={0.8} />
+          </Group>
+        );
+      case "living_coffee_table":
+        return (
+          <Group>
+            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={4} shadowColor="#0f172a" shadowBlur={3} shadowOpacity={0.08} shadowOffset={{ x: 1, y: 1 }} />
+            <Rect x={-iw * 0.8 / 2} y={-ih * 0.8 / 2} width={iw * 0.8} height={ih * 0.8} fill="#ffffff" stroke="#cbd5e1" strokeWidth={0.8} cornerRadius={2} />
+          </Group>
+        );
+      case "living_side_table":
+        return (
+          <Group>
+            <Circle x={0} y={0} radius={Math.min(iw, ih) / 2} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} />
+            <Circle x={0} y={0} radius={Math.min(iw, ih) / 2 - 3} fill="#ffffff" stroke="#cbd5e1" strokeWidth={0.8} />
+          </Group>
         );
       default:
         return null;
@@ -2006,60 +3127,25 @@ Requirements:
   const furnishSelectedRoom = (room: Room) => {
     if (!floorPlan) return;
 
-    // Default furniture sets per room type
-    const presets: Record<string, { type: string; relX: number; relY: number; w: number; h: number }[]> = {
-      "Phòng khách": [
-        { type: "living_sofa",  relX: 0.05, relY: 0.55, w: Math.min(room.w * 0.55, 2.4), h: 0.9 },
-        { type: "living_tv",    relX: 0.10, relY: 0.08, w: Math.min(room.w * 0.50, 2.0), h: 0.4 },
-      ],
-      "Phòng ngủ": [
-        { type: "bed_bed",       relX: 0.10, relY: 0.08, w: Math.min(room.w * 0.60, 1.8), h: 2.0 },
-        { type: "bed_wardrobe",  relX: 0.70, relY: 0.08, w: Math.min(room.w * 0.28, 1.2), h: Math.min(room.h * 0.60, 2.0) },
-      ],
-      "Phòng ngủ Master": [
-        { type: "bed_bed",       relX: 0.08, relY: 0.08, w: Math.min(room.w * 0.65, 2.0), h: 2.2 },
-        { type: "bed_wardrobe",  relX: 0.72, relY: 0.08, w: Math.min(room.w * 0.26, 1.5), h: Math.min(room.h * 0.55, 2.2) },
-      ],
-      "Phòng bếp": [
-        { type: "kitchen_counter", relX: 0.05, relY: 0.05, w: Math.min(room.w * 0.85, 3.0), h: 0.65 },
-      ],
-      "Phòng ăn": [
-        { type: "dining_table", relX: 0.10, relY: 0.15, w: Math.min(room.w * 0.80, 1.8), h: Math.min(room.h * 0.55, 1.0) },
-      ],
-      "Phòng Tắm / WC": [
-        { type: "wc_bathtub", relX: 0.05, relY: 0.10, w: Math.min(room.w * 0.80, 1.5), h: Math.min(room.h * 0.55, 0.7) },
-      ],
-      "Garage": [
-        { type: "garage_car", relX: 0.08, relY: 0.15, w: Math.min(room.w * 0.80, 4.5), h: Math.min(room.h * 0.65, 2.0) },
-      ],
-    };
+    // Use the same furniture generation as auto-generation for consistency
+    const newFurniture = getDefaultFurnitureForRoom(room);
 
-    // Find matching preset (check if room name includes any key)
-    let items = presets[room.name];
-    if (!items) {
-      for (const [key, val] of Object.entries(presets)) {
-        if (room.name.includes(key)) { items = val; break; }
-      }
-    }
-    if (!items || items.length === 0) {
+    if (!newFurniture || newFurniture.length === 0) {
       toast.info(`Chưa có mẫu đồ nội thất cho phòng "${room.name}"`);
       return;
     }
 
-    const newFurniture: FurnitureItem[] = items.map((item) => ({
+    // Give fresh unique IDs so they don't conflict with existing ones
+    const timestampedFurniture: FurnitureItem[] = newFurniture.map((item) => ({
+      ...item,
       id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      type: item.type,
-      x: room.x + item.relX * room.w,
-      y: room.y + item.relY * room.h,
-      w: item.w,
-      h: item.h,
-      rotation: 0,
     }));
 
     pushHistory(floorPlan);
     const updatedRooms = floorPlan.rooms.map((r) => {
       if (r.id === room.id) {
-        return { ...r, furniture: [...(r.furniture || []), ...newFurniture] };
+        // Replace (not append) furniture to avoid duplicates on re-furnish
+        return { ...r, furniture: timestampedFurniture };
       }
       return r;
     });
@@ -2068,7 +3154,235 @@ Requirements:
     const nextPlans = [...floorPlans];
     nextPlans[activeFloorIndex] = updatedPlan;
     setFloorPlans(nextPlans);
-    toast.success(`Đã thêm nội thất cho ${room.name}!`);
+    toast.success(`Đã trang trí nội thất cho ${room.name}!`);
+  };
+
+  // ── Opening (Door/Window) Edit/Add Utilities ──────────────────────────────
+  const updateOpeningProperty = (openId: string, updates: Partial<Opening>) => {
+    if (!floorPlan) return;
+    pushHistory(floorPlan);
+    const updatedOpenings = (floorPlan.openings || []).map((o) => {
+      if (o.id === openId) {
+        return { ...o, ...updates };
+      }
+      return o;
+    });
+    const updatedPlan = { ...floorPlan, openings: updatedOpenings };
+    setFloorPlan(updatedPlan);
+    const nextPlans = [...floorPlans];
+    nextPlans[activeFloorIndex] = updatedPlan;
+    setFloorPlans(nextPlans);
+  };
+
+  const rotateOpening = (openId: string) => {
+    if (!floorPlan) return;
+    pushHistory(floorPlan);
+    const updatedOpenings = (floorPlan.openings || []).map((open) => {
+      if (open.id === openId) {
+        return { ...open, rotation: ((open.rotation || 0) + 90) % 360 };
+      }
+      return open;
+    });
+    const updatedPlan = { ...floorPlan, openings: updatedOpenings };
+    setFloorPlan(updatedPlan);
+    const nextPlans = [...floorPlans];
+    nextPlans[activeFloorIndex] = updatedPlan;
+    setFloorPlans(nextPlans);
+    toast.success("Đã xoay ô cửa 90°");
+  };
+
+  const deleteOpening = (openId: string) => {
+    if (!floorPlan) return;
+    pushHistory(floorPlan);
+    const updatedOpenings = (floorPlan.openings || []).filter((o) => o.id !== openId);
+    const updatedPlan = { ...floorPlan, openings: updatedOpenings };
+    setFloorPlan(updatedPlan);
+    const nextPlans = [...floorPlans];
+    nextPlans[activeFloorIndex] = updatedPlan;
+    setFloorPlans(nextPlans);
+    setSelectedOpeningId(null);
+    toast.success("Đã xóa cửa/cửa sổ");
+  };
+
+  // ── Manual Furniture & Room Actions ────────────────────────────────────
+  const [activeBottomPopup, setActiveBottomPopup] = useState<"furniture" | "structure" | null>(null);
+  const [selectedCategoryIndex, setSelectedCategoryIndex] = useState<number | null>(null);
+  const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
+  const [furnitureSearch, setFurnitureSearch] = useState("");
+  const [activeTool, setActiveTool] = useState<"select" | "draw_wall">("select");
+
+  const handleAddRoomManually = (roomName: string) => {
+    if (!floorPlan) {
+      toast.error("Vui lòng tạo mặt bằng trước!");
+      return;
+    }
+    pushHistory(floorPlan);
+
+    const nextRoomIndex = floorPlan.rooms.length;
+    const newRoom: Room = {
+      id: `room_${Date.now()}`,
+      name: roomName,
+      x: 1.0 + (nextRoomIndex * 0.5) % 3,
+      y: 1.0 + (nextRoomIndex * 0.5) % 3,
+      w: 3.5,
+      h: 3.0,
+      color: "#f8fafc",
+      furniture: [],
+      finishes: {
+        flooring: "natural_oak",
+        walls: "soft_white",
+        ceiling: "paint_white",
+        doors: "natural_oak",
+        windows: "clear_glass"
+      }
+    };
+
+    newRoom.furniture = getDefaultFurnitureForRoom(newRoom);
+
+    const updatedPlan = {
+      ...floorPlan,
+      rooms: [...floorPlan.rooms, newRoom]
+    };
+
+    setFloorPlan(updatedPlan);
+    const nextPlans = [...floorPlans];
+    nextPlans[activeFloorIndex] = updatedPlan;
+    setFloorPlans(nextPlans);
+
+    setSelectedRoomId(newRoom.id);
+    toast.success(`Đã thêm phòng ${roomName}! Hãy kéo các cạnh tường để thay đổi kích thước.`);
+  };
+
+  const handleAddFurniture = (type: string, customW?: number, customH?: number, customStyle?: string) => {
+    let targetRoom = floorPlan.rooms.find(r => r.id === selectedRoomId);
+    if (!targetRoom && floorPlan.rooms.length > 0) {
+      targetRoom = floorPlan.rooms[0];
+    }
+
+    if (!targetRoom) {
+      toast.error("Vui lòng chọn phòng trước khi thêm đồ nội thất!");
+      return;
+    }
+
+    pushHistory(floorPlan);
+
+    let w = customW || 1.0;
+    let h = customH || 1.0;
+    if (!customW || !customH) {
+      if (type.includes("sofa")) { w = 1.8; h = 0.8; }
+      else if (type.includes("tv")) { w = 1.5; h = 0.4; }
+      else if (type.includes("dresser")) { w = 1.2; h = 0.5; }
+      else if (type.includes("bed")) { w = 1.6; h = 2.0; }
+      else if (type.includes("wardrobe")) { w = 1.6; h = 0.6; }
+      else if (type.includes("nightstand")) { w = 0.5; h = 0.5; }
+      else if (type.includes("dining")) { w = 1.4; h = 0.8; }
+      else if (type.includes("counter")) { w = 2.0; h = 0.6; }
+      else if (type.includes("cooktop")) { w = 0.8; h = 0.6; }
+      else if (type.includes("sink")) { w = 0.8; h = 0.6; }
+      else if (type.includes("fridge")) { w = 0.8; h = 0.8; }
+      else if (type.includes("toilet")) { w = 0.5; h = 0.7; }
+      else if (type.includes("lavabo")) { w = 0.6; h = 0.5; }
+      else if (type.includes("bathtub")) { w = 1.6; h = 0.8; }
+      else if (type.includes("car")) { w = 1.8; h = 4.2; }
+      else if (type.includes("desk")) { w = 1.2; h = 0.6; }
+      else if (type.includes("chair")) { w = 0.6; h = 0.6; }
+      else if (type === "stairs") { w = 1.0; h = 2.0; }
+      else if (type === "plant_pots") { w = 0.5; h = 0.5; }
+      else if (type === "gym_treadmill") { w = 0.9; h = 1.8; }
+      else if (type === "recreation_pool_table") { w = 1.6; h = 2.8; }
+      else if (type === "wc_shower") { w = 0.9; h = 0.9; }
+      else if (type.includes("bench")) { w = 1.2; h = 0.45; }
+      else if (type.includes("coat_stand")) { w = 0.45; h = 0.45; }
+      else if (type.includes("console_mirror")) { w = 1.0; h = 0.4; }
+      else if (type.includes("laundry_machines")) { w = 1.4; h = 0.7; }
+      else if (type.includes("laundry_sink")) { w = 0.65; h = 0.6; }
+    }
+
+    const spawnX = Math.round((targetRoom.w / 2) * 20) / 20;
+    const spawnY = Math.round((targetRoom.h / 2) * 20) / 20;
+
+    const newFurniture: FurnitureItem = {
+      id: `fur_${type}_${Date.now()}`,
+      type,
+      x: spawnX,
+      y: spawnY,
+      w,
+      h,
+      rotation: 0,
+      style: customStyle
+    };
+
+    const targetRoomId = targetRoom.id;
+
+    const updatedRooms = floorPlan.rooms.map((r) => {
+      if (r.id === targetRoomId) {
+        return {
+          ...r,
+          furniture: [...(r.furniture || []), newFurniture]
+        };
+      }
+      return r;
+    });
+
+    const updatedPlan = { ...floorPlan, rooms: updatedRooms };
+    setFloorPlan(updatedPlan);
+    const nextPlans = [...floorPlans];
+    nextPlans[activeFloorIndex] = updatedPlan;
+    setFloorPlans(nextPlans);
+
+    setSelectedRoomId(targetRoomId);
+    setSelectedFurnitureId(newFurniture.id);
+    setSelectedFurnitureRoomId(targetRoomId);
+
+    toast.success(`Đã thêm ${FURNITURE_METADATA[type]?.name || type}! Bạn có thể kéo thả để di chuyển.`);
+  };
+
+  const handleAddDoor = () => {
+    if (!floorPlan) {
+      toast.error("Vui lòng tạo mặt bằng trước!");
+      return;
+    }
+    pushHistory(floorPlan);
+    const newOpening: Opening = {
+      id: `open_${activeFloorIndex}_${Date.now()}`,
+      type: "door",
+      x: 3.0,
+      y: 3.0,
+      w: 0.9,
+      rotation: 0,
+    };
+    const updatedOpenings = [...(floorPlan.openings || []), newOpening];
+    const updatedPlan = { ...floorPlan, openings: updatedOpenings };
+    setFloorPlan(updatedPlan);
+    const nextPlans = [...floorPlans];
+    nextPlans[activeFloorIndex] = updatedPlan;
+    setFloorPlans(nextPlans);
+    setSelectedOpeningId(newOpening.id);
+    toast.success("Đã thêm một cửa đi mới! Hãy kéo thả cửa đến vị trí mong muốn.");
+  };
+
+  const handleAddWindow = () => {
+    if (!floorPlan) {
+      toast.error("Vui lòng tạo mặt bằng trước!");
+      return;
+    }
+    pushHistory(floorPlan);
+    const newOpening: Opening = {
+      id: `open_${activeFloorIndex}_${Date.now()}`,
+      type: "window",
+      x: 3.0,
+      y: 3.0,
+      w: 1.2,
+      rotation: 0,
+    };
+    const updatedOpenings = [...(floorPlan.openings || []), newOpening];
+    const updatedPlan = { ...floorPlan, openings: updatedOpenings };
+    setFloorPlan(updatedPlan);
+    const nextPlans = [...floorPlans];
+    nextPlans[activeFloorIndex] = updatedPlan;
+    setFloorPlans(nextPlans);
+    setSelectedOpeningId(newOpening.id);
+    toast.success("Đã thêm một cửa sổ mới! Hãy kéo thả cửa sổ đến vị trí mong muốn.");
   };
 
   // ── Render Openings ────────────────────────────────────────────────────
@@ -2081,6 +3395,9 @@ Requirements:
       const ox = pan.x + open.x * scale;
       const oy = pan.y + open.y * scale;
       const ow = open.w * scale;
+      const isSelected = selectedOpeningId === open.id;
+      const strokeColor = isSelected ? "#00b5cd" : "#1e293b";
+      const strokeWidth = isSelected ? 3 : 2;
 
       if (open.type === "door") {
         const arcPoints = [];
@@ -2091,38 +3408,212 @@ Requirements:
         }
 
         return (
-          <Group key={open.id} x={ox} y={oy} rotation={open.rotation}>
+          <Group
+            key={open.id}
+            x={ox}
+            y={oy}
+            rotation={open.rotation}
+            draggable={true}
+            onDragMove={(e) => {
+              e.cancelBubble = true;
+              const newX = (e.target.x() - pan.x) / scale;
+              const newY = (e.target.y() - pan.y) / scale;
+              const roundedX = Math.round(newX * 20) / 20; // 0.05m
+              const roundedY = Math.round(newY * 20) / 20;
+              e.target.x(pan.x + roundedX * scale);
+              e.target.y(pan.y + roundedY * scale);
+            }}
+            onClick={(e) => {
+              e.cancelBubble = true;
+              setSelectedOpeningId(open.id);
+              setSelectedRoomId(null);
+              setSelectedFurnitureId(null);
+              setSelectedFurnitureRoomId(null);
+            }}
+            onTap={(e) => {
+              e.cancelBubble = true;
+              setSelectedOpeningId(open.id);
+              setSelectedRoomId(null);
+              setSelectedFurnitureId(null);
+              setSelectedFurnitureRoomId(null);
+            }}
+            onDblClick={(e) => {
+              e.cancelBubble = true;
+              rotateOpening(open.id);
+            }}
+            onDblTap={(e) => {
+              e.cancelBubble = true;
+              rotateOpening(open.id);
+            }}
+            onMouseEnter={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = "move";
+            }}
+            onMouseLeave={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = "default";
+            }}
+            onDragEnd={(e) => {
+              e.cancelBubble = true;
+              const newX = (e.target.x() - pan.x) / scale;
+              const newY = (e.target.y() - pan.y) / scale;
+              const roundedX = Math.round(newX * 20) / 20; // snap to 0.05m
+              const roundedY = Math.round(newY * 20) / 20;
+
+              if (floorPlan) {
+                pushHistory(floorPlan);
+                const updatedOpenings = floorPlan.openings.map((o) => {
+                  if (o.id === open.id) {
+                    return { ...o, x: roundedX, y: roundedY };
+                  }
+                  return o;
+                });
+                const updatedPlan = { ...floorPlan, openings: updatedOpenings };
+                setFloorPlan(updatedPlan);
+                const nextPlans = [...floorPlans];
+                nextPlans[activeFloorIndex] = updatedPlan;
+                setFloorPlans(nextPlans);
+                toast.success(`Đã di chuyển cửa đến (${roundedX}m, ${roundedY}m)`);
+              }
+            }}
+          >
+            {/* Invisible large hit area to make dragging easy */}
+            <Rect
+              x={0}
+              y={-ow}
+              width={ow}
+              height={ow}
+              fill="transparent"
+            />
             <Line
               points={arcPoints}
-              stroke="#1e293b"
-              strokeWidth={1}
+              stroke={strokeColor}
+              strokeWidth={isSelected ? 1.5 : 1}
               dash={[3, 3]}
             />
             <Line
               points={[0, 0, 0, -ow]}
-              stroke="#1e293b"
-              strokeWidth={2}
+              stroke={strokeColor}
+              strokeWidth={strokeWidth}
             />
+            {/* Indication circle at pivot point when selected */}
+            {isSelected && (
+              <Circle
+                x={0}
+                y={0}
+                radius={6}
+                fill="#00b5cd"
+                stroke="white"
+                strokeWidth={1.5}
+              />
+            )}
           </Group>
         );
       } else {
         return (
-          <Group key={open.id} x={ox} y={oy} rotation={open.rotation}>
+          <Group
+            key={open.id}
+            x={ox}
+            y={oy}
+            rotation={open.rotation}
+            draggable={true}
+            onDragMove={(e) => {
+              e.cancelBubble = true;
+              const newX = (e.target.x() - pan.x) / scale;
+              const newY = (e.target.y() - pan.y) / scale;
+              const roundedX = Math.round(newX * 20) / 20; // 0.05m
+              const roundedY = Math.round(newY * 20) / 20;
+              e.target.x(pan.x + roundedX * scale);
+              e.target.y(pan.y + roundedY * scale);
+            }}
+            onClick={(e) => {
+              e.cancelBubble = true;
+              setSelectedOpeningId(open.id);
+              setSelectedRoomId(null);
+              setSelectedFurnitureId(null);
+              setSelectedFurnitureRoomId(null);
+            }}
+            onTap={(e) => {
+              e.cancelBubble = true;
+              setSelectedOpeningId(open.id);
+              setSelectedRoomId(null);
+              setSelectedFurnitureId(null);
+              setSelectedFurnitureRoomId(null);
+            }}
+            onDblClick={(e) => {
+              e.cancelBubble = true;
+              rotateOpening(open.id);
+            }}
+            onDblTap={(e) => {
+              e.cancelBubble = true;
+              rotateOpening(open.id);
+            }}
+            onMouseEnter={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = "move";
+            }}
+            onMouseLeave={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = "default";
+            }}
+            onDragEnd={(e) => {
+              e.cancelBubble = true;
+              const newX = (e.target.x() - pan.x) / scale;
+              const newY = (e.target.y() - pan.y) / scale;
+              const roundedX = Math.round(newX * 20) / 20; // snap to 0.05m
+              const roundedY = Math.round(newY * 20) / 20;
+
+              if (floorPlan) {
+                pushHistory(floorPlan);
+                const updatedOpenings = floorPlan.openings.map((o) => {
+                  if (o.id === open.id) {
+                    return { ...o, x: roundedX, y: roundedY };
+                  }
+                  return o;
+                });
+                const updatedPlan = { ...floorPlan, openings: updatedOpenings };
+                setFloorPlan(updatedPlan);
+                const nextPlans = [...floorPlans];
+                nextPlans[activeFloorIndex] = updatedPlan;
+                setFloorPlans(nextPlans);
+                toast.success(`Đã di chuyển cửa sổ đến (${roundedX}m, ${roundedY}m)`);
+              }
+            }}
+          >
+            {/* Invisible large hit area to make dragging easy */}
+            <Rect
+              x={-ow / 2}
+              y={-12}
+              width={ow}
+              height={24}
+              fill="transparent"
+            />
             <Rect
               x={-ow / 2}
               y={-thickness / 2}
               width={ow}
               height={thickness}
               fill="white"
-              stroke="#1e293b"
-              strokeWidth={1.5}
+              stroke={strokeColor}
+              strokeWidth={strokeWidth}
               cornerRadius={1}
             />
             <Line
               points={[-ow / 2, 0, ow / 2, 0]}
-              stroke="#94a3b8"
-              strokeWidth={1}
+              stroke={isSelected ? "#00b5cd" : "#94a3b8"}
+              strokeWidth={isSelected ? 1.5 : 1}
             />
+            {/* Indication circle at pivot point when selected */}
+            {isSelected && (
+              <Circle
+                x={0}
+                y={0}
+                radius={6}
+                fill="#00b5cd"
+                stroke="white"
+                strokeWidth={1.5}
+              />
+            )}
           </Group>
         );
       }
@@ -2153,11 +3644,13 @@ Requirements:
             setSelectedRoomId(isSelected ? null : room.id);
             setSelectedFurnitureId(null);
             setSelectedFurnitureRoomId(null);
+            setSelectedOpeningId(null);
           }}
           onTap={() => {
             setSelectedRoomId(isSelected ? null : room.id);
             setSelectedFurnitureId(null);
             setSelectedFurnitureRoomId(null);
+            setSelectedOpeningId(null);
           }}
         >
           {/* Room Base area fill */}
@@ -2255,142 +3748,16 @@ Requirements:
             />
           )}
 
-          {/* Render Furniture */}
-          {(room.furniture || []).map((item) => {
-            const iw = item.w * scale;
-            const ih = item.h * scale;
-            return (
-              <Group
-                key={item.id}
-                x={(rx / scale + item.x) * scale}
-                y={(ry / scale + item.y) * scale}
-                rotation={item.rotation || 0}
-                draggable={true}
-                onClick={(e) => {
-                  e.cancelBubble = true;
-                  setSelectedRoomId(room.id);
-                  setSelectedFurnitureId(item.id);
-                  setSelectedFurnitureRoomId(room.id);
-                }}
-                onTap={(e) => {
-                  e.cancelBubble = true;
-                  setSelectedRoomId(room.id);
-                  setSelectedFurnitureId(item.id);
-                  setSelectedFurnitureRoomId(room.id);
-                }}
-                onDblClick={(e) => {
-                  e.cancelBubble = true;
-                  rotateFurnitureItem(room.id, item.id);
-                }}
-                onDblTap={(e) => {
-                  e.cancelBubble = true;
-                  rotateFurnitureItem(room.id, item.id);
-                }}
-                onDragMove={(e) => {
-                  e.cancelBubble = true;
-                  const currentW = isDragged ? room.w + dragOffset.w : room.w;
-                  const currentH = isDragged ? room.h + dragOffset.h : room.h;
-                  const currentRx = isDragged ? dragOffset.x : 0;
-                  const currentRy = isDragged ? dragOffset.y : 0;
-                  const localX = e.target.x() - currentRx * scale;
-                  const localY = e.target.y() - currentRy * scale;
-                  const clampedLocalX = Math.max(0, Math.min(currentW * scale, localX));
-                  const clampedLocalY = Math.max(0, Math.min(currentH * scale, localY));
-                  e.target.x(clampedLocalX + currentRx * scale);
-                  e.target.y(clampedLocalY + currentRy * scale);
-                }}
-                onDragEnd={(e) => {
-                  e.cancelBubble = true;
-                  const currentRx = isDragged ? dragOffset.x : 0;
-                  const currentRy = isDragged ? dragOffset.y : 0;
-                  const localX = (e.target.x() - currentRx * scale) / scale;
-                  const localY = (e.target.y() - currentRy * scale) / scale;
-                  const roundedX = Math.round(localX * 20) / 20; // snap to 0.05m
-                  const roundedY = Math.round(localY * 20) / 20;
-
-                  const currentW = isDragged ? room.w + dragOffset.w : room.w;
-                  const currentH = isDragged ? room.h + dragOffset.h : room.h;
-                  const clampedX = Math.max(0, Math.min(currentW, roundedX));
-                  const clampedY = Math.max(0, Math.min(currentH, roundedY));
-
-                  if (floorPlan) {
-                    const updatedRooms = floorPlan.rooms.map((r) => {
-                      if (r.id === room.id) {
-                        const updatedFurniture = (r.furniture || []).map((f) => {
-                          if (f.id === item.id) {
-                            return { ...f, x: clampedX, y: clampedY };
-                          }
-                          return f;
-                        });
-                        return { ...r, furniture: updatedFurniture };
-                      }
-                      return r;
-                    });
-                    const updatedPlan = { ...floorPlan, rooms: updatedRooms };
-                    setFloorPlan(updatedPlan);
-                    const nextPlans = [...floorPlans];
-                    nextPlans[activeFloorIndex] = updatedPlan;
-                    setFloorPlans(nextPlans);
-                    toast.success(`Đã di chuyển đồ vật đến (${clampedX}m, ${clampedY}m)`);
-                  }
-                }}
-              >
-                {drawFurnitureGraphics(item, scale)}
-                {selectedFurnitureId === item.id && (
-                  <>
-                    <Rect
-                      x={-iw / 2 - 2}
-                      y={-ih / 2 - 2}
-                      width={iw + 4}
-                      height={ih + 4}
-                      fill="transparent"
-                      stroke="#00b5cd"
-                      strokeWidth={1.5}
-                      dash={[4, 2]}
-                    />
-                    {/* Rotation Handle: top right of selection box */}
-                    <Group
-                      x={iw / 2 + 12}
-                      y={-ih / 2 - 12}
-                      onClick={(e) => {
-                        e.cancelBubble = true;
-                        rotateFurnitureItem(room.id, item.id);
-                      }}
-                      onTap={(e) => {
-                        e.cancelBubble = true;
-                        rotateFurnitureItem(room.id, item.id);
-                      }}
-                    >
-                      <Circle
-                        radius={9}
-                        fill="white"
-                        stroke="#00b5cd"
-                        strokeWidth={1.2}
-                        shadowColor="black"
-                        shadowBlur={2}
-                        shadowOpacity={0.15}
-                        shadowOffset={{ x: 0, y: 1 }}
-                      />
-                      <Text
-                        text="🔄"
-                        fontSize={10}
-                        x={-5}
-                        y={-5.5}
-                      />
-                    </Group>
-                  </>
-                )}
-              </Group>
-            );
-          })}
 
           {/* Wall Resize Draggable Handles */}
           {isSelected && (
             <>
               {/* Left Wall Edge */}
               <Line
-                points={[rx, ry, rx, ry + rh]}
-                stroke="transparent"
+                x={isDragged ? dragOffset.x * scale : 0}
+                y={0}
+                points={[0, 0, 0, room.h * scale]}
+                stroke="rgba(0,0,0,0.01)"
                 strokeWidth={8}
                 hitStrokeWidth={16}
                 draggable={true}
@@ -2403,7 +3770,7 @@ Requirements:
                 onMouseLeave={(e) => {
                   const stage = e.target.getStage();
                   if (stage) stage.container().style.cursor = "default";
-                  (e.target as any).stroke("transparent");
+                  (e.target as any).stroke("rgba(0,0,0,0.01)");
                   e.target.getLayer()?.batchDraw();
                 }}
                 onDragMove={(e) => {
@@ -2411,20 +3778,17 @@ Requirements:
                   e.target.y(0); // keep y locked
                   const deltaX = e.target.x() / scale;
                   let proposedW = room.w - deltaX;
-                  let finalDeltaX = deltaX;
-                  if (proposedW < 1.0) {
-                    proposedW = 1.0;
-                    finalDeltaX = room.w - 1.0;
-                    e.target.x(finalDeltaX * scale);
-                  }
+                  proposedW = Math.round(proposedW * 20) / 20; // snap to 0.05m
+                  if (proposedW < 1.0) proposedW = 1.0;
+                  const finalDeltaX = room.w - proposedW;
+                  e.target.x(finalDeltaX * scale);
                   setDraggedRoomId(room.id);
                   setDragOffset({ x: finalDeltaX, y: 0, w: -finalDeltaX, h: 0 });
                 }}
                 onDragEnd={(e) => {
                   e.cancelBubble = true;
-                  e.target.x(0);
-                  const newX = Math.round((room.x + dragOffset.x) * 10) / 10;
-                  const newW = Math.round((room.w + dragOffset.w) * 10) / 10;
+                  const newX = Math.round((room.x + dragOffset.x) * 20) / 20;
+                  const newW = Math.round((room.w + dragOffset.w) * 20) / 20;
                   updateRoomSizeAndPosition(room.id, newX, room.y, newW, room.h);
                   setDraggedRoomId(null);
                   setDragOffset({ x: 0, y: 0, w: 0, h: 0 });
@@ -2434,8 +3798,10 @@ Requirements:
 
               {/* Right Wall Edge */}
               <Line
-                points={[rx + rw, ry, rx + rw, ry + rh]}
-                stroke="transparent"
+                x={isDragged ? (room.w + dragOffset.w) * scale : room.w * scale}
+                y={0}
+                points={[0, 0, 0, room.h * scale]}
+                stroke="rgba(0,0,0,0.01)"
                 strokeWidth={8}
                 hitStrokeWidth={16}
                 draggable={true}
@@ -2448,7 +3814,7 @@ Requirements:
                 onMouseLeave={(e) => {
                   const stage = e.target.getStage();
                   if (stage) stage.container().style.cursor = "default";
-                  (e.target as any).stroke("transparent");
+                  (e.target as any).stroke("rgba(0,0,0,0.01)");
                   e.target.getLayer()?.batchDraw();
                 }}
                 onDragMove={(e) => {
@@ -2457,19 +3823,16 @@ Requirements:
                   const dragX = e.target.x();
                   const deltaW = (dragX - room.w * scale) / scale;
                   let proposedW = room.w + deltaW;
-                  let finalDeltaW = deltaW;
-                  if (proposedW < 1.0) {
-                    proposedW = 1.0;
-                    finalDeltaW = 1.0 - room.w;
-                    e.target.x((room.w + finalDeltaW) * scale);
-                  }
+                  proposedW = Math.round(proposedW * 20) / 20; // snap to 0.05m
+                  if (proposedW < 1.0) proposedW = 1.0;
+                  const finalDeltaW = proposedW - room.w;
+                  e.target.x((room.w + finalDeltaW) * scale);
                   setDraggedRoomId(room.id);
                   setDragOffset({ x: 0, y: 0, w: finalDeltaW, h: 0 });
                 }}
                 onDragEnd={(e) => {
                   e.cancelBubble = true;
-                  e.target.x(room.w * scale);
-                  const newW = Math.round((room.w + dragOffset.w) * 10) / 10;
+                  const newW = Math.round((room.w + dragOffset.w) * 20) / 20;
                   updateRoomSizeAndPosition(room.id, room.x, room.y, newW, room.h);
                   setDraggedRoomId(null);
                   setDragOffset({ x: 0, y: 0, w: 0, h: 0 });
@@ -2479,8 +3842,10 @@ Requirements:
 
               {/* Top Wall Edge */}
               <Line
-                points={[rx, ry, rx + rw, ry]}
-                stroke="transparent"
+                x={0}
+                y={isDragged ? dragOffset.y * scale : 0}
+                points={[0, 0, room.w * scale, 0]}
+                stroke="rgba(0,0,0,0.01)"
                 strokeWidth={8}
                 hitStrokeWidth={16}
                 draggable={true}
@@ -2493,7 +3858,7 @@ Requirements:
                 onMouseLeave={(e) => {
                   const stage = e.target.getStage();
                   if (stage) stage.container().style.cursor = "default";
-                  (e.target as any).stroke("transparent");
+                  (e.target as any).stroke("rgba(0,0,0,0.01)");
                   e.target.getLayer()?.batchDraw();
                 }}
                 onDragMove={(e) => {
@@ -2501,20 +3866,17 @@ Requirements:
                   e.target.x(0); // keep x locked
                   const deltaY = e.target.y() / scale;
                   let proposedH = room.h - deltaY;
-                  let finalDeltaY = deltaY;
-                  if (proposedH < 1.0) {
-                    proposedH = 1.0;
-                    finalDeltaY = room.h - 1.0;
-                    e.target.y(finalDeltaY * scale);
-                  }
+                  proposedH = Math.round(proposedH * 20) / 20; // snap to 0.05m
+                  if (proposedH < 1.0) proposedH = 1.0;
+                  const finalDeltaY = room.h - proposedH;
+                  e.target.y(finalDeltaY * scale);
                   setDraggedRoomId(room.id);
                   setDragOffset({ x: 0, y: finalDeltaY, w: 0, h: -finalDeltaY });
                 }}
                 onDragEnd={(e) => {
                   e.cancelBubble = true;
-                  e.target.y(0);
-                  const newY = Math.round((room.y + dragOffset.y) * 10) / 10;
-                  const newH = Math.round((room.h + dragOffset.h) * 10) / 10;
+                  const newY = Math.round((room.y + dragOffset.y) * 20) / 20;
+                  const newH = Math.round((room.h + dragOffset.h) * 20) / 20;
                   updateRoomSizeAndPosition(room.id, room.x, newY, room.w, newH);
                   setDraggedRoomId(null);
                   setDragOffset({ x: 0, y: 0, w: 0, h: 0 });
@@ -2524,8 +3886,10 @@ Requirements:
 
               {/* Bottom Wall Edge */}
               <Line
-                points={[rx, ry + rh, rx + rw, ry + rh]}
-                stroke="transparent"
+                x={0}
+                y={isDragged ? (room.h + dragOffset.h) * scale : room.h * scale}
+                points={[0, 0, room.w * scale, 0]}
+                stroke="rgba(0,0,0,0.01)"
                 strokeWidth={8}
                 hitStrokeWidth={16}
                 draggable={true}
@@ -2538,7 +3902,7 @@ Requirements:
                 onMouseLeave={(e) => {
                   const stage = e.target.getStage();
                   if (stage) stage.container().style.cursor = "default";
-                  (e.target as any).stroke("transparent");
+                  (e.target as any).stroke("rgba(0,0,0,0.01)");
                   e.target.getLayer()?.batchDraw();
                 }}
                 onDragMove={(e) => {
@@ -2547,19 +3911,16 @@ Requirements:
                   const dragY = e.target.y();
                   const deltaH = (dragY - room.h * scale) / scale;
                   let proposedH = room.h + deltaH;
-                  let finalDeltaH = deltaH;
-                  if (proposedH < 1.0) {
-                    proposedH = 1.0;
-                    finalDeltaH = 1.0 - room.h;
-                    e.target.y((room.h + finalDeltaH) * scale);
-                  }
+                  proposedH = Math.round(proposedH * 20) / 20; // snap to 0.05m
+                  if (proposedH < 1.0) proposedH = 1.0;
+                  const finalDeltaH = proposedH - room.h;
+                  e.target.y((room.h + finalDeltaH) * scale);
                   setDraggedRoomId(room.id);
                   setDragOffset({ x: 0, y: 0, w: 0, h: finalDeltaH });
                 }}
                 onDragEnd={(e) => {
                   e.cancelBubble = true;
-                  e.target.y(room.h * scale);
-                  const newH = Math.round((room.h + dragOffset.h) * 10) / 10;
+                  const newH = Math.round((room.h + dragOffset.h) * 20) / 20;
                   updateRoomSizeAndPosition(room.id, room.x, room.y, room.w, newH);
                   setDraggedRoomId(null);
                   setDragOffset({ x: 0, y: 0, w: 0, h: 0 });
@@ -2569,40 +3930,253 @@ Requirements:
             </>
           )}
 
-          <Text
-            x={rx + 6}
-            y={ry + rh / 2 - 14}
-            width={rw - 12}
-            text={room.name}
-            fontSize={Math.max(9, Math.min(13, rw / 7))}
-            fill="#1e293b"
-            fontStyle="bold"
-            align="center"
-            wrap="word"
-          />
-          <Text
-            x={rx + 6}
-            y={ry + rh / 2 + 4}
-            width={rw - 12}
-            text={`${((rw / scale) * (rh / scale)).toFixed(1)}m²`}
-            fontSize={Math.max(8, Math.min(11, rw / 9))}
-            fill="#64748b"
-            align="center"
-          />
-          {showDimensions && rw > 60 && rh > 40 && (
-            <Text
-              x={rx + 6}
-              y={ry + rh / 2 + 18}
-              width={rw - 12}
-              text={`${(rw / scale).toFixed(1)}m × ${(rh / scale).toFixed(1)}m`}
-              fontSize={Math.max(7, Math.min(9, rw / 11))}
-              fill="#94a3b8"
-              align="center"
-            />
+          {showLabels && (
+            <>
+              <Text
+                x={rx + 6}
+                y={ry + rh / 2 - 14}
+                width={rw - 12}
+                text={room.name}
+                fontSize={Math.max(9, Math.min(13, rw / 7))}
+                fill="#1e293b"
+                fontStyle="bold"
+                align="center"
+                wrap="word"
+              />
+              <Text
+                x={rx + 6}
+                y={ry + rh / 2 + 4}
+                width={rw - 12}
+                text={`${((rw / scale) * (rh / scale)).toFixed(1)}m²`}
+                fontSize={Math.max(8, Math.min(11, rw / 9))}
+                fill="#64748b"
+                align="center"
+              />
+              {showDimensions && rw > 60 && rh > 40 && (
+                <Text
+                  x={rx + 6}
+                  y={ry + rh / 2 + 18}
+                  width={rw - 12}
+                  text={`${(rw / scale).toFixed(1)}m × ${(rh / scale).toFixed(1)}m`}
+                  fontSize={Math.max(7, Math.min(9, rw / 11))}
+                  fill="#94a3b8"
+                  align="center"
+                />
+              )}
+            </>
           )}
         </Group>
 
       );
+    });
+  };
+
+  const renderKonvaFurniture = (plan: FloorPlanData) => {
+    const scale = METER_TO_PX * zoom;
+
+    return plan.rooms.flatMap((room) => {
+      return (room.furniture || []).map((item) => {
+        const iw = item.w * scale;
+        const ih = item.h * scale;
+
+        return (
+          <Group
+            key={item.id}
+            x={pan.x + (room.x + item.x) * scale}
+            y={pan.y + (room.y + item.y) * scale}
+            rotation={item.rotation || 0}
+            draggable={true}
+            onClick={(e) => {
+              e.cancelBubble = true;
+              setSelectedRoomId(room.id);
+              setSelectedFurnitureId(item.id);
+              setSelectedFurnitureRoomId(room.id);
+              setSelectedOpeningId(null);
+            }}
+            onTap={(e) => {
+              e.cancelBubble = true;
+              setSelectedRoomId(room.id);
+              setSelectedFurnitureId(item.id);
+              setSelectedFurnitureRoomId(room.id);
+              setSelectedOpeningId(null);
+            }}
+            onDblClick={(e) => {
+              e.cancelBubble = true;
+              rotateFurnitureItem(room.id, item.id);
+            }}
+            onDblTap={(e) => {
+              e.cancelBubble = true;
+              rotateFurnitureItem(room.id, item.id);
+            }}
+            onDragMove={(e) => {
+              e.cancelBubble = true;
+              const absX = (e.target.x() - pan.x) / scale;
+              const absY = (e.target.y() - pan.y) / scale;
+              const roundedAbsX = Math.round(absX * 20) / 20; // snap to 0.05m
+              const roundedAbsY = Math.round(absY * 20) / 20;
+              e.target.x(pan.x + roundedAbsX * scale);
+              e.target.y(pan.y + roundedAbsY * scale);
+            }}
+            onDragEnd={(e) => {
+              e.cancelBubble = true;
+              
+              // Calculate absolute position on the floorplan in meters
+              const absX = (e.target.x() - pan.x) / scale;
+              const absY = (e.target.y() - pan.y) / scale;
+              const roundedAbsX = Math.round(absX * 20) / 20; // snap to 0.05m
+              const roundedAbsY = Math.round(absY * 20) / 20;
+
+              // Bounding box of the furniture accounting for rotation
+              const rot = item.rotation || 0;
+              const isRotated = (rot % 180 !== 0);
+              const currentW = isRotated ? item.h : item.w;
+              const currentH = isRotated ? item.w : item.h;
+
+              const fMinX = roundedAbsX - currentW / 2;
+              const fMaxX = roundedAbsX + currentW / 2;
+              const fMinY = roundedAbsY - currentH / 2;
+              const fMaxY = roundedAbsY + currentH / 2;
+
+               const tol = 0.05; // 5cm padding to prevent overlapping walls
+              let isCrossingWall = false;
+              let targetRoom = null;
+
+              if (floorPlan) {
+                for (const r of floorPlan.rooms) {
+                  const overlaps = (
+                    fMinX < r.x + r.w - tol &&
+                    fMaxX > r.x + tol &&
+                    fMinY < r.y + r.h - tol &&
+                    fMaxY > r.y + tol
+                  );
+                  const fullyInside = (
+                    fMinX >= r.x + tol &&
+                    fMaxX <= r.x + r.w - tol &&
+                    fMinY >= r.y + tol &&
+                    fMaxY <= r.y + r.h - tol
+                  );
+
+                  if (overlaps && !fullyInside) {
+                    isCrossingWall = true;
+                    break;
+                  }
+                  if (fullyInside) {
+                    targetRoom = r;
+                  }
+                }
+              }
+
+              if (floorPlan && !isCrossingWall) {
+                pushHistory(floorPlan);
+
+                const finalTargetRoomId = targetRoom ? targetRoom.id : room.id;
+
+                const updatedRooms = floorPlan.rooms.map((r) => {
+                  // Source room only (remove item if changing room)
+                  if (r.id === room.id && r.id !== finalTargetRoomId) {
+                    return {
+                      ...r,
+                      furniture: (r.furniture || []).filter((f) => f.id !== item.id)
+                    };
+                  }
+                  // Target room only (add item at new relative offset)
+                  if (r.id === finalTargetRoomId && r.id !== room.id) {
+                    const newF = {
+                      ...item,
+                      x: roundedAbsX - r.x,
+                      y: roundedAbsY - r.y
+                    };
+                    return {
+                      ...r,
+                      furniture: [...(r.furniture || []), newF]
+                    };
+                  }
+                  // Same room move (either inside or outside the room, but associated with the same room)
+                  if (r.id === room.id && r.id === finalTargetRoomId) {
+                    const updated = (r.furniture || []).map((f) => {
+                      if (f.id === item.id) {
+                        return {
+                          ...f,
+                          x: roundedAbsX - r.x,
+                          y: roundedAbsY - r.y
+                        };
+                      }
+                      return f;
+                    });
+                    return { ...r, furniture: updated };
+                  }
+                  return r;
+                });
+
+                const updatedPlan = { ...floorPlan, rooms: updatedRooms };
+                setFloorPlan(updatedPlan);
+                const nextPlans = [...floorPlans];
+                nextPlans[activeFloorIndex] = updatedPlan;
+                setFloorPlans(nextPlans);
+
+                setSelectedFurnitureRoomId(finalTargetRoomId);
+                if (targetRoom) {
+                  toast.success(`Đã di chuyển đồ vật vào phòng ${targetRoom.name}`);
+                } else {
+                  toast.success("Đã di chuyển đồ vật ra ngoài bản vẽ");
+                }
+              } else {
+                // Reset position visually to original position relative to Stage
+                e.target.x(pan.x + (room.x + item.x) * scale);
+                e.target.y(pan.y + (room.y + item.y) * scale);
+                e.target.getLayer()?.batchDraw();
+                toast.error("Không thể đặt ở đây! Đồ vật không được đè lên tường.");
+              }
+            }}
+          >
+            {drawFurnitureGraphics(item, scale)}
+            {selectedFurnitureId === item.id && (
+              <>
+                <Rect
+                  x={-iw / 2 - 2}
+                  y={-ih / 2 - 2}
+                  width={iw + 4}
+                  height={ih + 4}
+                  fill="transparent"
+                  stroke="#00b5cd"
+                  strokeWidth={1.5}
+                  dash={[4, 2]}
+                />
+                {/* Rotation Handle: top right of selection box */}
+                <Group
+                  x={iw / 2 + 12}
+                  y={-ih / 2 - 12}
+                  onClick={(e) => {
+                    e.cancelBubble = true;
+                    rotateFurnitureItem(room.id, item.id);
+                  }}
+                  onTap={(e) => {
+                    e.cancelBubble = true;
+                    rotateFurnitureItem(room.id, item.id);
+                  }}
+                >
+                  <Circle
+                    radius={9}
+                    fill="white"
+                    stroke="#00b5cd"
+                    strokeWidth={1.2}
+                    shadowColor="black"
+                    shadowBlur={2}
+                    shadowOpacity={0.15}
+                    shadowOffset={{ x: 0, y: 1 }}
+                  />
+                  <Text
+                    text="🔄"
+                    fontSize={10}
+                    x={-5}
+                    y={-5.5}
+                  />
+                </Group>
+              </>
+            )}
+          </Group>
+        );
+      });
     });
   };
 
@@ -2627,11 +4201,13 @@ Requirements:
             e.cancelBubble = true;
             setSelectedCameraRoomId(room.id);
             setSelectedRoomId(room.id);
+            setSelectedOpeningId(null);
           }}
           onTap={(e) => {
             e.cancelBubble = true;
             setSelectedCameraRoomId(room.id);
             setSelectedRoomId(room.id);
+            setSelectedOpeningId(null);
           }}
           onDragStart={(e) => {
             e.cancelBubble = true;
@@ -2772,6 +4348,25 @@ Requirements:
     const landW = gatherInfo.landWidth || 5;
     const landL = gatherInfo.landLength || 15;
     const scale = METER_TO_PX * zoom;
+    const shape = gatherInfo.shape || "hình chữ nhật";
+    const shapePoints = gatherInfo.shapePoints || getDefaultPointsForShape(shape, landW, landL);
+
+    if (shapePoints && shapePoints.length > 0) {
+      const points = shapePoints.flatMap(p => [
+        pan.x + p.x * scale,
+        pan.y + p.y * scale
+      ]);
+      return (
+        <Line
+          points={points}
+          closed={true}
+          stroke="#94a3b8"
+          strokeWidth={1.5}
+          dash={[6, 4]}
+        />
+      );
+    }
+
     return (
       <Rect
         x={pan.x}
@@ -2804,6 +4399,10 @@ Requirements:
   // ── Selected room info ─────────────────────────────────────────────────
   const selectedRoom = selectedRoomId
     ? floorPlan?.rooms.find((r) => r.id === selectedRoomId)
+    : null;
+
+  const selectedOpening = selectedOpeningId
+    ? floorPlan?.openings?.find((o) => o.id === selectedOpeningId)
     : null;
 
   // ════════════════════════════════════════════════════════════════════════
@@ -2892,6 +4491,19 @@ Requirements:
               }`}
             >
               <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none"><path d="M21 6H3"/><path d="M21 18H3"/><path d="M3 6v12"/><path d="M21 6v12"/></svg>
+            </button>
+          )}
+
+          {/* Labels toggle */}
+          {floorPlan && (
+            <button
+              onClick={() => setShowLabels(l => !l)}
+              title={showLabels ? "Ẩn tên phòng và thông số" : "Hiện tên phòng và thông số"}
+              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
+                showLabels ? "bg-[#00b5cd]/10 text-[#00b5cd] border border-[#00b5cd]/30" : "bg-slate-100 text-slate-400 hover:text-slate-700"
+              }`}
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
             </button>
           )}
 
@@ -3008,7 +4620,7 @@ Requirements:
                   <div
                     className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed ${
                       msg.role === "user"
-                        ? "bg-[#d4a853] text-white font-semibold rounded-br-md"
+                        ? "bg-[#00b5cd] text-white font-semibold rounded-br-md"
                         : "bg-white text-slate-700 rounded-bl-md shadow-sm border border-slate-100"
                     }`}
                     style={{ whiteSpace: "pre-wrap" }}
@@ -3034,7 +4646,7 @@ Requirements:
                 {[0, 1, 2].map((i) => (
                   <motion.div
                     key={i}
-                    className="w-1.5 h-1.5 bg-[#d4a853] rounded-full"
+                    className="w-1.5 h-1.5 bg-[#00b5cd] rounded-full"
                     animate={{ y: [0, -4, 0] }}
                     transition={{ duration: 0.6, delay: i * 0.15, repeat: Infinity }}
                   />
@@ -3157,6 +4769,7 @@ Requirements:
                 <>
                   {renderLandBoundary()}
                   {renderKonvaFloorPlan(floorPlan)}
+                  {renderKonvaFurniture(floorPlan)}
                   {renderOpenings(floorPlan)}
                 </>
               )}
@@ -3219,32 +4832,320 @@ Requirements:
           )}
 
           {/* Zoom controls */}
-          <div className="absolute bottom-6 right-6 flex flex-col gap-1.5">
+          <div className="absolute bottom-6 right-6 flex flex-col gap-1.5 items-center z-10">
+            <span className="text-[10px] text-slate-500 font-mono bg-white/90 border border-slate-200 shadow-sm rounded px-1.5 py-0.5 select-none mb-1">
+              {Math.round(zoom * 100)}%
+            </span>
             <button
               onClick={() => setZoom((z) => Math.min(4, z * 1.2))}
-              className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors shadow-sm"
+              className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors shadow-sm cursor-pointer"
             >
               <ZoomIn className="w-4 h-4" />
             </button>
             <button
               onClick={() => setZoom((z) => Math.max(0.2, z / 1.2))}
-              className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors shadow-sm"
+              className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors shadow-sm cursor-pointer"
             >
               <ZoomOut className="w-4 h-4" />
             </button>
             <button
               onClick={() => { setZoom(1); setPan({ x: 60, y: 60 }); }}
-              className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors shadow-sm"
+              className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors shadow-sm cursor-pointer"
               title="Fit to screen"
             >
               <Maximize2 className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Zoom label */}
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-slate-400 text-xs font-mono">
-            {Math.round(zoom * 100)}%
-          </div>
+          {/* Bottom Floating Toolbar (Maket.ai style) */}
+          {floorPlan && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center">
+              
+              {/* Furniture Popover */}
+              {activeBottomPopup === "furniture" && (
+                <div className="mb-3 w-[420px] bg-white border border-slate-200 shadow-2xl rounded-2xl p-3 flex flex-col gap-2.5 max-h-[380px] animate-in fade-in slide-in-from-bottom-2 duration-150">
+                  {/* Search Bar */}
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-3 flex items-center text-slate-400">
+                      <Search className="w-3.5 h-3.5" />
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="Tìm kiếm nội thất..."
+                      value={furnitureSearch}
+                      onChange={(e) => setFurnitureSearch(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-8 py-1.5 text-xs text-slate-700 placeholder-slate-400 outline-none focus:border-[#00b5cd]/50 transition-colors"
+                    />
+                    {furnitureSearch && (
+                      <button
+                        onClick={() => setFurnitureSearch("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Search Mode vs Two-Column Mode */}
+                  {furnitureSearch ? (
+                    <div className="overflow-y-auto pr-1 flex-1 space-y-1 max-h-[280px]">
+                      {(() => {
+                        const query = furnitureSearch.toLowerCase();
+                        const matchedItems: { type: string; name: string; catIdx: number; itemIdx: number; subItems?: any[]; w?: number; h?: number; style?: string }[] = [];
+                        FURNITURE_CATEGORIES.forEach((cat, catIdx) => {
+                          cat.items.forEach((item, itemIdx) => {
+                            if (item.name.toLowerCase().includes(query)) {
+                              matchedItems.push({ ...item, catIdx, itemIdx });
+                            }
+                          });
+                        });
+
+                        if (matchedItems.length === 0) {
+                          return <div className="text-center py-4 text-xs text-slate-400">Không tìm thấy kết quả</div>;
+                        }
+
+                        return matchedItems.map((item) => (
+                          <button
+                            key={item.type}
+                            onClick={() => {
+                              if (item.subItems) {
+                                setSelectedCategoryIndex(item.catIdx);
+                                setSelectedItemIndex(item.itemIdx);
+                                setFurnitureSearch("");
+                              } else {
+                                handleAddFurniture(item.type, item.w, item.h, item.style);
+                                setActiveBottomPopup(null);
+                                setFurnitureSearch("");
+                              }
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all flex items-center justify-between cursor-pointer"
+                          >
+                            <span>{item.name}</span>
+                            {item.subItems ? (
+                              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                            ) : (
+                              <Plus className="w-3.5 h-3.5 text-[#00b5cd]" />
+                            )}
+                          </button>
+                        ));
+                      })()}
+                    </div>
+                  ) : (
+                    <div className="flex flex-1 min-h-0 divide-x divide-slate-100 overflow-hidden">
+                      {/* Left Sidebar: Categories list */}
+                      <div className="w-[155px] pr-1.5 overflow-y-auto space-y-0.5 max-h-[280px]">
+                        {FURNITURE_CATEGORIES.map((cat, idx) => {
+                          const isSelected = selectedCategoryIndex === idx;
+                          // Category icon helper
+                          const getCategoryIcon = (name: string) => {
+                            const n = name.toLowerCase();
+                            if (n.includes("tắm")) return <Bath className="w-3.5 h-3.5" />;
+                            if (n.includes("ngủ")) return <Bed className="w-3.5 h-3.5" />;
+                            if (n.includes("vào") || n.includes("giặt")) return <WashingMachine className="w-3.5 h-3.5" />;
+                            if (n.includes("xe") || n.includes("kho")) return <Car className="w-3.5 h-3.5" />;
+                            if (n.includes("gym")) return <Dumbbell className="w-3.5 h-3.5" />;
+                            if (n.includes("bếp") || n.includes("ăn")) return <Utensils className="w-3.5 h-3.5" />;
+                            if (n.includes("khách")) return <Sofa className="w-3.5 h-3.5" />;
+                            if (n.includes("việc")) return <Briefcase className="w-3.5 h-3.5" />;
+                            if (n.includes("trời")) return <Trees className="w-3.5 h-3.5" />;
+                            if (n.includes("giải")) return <Gamepad className="w-3.5 h-3.5" />;
+                            return <Plus className="w-3.5 h-3.5" />;
+                          };
+
+                          return (
+                            <button
+                              key={cat.name}
+                              onMouseEnter={() => {
+                                setSelectedCategoryIndex(idx);
+                                setSelectedItemIndex(null);
+                              }}
+                              onClick={() => {
+                                setSelectedCategoryIndex(idx);
+                                setSelectedItemIndex(null);
+                              }}
+                              className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                                isSelected
+                                  ? "bg-slate-100 text-[#00b5cd]"
+                                  : "text-slate-600 hover:bg-slate-50/80 hover:text-slate-800"
+                              }`}
+                            >
+                              {getCategoryIcon(cat.name)}
+                              <span className="truncate">{cat.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Right Panel: Items in Category */}
+                      <div className="flex-1 pl-2.5 overflow-y-auto max-h-[280px]">
+                        {selectedCategoryIndex !== null && (
+                          selectedItemIndex === null ? (
+                            <div className="space-y-0.5">
+                              {FURNITURE_CATEGORIES[selectedCategoryIndex].items.map((item, itemIdx) => (
+                                <button
+                                  key={itemIdx}
+                                  onClick={() => {
+                                    if (item.subItems) {
+                                      setSelectedItemIndex(itemIdx);
+                                    } else {
+                                      handleAddFurniture(item.type, (item as any).w, (item as any).h, (item as any).style);
+                                      setActiveBottomPopup(null);
+                                    }
+                                  }}
+                                  className="w-full text-left px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-lg border border-transparent hover:border-slate-100 transition-all flex items-center justify-between cursor-pointer"
+                                >
+                                  <span className="truncate pr-1">{item.name}</span>
+                                  {item.subItems ? (
+                                    <ChevronRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                                  ) : (
+                                    <Plus className="w-3.5 h-3.5 text-[#00b5cd] flex-shrink-0" />
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            // Sub-items List (Variations)
+                            <div className="space-y-0.5">
+                              <button
+                                onClick={() => setSelectedItemIndex(null)}
+                                className="w-full flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-[#00b5cd] hover:bg-slate-50 rounded-md transition-colors cursor-pointer mb-1.5"
+                              >
+                                <ChevronLeft className="w-3 h-3" />
+                                QUAY LẠI
+                              </button>
+                              {FURNITURE_CATEGORIES[selectedCategoryIndex].items[selectedItemIndex].subItems?.map((sub, subIdx) => (
+                                <button
+                                  key={subIdx}
+                                  onClick={() => {
+                                    handleAddFurniture(sub.type, sub.w, sub.h, sub.style);
+                                    setActiveBottomPopup(null);
+                                  }}
+                                  className="w-full text-left px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-lg border border-transparent hover:border-slate-100 transition-all flex items-center justify-between cursor-pointer"
+                                >
+                                  <span className="truncate pr-1">{sub.name}</span>
+                                  <Plus className="w-3.5 h-3.5 text-[#00b5cd] flex-shrink-0" />
+                                </button>
+                              ))}
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Structure Popover */}
+              {activeBottomPopup === "structure" && (
+                <div className="mb-3 w-48 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                  <button
+                    onClick={() => {
+                      handleAddDoor();
+                      setActiveBottomPopup(null);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all flex items-center justify-between cursor-pointer"
+                  >
+                    <span>Cửa đi</span>
+                    <Plus className="w-3.5 h-3.5 text-[#00b5cd]" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleAddWindow();
+                      setActiveBottomPopup(null);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all flex items-center justify-between cursor-pointer"
+                  >
+                    <span>Cửa sổ</span>
+                    <Plus className="w-3.5 h-3.5 text-[#00b5cd]" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleAddFurniture("stairs");
+                      setActiveBottomPopup(null);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all flex items-center justify-between cursor-pointer"
+                  >
+                    <span>Cầu thang</span>
+                    <Plus className="w-3.5 h-3.5 text-[#00b5cd]" />
+                  </button>
+                </div>
+              )}
+
+              {/* Toolbar bar */}
+              <div className="flex items-center bg-white border border-slate-200 shadow-xl rounded-2xl p-1 gap-1.5">
+                <button
+                  onClick={() => {
+                    setActiveBottomPopup(p => {
+                      const next = p === "furniture" ? null : "furniture";
+                      if (next === "furniture") {
+                        setSelectedCategoryIndex(0);
+                        setSelectedItemIndex(null);
+                      }
+                      return next;
+                    });
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                    activeBottomPopup === "furniture"
+                      ? "bg-[#00b5cd]/10 text-[#00b5cd] border border-[#00b5cd]/30"
+                      : "text-slate-600 hover:text-slate-800 hover:bg-slate-50 border border-transparent"
+                  }`}
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M3 13h18M3 7h18M3 19h18M7 3v4M17 3v4"/></svg>
+                  <span>Nội thất</span>
+                  <ChevronDown className={`w-3 h-3 transition-transform ${activeBottomPopup === "furniture" ? "rotate-180" : ""}`} />
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveBottomPopup(p => p === "structure" ? null : "structure");
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                    activeBottomPopup === "structure"
+                      ? "bg-[#00b5cd]/10 text-[#00b5cd] border border-[#00b5cd]/30"
+                      : "text-slate-600 hover:text-slate-800 hover:bg-slate-50 border border-transparent"
+                  }`}
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+                  <span>Kết cấu</span>
+                  <ChevronDown className={`w-3 h-3 transition-transform ${activeBottomPopup === "structure" ? "rotate-180" : ""}`} />
+                </button>
+
+                <div className="w-px h-5 bg-slate-200" />
+
+                <button
+                  onClick={() => {
+                    setActiveTool("select");
+                    setActiveBottomPopup(null);
+                  }}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                    activeTool === "select"
+                      ? "bg-slate-900 text-white shadow-sm border border-slate-900"
+                      : "text-slate-600 hover:text-slate-800 hover:bg-slate-50 border border-transparent"
+                  }`}
+                >
+                  <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 3 10.07 19.97 12.58 12.58 19.97 10.07 3 3"/><line x1="13" y1="13" x2="21" y2="21"/></svg>
+                  <span>Chọn</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveTool("draw_wall");
+                    setActiveBottomPopup(null);
+                    setShowShapeModal(true);
+                  }}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                    activeTool === "draw_wall"
+                      ? "bg-slate-900 text-white shadow-sm border border-slate-900"
+                      : "text-slate-600 hover:text-slate-800 hover:bg-slate-50 border border-transparent"
+                  }`}
+                >
+                  <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                  <span>Vẽ tường</span>
+                </button>
+              </div>
+
+            </div>
+          )}
         </div>
 
         {/* ── Auto-initialize furniture for existing floor plans ─────────────────── */}
@@ -3323,7 +5224,7 @@ Requirements:
 
       {/* ── RIGHT SIDEBAR (LAYOUT / VISUALIZE CONFIG) ──────────────────── */}
       {floorPlan && (
-        <div className="w-[320px] flex-shrink-0 flex flex-col bg-slate-50 border-l border-slate-200 pt-12 z-20 text-slate-800 font-sans overflow-y-auto">
+        <div className="w-[380px] flex-shrink-0 flex flex-col bg-slate-50 border-l border-slate-200 pt-12 z-20 text-slate-800 font-sans overflow-y-auto">
           {activeTab === "visualize" ? (() => {
             const selectedCam = selectedCameraRoomId ? cameras[selectedCameraRoomId] : null;
             const targetRoomName = selectedCameraRoomId && floorPlan
@@ -3333,7 +5234,7 @@ Requirements:
             return (
               <div className="p-6 space-y-6">
                 {/* 3D Camera Preview Box */}
-                <div className="relative w-full aspect-video rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex flex-col items-center justify-center text-slate-400 group shadow-inner">
+                <div className="relative w-full aspect-square rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex flex-col items-center justify-center text-slate-400 group shadow-inner">
                   {sidebarTab === "scene" ? (
                     selectedCameraRoomId ? (
                       <FloorPlan3DViewer
@@ -3373,6 +5274,12 @@ Requirements:
                       <div className="flex flex-col items-center text-center p-4">
                         <div className="w-8 h-8 border-2 border-[#00b5cd] border-t-transparent rounded-full animate-spin mb-2" />
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">AI Rendering...</span>
+                        {renderProgress > 0 && (
+                          <span className="text-xs font-bold text-[#00b5cd] mt-1">{renderProgress}%</span>
+                        )}
+                        {renderStatusMessage && (
+                          <span className="text-[9px] text-slate-400 mt-1 max-w-[180px] truncate">{renderStatusMessage}</span>
+                        )}
                       </div>
                     ) : renderResult ? (
                       <img src={renderResult} alt="Render Preview" className="w-full h-full object-cover" />
@@ -3770,6 +5677,114 @@ Requirements:
                     </div>
                   </div>
                 );
+              })() : selectedOpening ? (() => {
+                const open = selectedOpening;
+                return (
+                  <div className="space-y-6">
+                    {/* Header */}
+                    <div className="border-b border-slate-200 pb-4 flex items-center justify-between">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              setSelectedOpeningId(null);
+                            }}
+                            className="text-slate-500 hover:text-slate-800 cursor-pointer mr-1 transition-colors"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          {open.type === "door" ? "Cửa đi" : "Cửa sổ"}
+                        </h3>
+                        <span className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">
+                          Bộ chỉnh sửa cửa
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Type toggle */}
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Loại cửa</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => updateOpeningProperty(open.id, { type: "door" })}
+                          className={`px-3 py-2 text-center rounded-xl border text-xs font-semibold cursor-pointer transition-all ${
+                            open.type === "door"
+                              ? "border-[#00b5cd] bg-[#00b5cd]/5 text-[#00b5cd]"
+                              : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+                          }`}
+                        >
+                          Cửa đi
+                        </button>
+                        <button
+                          onClick={() => updateOpeningProperty(open.id, { type: "window" })}
+                          className={`px-3 py-2 text-center rounded-xl border text-xs font-semibold cursor-pointer transition-all ${
+                            open.type === "window"
+                              ? "border-[#00b5cd] bg-[#00b5cd]/5 text-[#00b5cd]"
+                              : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+                          }`}
+                        >
+                          Cửa sổ
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Dimensions */}
+                    <div className="space-y-4">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Kích thước (m)</span>
+                      
+                      {/* Width Slider */}
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-600 font-medium">Chiều rộng (ngang)</span>
+                          <span className="font-semibold text-slate-800">{open.w.toFixed(2)} m</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.4"
+                          max="3.0"
+                          step="0.05"
+                          value={open.w}
+                          onChange={(e) => {
+                            const w = parseFloat(e.target.value);
+                            updateOpeningProperty(open.id, { w });
+                          }}
+                          className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#00b5cd]"
+                        />
+                      </div>
+
+                      {/* Rotation Slider */}
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-600 font-medium">Góc xoay</span>
+                          <span className="font-semibold text-slate-800">{(open.rotation || 0)}°</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="315"
+                          step="45"
+                          value={open.rotation || 0}
+                          onChange={(e) => {
+                            const rotation = parseInt(e.target.value);
+                            updateOpeningProperty(open.id, { rotation });
+                          }}
+                          className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#00b5cd]"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Remove opening button */}
+                    <div className="pt-4 border-t border-slate-200">
+                      <button
+                        onClick={() => deleteOpening(open.id)}
+                        className="w-full py-3 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-2xl transition-all cursor-pointer text-xs text-center flex items-center justify-center gap-2"
+                      >
+                        <Trash2 className="w-4 h-4 text-slate-400" />
+                        Xóa cửa / cửa sổ
+                      </button>
+                    </div>
+                  </div>
+                );
               })() : selectedRoom ? (
                 <div className="space-y-6">
                   {/* Header */}
@@ -3972,6 +5987,7 @@ Requirements:
                           setSelectedRoomId(null);
                           setSelectedFurnitureId(null);
                           setSelectedFurnitureRoomId(null);
+                          setSelectedOpeningId(null);
                           setActiveFinishTarget(null);
                           toast.success("Đã xóa phòng");
                         }
@@ -4140,6 +6156,27 @@ Requirements:
                       <span className="text-[#00b5cd] font-medium">{finishes.windows.name}</span>
                     )}
                   </button>
+
+                  {/* Add Doors / Windows manually */}
+                  <div className="space-y-3 pt-4 border-t border-slate-200">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Thêm Cửa / Cửa Sổ</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={handleAddDoor}
+                        className="flex items-center justify-center gap-1.5 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl transition-all cursor-pointer text-xs"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-[#00b5cd]" />
+                        Thêm Cửa Đi
+                      </button>
+                      <button
+                        onClick={handleAddWindow}
+                        className="flex items-center justify-center gap-1.5 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl transition-all cursor-pointer text-xs"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-[#00b5cd]" />
+                        Thêm Cửa Sổ
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </>
             )}
@@ -4383,8 +6420,8 @@ Requirements:
         onClose={() => setShowShapeModal(false)}
         landWidth={gatherInfo.landWidth || 5}
         landLength={gatherInfo.landLength || 15}
-        onSelectShape={(shapeName, _pts, _placements, width, length) =>
-          handleShapeSelected(shapeName, width, length)
+        onSelectShape={(shapeName, pts, _placements, width, length) =>
+          handleShapeSelected(shapeName, pts, width, length)
         }
       />
       {/* ── CHOOSE ROOMS MODAL ────────────────────────────────────── */}

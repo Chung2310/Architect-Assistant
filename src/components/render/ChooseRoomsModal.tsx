@@ -14,6 +14,13 @@ import {
   Sun,
   Trees,
   DoorOpen,
+  Dumbbell,
+  Gamepad2,
+  Shirt,
+  Package,
+  WashingMachine,
+  Settings,
+  Home
 } from "lucide-react";
 
 interface RoomSelection {
@@ -36,14 +43,27 @@ const ROOM_META: Record<
 > = {
   "Phòng khách": { label: "Phòng khách", icon: Sofa },
   "Phòng bếp": { label: "Phòng bếp", icon: Utensils },
-  "Phòng tắm / WC": { label: "Phòng tắm / WC", icon: Bath },
+  "Phòng tắm lớn": { label: "Phòng tắm lớn", icon: Bath },
   "Phòng ngủ": { label: "Phòng ngủ", icon: Bed },
   "Phòng ăn": { label: "Phòng ăn", icon: ChefHat },
   "Nhà xe / Gara": { label: "Nhà xe / Gara", icon: Car },
   "Phòng làm việc": { label: "Phòng làm việc", icon: Briefcase },
-  "Ban công / Sân thượng": { label: "Ban công / Sân thượng", icon: Sun },
-  "Sân vườn": { label: "Sân vườn", icon: Trees },
+  "Ban công": { label: "Ban công", icon: Sun },
+  "Sân thượng": { label: "Sân thượng", icon: Trees },
   "Hành lang / Lối đi": { label: "Hành lang / Lối đi", icon: DoorOpen },
+  "Phòng vệ sinh phụ": { label: "Phòng vệ sinh phụ", icon: Bath },
+  "Phòng sinh hoạt chung": { label: "Phòng sinh hoạt chung", icon: Sofa },
+  "Phòng chơi game": { label: "Phòng chơi game", icon: Gamepad2 },
+  "Phòng giải trí": { label: "Phòng giải trí", icon: Gamepad2 },
+  "Phòng tập gym": { label: "Phòng tập gym", icon: Dumbbell },
+  "Phòng thay đồ (Walk-in)": { label: "Phòng thay đồ (Walk-in)", icon: Shirt },
+  "Phòng kho bếp (Pantry)": { label: "Phòng kho bếp (Pantry)", icon: Package },
+  "Phòng giặt ủi": { label: "Phòng giặt ủi", icon: WashingMachine },
+  "Phòng kỹ thuật": { label: "Phòng kỹ thuật", icon: Settings },
+  "Lối vào / Sảnh đón (Entry)": { label: "Lối vào / Sảnh đón (Entry)", icon: Home },
+  "Sảnh phụ (Mudroom)": { label: "Sảnh phụ (Mudroom)", icon: Home },
+  "Hiên trước (Porch)": { label: "Hiên trước (Porch)", icon: Home },
+  "Sân vườn": { label: "Sân vườn", icon: Trees },
 };
 
 const ALL_ROOM_NAMES = Object.keys(ROOM_META);
@@ -72,12 +92,12 @@ export const ChooseRoomsModal: React.FC<ChooseRoomsModalProps> = ({
             defaults[f] = [
               { name: "Phòng bếp", count: 1 },
               { name: "Phòng khách", count: 1 },
-              { name: "Phòng tắm / WC", count: 1 },
+              { name: "Phòng tắm lớn", count: 1 },
             ];
           } else {
             defaults[f] = [
               { name: "Phòng ngủ", count: 2 },
-              { name: "Phòng tắm / WC", count: 1 },
+              { name: "Phòng tắm lớn", count: 1 },
             ];
           }
         }
@@ -155,12 +175,12 @@ export const ChooseRoomsModal: React.FC<ChooseRoomsModalProps> = ({
         defaults[f] = [
           { name: "Phòng bếp", count: 1 },
           { name: "Phòng khách", count: 1 },
-          { name: "Phòng tắm / WC", count: 1 },
+          { name: "Phòng tắm lớn", count: 1 },
         ];
       } else {
         defaults[f] = [
           { name: "Phòng ngủ", count: 2 },
-          { name: "Phòng tắm / WC", count: 1 },
+          { name: "Phòng tắm lớn", count: 1 },
         ];
       }
     }

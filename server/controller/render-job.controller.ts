@@ -209,6 +209,31 @@ export const renderJobController = {
     }
   },
 
+  async getJobById(req: AuthRequest, res: Response) {
+    const paramValidation = idParamSchema.validate(req.params);
+    if (paramValidation.error) {
+      res.status(400).json({ success: false, message: paramValidation.error.details[0].message });
+      return;
+    }
+    try {
+      const jobId = req.params.id;
+      const job = await renderJobService.getById(jobId);
+      if (!job) {
+        res.status(404).json({ success: false, message: "Không tìm thấy render job." });
+        return;
+      }
+      if (job.userId.toString() !== req.user!.userId) {
+        res.status(403).json({ success: false, message: "Bạn không có quyền truy cập render job này." });
+        return;
+      }
+      res.json({ success: true, data: job });
+    } catch (error) {
+      logger.error(`[renderJobController.getJobById] Error: ${error}`);
+      const errMsg = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
+      res.status(500).json({ success: false, message: errMsg });
+    }
+  },
+
   async getAllJobs(req: AuthRequest, res: Response) {
     const { error } = paginationQuerySchema.validate(req.query);
     if (error) {
@@ -252,15 +277,19 @@ export const renderJobController = {
       const numImages = req.body.numImages || settings.numImages || 1;
 
       const GEMINI_NATIVE_MODELS = [
-        "nano-banana-2",
-        "igen-image-flash",
         "gemini-3.1-flash-image",
         "gemini-3-pro-image"
       ];
       const isGeminiNativeModel = GEMINI_NATIVE_MODELS.includes(model);
 
       let piapiModel = model || "piapi-flux";
-      if (!isGeminiNativeModel && !piapiModel.startsWith("piapi-") && piapiModel !== "nano-banana-pro") {
+      if (
+        !isGeminiNativeModel &&
+        !piapiModel.startsWith("piapi-") &&
+        piapiModel !== "nano-banana-pro" &&
+        piapiModel !== "nano-banana-2" &&
+        piapiModel !== "igen-image-flash"
+      ) {
         piapiModel = "piapi-flux";
       }
 
@@ -337,6 +366,9 @@ export const renderJobController = {
         try {
           logger.info(`[renderJobController] Creating ${numImages} PiAPI tasks for model: ${piapiModel}`);
           const taskIds: string[] = [];
+          const generatedUrls: string[] = [];
+          let hasOutputUrl = false;
+
           for (let i = 0; i < numImages; i++) {
             const taskResult = await piapiService.createImageTask(finalPrompt, piapiModel, {
               aspectRatio: aspect,
@@ -345,10 +377,20 @@ export const renderJobController = {
               jobType: req.body.type
             });
             taskIds.push(taskResult.taskId);
+            if (taskResult.outputUrl) {
+              generatedUrls.push(taskResult.outputUrl);
+              hasOutputUrl = true;
+            }
           }
           piapiTaskId = taskIds.join(",");
-          status = "processing";
-          progress = 10;
+          if (hasOutputUrl) {
+            outputImageUrls = generatedUrls;
+            status = "completed";
+            progress = 100;
+          } else {
+            status = "processing";
+            progress = 10;
+          }
         } catch (apiErr) {
           logger.error(`[renderJobController] Failed to create PiAPI tasks: ${apiErr}`);
           res.status(500).json({ success: false, message: "Không thể khởi tạo tác vụ trên PiAPI: " + (apiErr as Error).message });

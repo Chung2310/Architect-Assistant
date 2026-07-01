@@ -525,22 +525,48 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
           const isBath = ftype.includes("bath") || ftype.includes("wc") || ftype.includes("toilet") || ftype.includes("lavabo") || ftype.includes("mirror") || ftype.includes("tub");
           const isCar = ftype.includes("car") || ftype.includes("vehicle") || ftype.includes("garage");
 
+          const getFurnitureColor = () => {
+            if (f.color) return f.color;
+            if (f.material) {
+              const mats: Record<string, string> = {
+                metal_zinc: "#373a3c",
+                metal_steel: "#b0b5b9",
+                metal_gold: "#d4af37",
+                metal_bronze: "#a87c43",
+                wood_oak: "#e3c29b",
+                wood_walnut: "#543e2b",
+                wood_white: "#f8fafc",
+                fabric_grey: "#94a3b8",
+                fabric_green: "#1b4d3e",
+                fabric_beige: "#f5f5dc",
+                stone_marble: "#e2e8f0",
+                stone_granite: "#0f172a"
+              };
+              if (mats[f.material]) return mats[f.material];
+            }
+            return null;
+          };
+          const resolvedColor = getFurnitureColor();
+          const isMetal = f.material && f.material.startsWith("metal");
+          const resolvedMetalness = isMetal ? 0.85 : 0.0;
+          const resolvedRoughness = isMetal ? 0.15 : 0.8;
+
           let modelUrl = "";
           let modelRotationOffset = 0;
           let targetW = 1.0;
           let targetL = 1.0;
 
-          if (isSofa && ftype.includes("sofa")) {
-            // High-quality Sheen Chair model for sofa
+          if (isSofa && ftype.includes("sofa") && (f.w || 1.6) < 1.0) {
+            // High-quality Sheen Chair model for small armchair
             modelUrl = "https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Assets@main/Models/SheenChair/glTF-Binary/SheenChair.glb";
             modelRotationOffset = Math.PI; // rotate 180 degrees
-            targetW = 1.6;
-            targetL = 0.8;
+            targetW = f.w || 1.0;
+            targetL = f.h || 0.8;
           } else if (isCar) {
             // High-quality Toy Car model for car
             modelUrl = "https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Assets@main/Models/ToyCar/glTF-Binary/ToyCar.glb";
-            targetW = 1.8;
-            targetL = 3.8;
+            targetW = f.w || 1.8;
+            targetL = f.h || 3.8;
           }
 
           if (modelUrl) {
@@ -549,7 +575,12 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
             if (isSofa) {
               // Custom sofa fallback (with backrest and armrests)
               const sofaGroup = new THREE.Group();
-              const sofaBaseMat = new THREE.MeshStandardMaterial({ color: "#475569", roughness: 0.8 });
+              const sofaColor = resolvedColor || "#475569";
+              const sofaBaseMat = new THREE.MeshStandardMaterial({
+                color: sofaColor,
+                roughness: resolvedRoughness,
+                metalness: resolvedMetalness
+              });
               
               const base = new THREE.Mesh(new THREE.BoxGeometry(f.w || 1.6, 0.3, f.h || 0.8), sofaBaseMat);
               base.position.set(0, 0.15, 0);
@@ -636,6 +667,15 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
                 }
 
                 const model = gltf.scene;
+
+                // Hide fabric pedestal / cloth drape first so it's not visible
+                model.traverse((child) => {
+                  if (child.name.toLowerCase().includes("fabric") || (child as any).material?.name === "Fabric") {
+                    child.visible = false;
+                  }
+                });
+
+                // Compute bounding box after hiding the pedestal so the car sits on the ground
                 const box = new THREE.Box3().setFromObject(model);
                 const size = box.getSize(new THREE.Vector3());
                 const center = box.getCenter(new THREE.Vector3());
@@ -652,7 +692,17 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
                     if (child.material) {
                       const materials = Array.isArray(child.material) ? child.material : [child.material];
                       materials.forEach((mat) => {
-                        if ("envMap" in mat) {
+                        if (mat.name === "ToyCar") {
+                          // Change car body to shiny black
+                          const shinyBlackMat = new THREE.MeshStandardMaterial({
+                            color: "#0a0a0a", // glossy black
+                            roughness: 0.1,
+                            metalness: 0.9,
+                            envMap: cubeTexture || undefined,
+                            envMapIntensity: 2.0
+                          });
+                          child.material = shinyBlackMat;
+                        } else if ("envMap" in mat) {
                           (mat as any).envMap = cubeTexture;
                           (mat as any).envMapIntensity = isCar ? 1.5 : 1.0;
                           (mat as any).needsUpdate = true;
@@ -678,11 +728,46 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
             );
           } else {
             // Detailed procedural fallback for ALL other furniture items
-            if (isBed) {
+            if (isSofa) {
+              // Custom sofa fallback (with backrest and armrests)
+              const sofaGroup = new THREE.Group();
+              const sofaColor = resolvedColor || "#475569";
+              const sofaBaseMat = new THREE.MeshStandardMaterial({
+                color: sofaColor,
+                roughness: resolvedRoughness,
+                metalness: resolvedMetalness
+              });
+              
+              const base = new THREE.Mesh(new THREE.BoxGeometry(f.w || 1.6, 0.3, f.h || 0.8), sofaBaseMat);
+              base.position.set(0, 0.15, 0);
+              base.castShadow = true;
+              sofaGroup.add(base);
+
+              const back = new THREE.Mesh(new THREE.BoxGeometry(f.w || 1.6, 0.6, 0.15), sofaBaseMat);
+              back.position.set(0, 0.45, -(f.h || 0.8) / 2 + 0.075);
+              back.castShadow = true;
+              sofaGroup.add(back);
+
+              const armL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.45, f.h || 0.8), sofaBaseMat);
+              armL.position.set(-(f.w || 1.6) / 2 + 0.075, 0.3, 0);
+              armL.castShadow = true;
+              sofaGroup.add(armL);
+
+              const armR = armL.clone();
+              armR.position.x = (f.w || 1.6) / 2 - 0.075;
+              sofaGroup.add(armR);
+
+              furnGroup.add(sofaGroup);
+
+            } else if (isBed) {
               if (ftype.includes("wardrobe")) {
                 // Tall wardrobe cabinet
                 const cabGeo = new THREE.BoxGeometry(f.w || 1.2, 2.2, f.h || 0.6);
-                const cabMat = new THREE.MeshStandardMaterial({ color: "#a16207", roughness: 0.7 }); // oak look
+                const cabMat = new THREE.MeshStandardMaterial({
+                  color: resolvedColor || "#a16207",
+                  roughness: resolvedRoughness,
+                  metalness: resolvedMetalness
+                }); // oak look
                 const wardrobe = new THREE.Mesh(cabGeo, cabMat);
                 wardrobe.position.set(0, 1.1, 0);
                 wardrobe.castShadow = true;
@@ -707,7 +792,11 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
               } else if (ftype.includes("nightstand")) {
                 // Nightstand drawer
                 const standGeo = new THREE.BoxGeometry(f.w || 0.45, 0.5, f.h || 0.45);
-                const standMat = new THREE.MeshStandardMaterial({ color: "#78350f", roughness: 0.8 });
+                const standMat = new THREE.MeshStandardMaterial({
+                  color: resolvedColor || "#78350f",
+                  roughness: resolvedRoughness,
+                  metalness: resolvedMetalness
+                });
                 const nightstand = new THREE.Mesh(standGeo, standMat);
                 nightstand.position.set(0, 0.25, 0);
                 nightstand.castShadow = true;
@@ -722,7 +811,11 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
               } else {
                 // Beautiful bed with frame, mattress, pillow, and blanket
                 const frameGeo = new THREE.BoxGeometry(f.w || 1.6, 0.25, f.h || 2.0);
-                const woodMat = new THREE.MeshStandardMaterial({ color: "#78350f", roughness: 0.7 });
+                const woodMat = new THREE.MeshStandardMaterial({
+                  color: resolvedColor || "#78350f",
+                  roughness: resolvedRoughness,
+                  metalness: resolvedMetalness
+                });
                 const frame = new THREE.Mesh(frameGeo, woodMat);
                 frame.position.set(0, 0.125, 0);
                 frame.castShadow = true;
@@ -756,7 +849,11 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
 
                 // Blanket
                 const blankGeo = new THREE.BoxGeometry((f.w || 1.6) - 0.08, 0.24, (f.h || 2.0) * 0.4);
-                const blankMat = new THREE.MeshStandardMaterial({ color: "#b45309", roughness: 0.8 }); // amber blanket
+                const blankMat = new THREE.MeshStandardMaterial({
+                  color: resolvedColor || "#b45309",
+                  roughness: resolvedRoughness,
+                  metalness: resolvedMetalness
+                }); // blanket matches resolvedColor
                 const blanket = new THREE.Mesh(blankGeo, blankMat);
                 blanket.position.set(0, 0.31, (f.h || 2.0) * 0.25);
                 furnGroup.add(blanket);
@@ -766,7 +863,11 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
               if (ftype.includes("fridge")) {
                 // Refrigerator
                 const refGeo = new THREE.BoxGeometry(f.w || 0.8, 1.8, f.h || 0.8);
-                const steelMat = new THREE.MeshStandardMaterial({ color: "#94a3b8", metalness: 0.9, roughness: 0.15 });
+                const steelMat = new THREE.MeshStandardMaterial({
+                  color: resolvedColor || "#94a3b8",
+                  metalness: isMetal ? 0.85 : 0.9,
+                  roughness: isMetal ? 0.15 : 0.15
+                });
                 const fridge = new THREE.Mesh(refGeo, steelMat);
                 fridge.position.set(0, 0.9, 0);
                 fridge.castShadow = true;
@@ -785,7 +886,11 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
               } else if (ftype.includes("cooktop")) {
                 // Stove Cooktop cabinet
                 const counterGeo = new THREE.BoxGeometry(f.w || 0.8, 0.85, f.h || 0.6);
-                const counterMat = new THREE.MeshStandardMaterial({ color: "#1e293b", roughness: 0.5 });
+                const counterMat = new THREE.MeshStandardMaterial({
+                  color: resolvedColor || "#1e293b",
+                  roughness: resolvedRoughness,
+                  metalness: resolvedMetalness
+                });
                 const counter = new THREE.Mesh(counterGeo, counterMat);
                 counter.position.set(0, 0.425, 0);
                 counter.castShadow = true;
@@ -815,7 +920,11 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
               } else if (ftype.includes("sink")) {
                 // Sink cabinet
                 const counterGeo = new THREE.BoxGeometry(f.w || 0.8, 0.85, f.h || 0.6);
-                const counterMat = new THREE.MeshStandardMaterial({ color: "#1e293b", roughness: 0.5 });
+                const counterMat = new THREE.MeshStandardMaterial({
+                  color: resolvedColor || "#1e293b",
+                  roughness: resolvedRoughness,
+                  metalness: resolvedMetalness
+                });
                 const counter = new THREE.Mesh(counterGeo, counterMat);
                 counter.position.set(0, 0.425, 0);
                 counter.castShadow = true;
@@ -836,15 +945,123 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
                   new THREE.CylinderGeometry(0.015, 0.015, 0.18, 8),
                   new THREE.MeshStandardMaterial({ color: "#cbd5e1", metalness: 0.9, roughness: 0.1 })
                 );
-                pipe.position.y = 0.09;
+              pipe.position.y = 0.09;
                 faucetGroup.add(pipe);
                 
                 furnGroup.add(faucetGroup);
 
+              } else if (ftype.includes("pool_table")) {
+                // Pool Table wood frame (bottom-outer)
+                const tableW = f.w || 1.6;
+                const tableH = f.h || 2.8;
+                
+                // Wooden frame base
+                const baseGeo = new THREE.BoxGeometry(tableW, 0.72, tableH);
+                const woodMat = new THREE.MeshStandardMaterial({
+                  color: "#5c4033", // walnut wood
+                  roughness: 0.5,
+                  metalness: 0.1
+                });
+                const base = new THREE.Mesh(baseGeo, woodMat);
+                base.position.set(0, 0.36, 0);
+                base.castShadow = true;
+                furnGroup.add(base);
+
+                // Green felt top area
+                const feltGeo = new THREE.BoxGeometry(tableW - 0.12, 0.02, tableH - 0.12);
+                const feltMat = new THREE.MeshStandardMaterial({
+                  color: "#16a34a", // classic green pool felt
+                  roughness: 0.9,
+                  metalness: 0.0
+                });
+                const felt = new THREE.Mesh(feltGeo, feltMat);
+                felt.position.set(0, 0.73, 0);
+                felt.receiveShadow = true;
+                furnGroup.add(felt);
+
+                // Pockets (6 pockets - cylinders/circles at corners and middle sides)
+                const pocketMat = new THREE.MeshBasicMaterial({ color: "#111111" });
+                const pocketGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.002, 12);
+                
+                const corners = [
+                  [-tableW / 2 + 0.08, tableH / 2 - 0.08],
+                  [tableW / 2 - 0.08, tableH / 2 - 0.08],
+                  [-tableW / 2 + 0.08, -tableH / 2 + 0.08],
+                  [tableW / 2 - 0.08, -tableH / 2 + 0.08],
+                  [-tableW / 2 + 0.06, 0],
+                  [tableW / 2 - 0.06, 0]
+                ];
+                
+                corners.forEach(([px, pz]) => {
+                  const pocket = new THREE.Mesh(pocketGeo, pocketMat);
+                  pocket.position.set(px, 0.741, pz);
+                  furnGroup.add(pocket);
+                });
+
+              } else if (ftype.includes("coffee_table")) {
+                // Low Coffee Table
+                const tableW = f.w || 1.1;
+                const tableH = f.h || 0.6;
+                const tableGeo = new THREE.BoxGeometry(tableW, 0.03, tableH);
+                const tableMat = new THREE.MeshStandardMaterial({
+                  color: resolvedColor || "#cbd5e1", // glass/light gray tabletop
+                  roughness: 0.2,
+                  metalness: 0.2
+                });
+                const tabletop = new THREE.Mesh(tableGeo, tableMat);
+                tabletop.position.set(0, 0.45, 0);
+                tabletop.castShadow = true;
+                furnGroup.add(tabletop);
+
+                // 4 thin metal legs
+                const legGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.435, 8);
+                const legMat = new THREE.MeshStandardMaterial({ color: "#475569", metalness: 0.8, roughness: 0.2 });
+                
+                const legFL = new THREE.Mesh(legGeo, legMat);
+                legFL.position.set(-tableW / 2 + 0.04, 0.22, tableH / 2 - 0.04);
+                furnGroup.add(legFL);
+
+                const legFR = legFL.clone(); legFR.position.x = tableW / 2 - 0.04; furnGroup.add(legFR);
+                const legBL = legFL.clone(); legBL.position.z = -tableH / 2 + 0.04; furnGroup.add(legBL);
+                const legBR = legFR.clone(); legBR.position.z = -tableH / 2 + 0.04; furnGroup.add(legBR);
+
+              } else if (ftype.includes("side_table")) {
+                // Small Round Side Table
+                const radius = (f.w || 0.45) / 2;
+                const tableGeo = new THREE.CylinderGeometry(radius, radius, 0.03, 16);
+                const tableMat = new THREE.MeshStandardMaterial({
+                  color: resolvedColor || "#5c4033", // walnut wood
+                  roughness: 0.4,
+                  metalness: 0.1
+                });
+                const tabletop = new THREE.Mesh(tableGeo, tableMat);
+                tabletop.position.set(0, 0.55, 0);
+                tabletop.castShadow = true;
+                furnGroup.add(tabletop);
+
+                // Center pedestal leg
+                const legGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.535, 8);
+                const legMat = new THREE.MeshStandardMaterial({ color: "#475569", metalness: 0.8, roughness: 0.2 });
+                const leg = new THREE.Mesh(legGeo, legMat);
+                leg.position.set(0, 0.265, 0);
+                furnGroup.add(leg);
+
+                // Round base
+                const baseGeo = new THREE.CylinderGeometry(radius * 0.6, radius * 0.6, 0.02, 16);
+                const base = new THREE.Mesh(baseGeo, legMat);
+                base.position.set(0, 0.01, 0);
+                furnGroup.add(base);
+
               } else if (ftype.includes("table") || ftype.includes("dining")) {
                 // Table
-                const tableGeo = new THREE.BoxGeometry(f.w || 1.4, 0.05, f.h || 0.9);
-                const tableMat = new THREE.MeshStandardMaterial({ color: "#a16207", roughness: 0.4 }); // wooden tabletop
+                const tableW = f.w || 1.4;
+                const tableH = f.h || 0.9;
+                const tableGeo = new THREE.BoxGeometry(tableW, 0.05, tableH);
+                const tableMat = new THREE.MeshStandardMaterial({
+                  color: resolvedColor || "#a16207",
+                  roughness: resolvedRoughness,
+                  metalness: resolvedMetalness
+                }); // wooden tabletop
                 const tabletop = new THREE.Mesh(tableGeo, tableMat);
                 tabletop.position.set(0, 0.75, 0);
                 tabletop.castShadow = true;
@@ -855,23 +1072,27 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
                 const legMat = new THREE.MeshStandardMaterial({ color: "#1e293b", roughness: 0.8 });
 
                 const legFL = new THREE.Mesh(legGeo, legMat);
-                legFL.position.set(-(f.w || 1.4) / 2 + 0.06, 0.36, (f.h || 0.9) / 2 - 0.06);
+                legFL.position.set(-tableW / 2 + 0.06, 0.36, tableH / 2 - 0.06);
                 furnGroup.add(legFL);
 
                 const legFR = legFL.clone();
-                legFR.position.x = (f.w || 1.4) / 2 - 0.06;
+                legFR.position.x = tableW / 2 - 0.06;
                 furnGroup.add(legFR);
 
                 const legBL = legFL.clone();
-                legBL.position.z = -(f.h || 0.9) / 2 + 0.06;
+                legBL.position.z = -tableH / 2 + 0.06;
                 furnGroup.add(legBL);
 
                 const legBR = legFR.clone();
-                legBR.position.z = -(f.h || 0.9) / 2 + 0.06;
+                legBR.position.z = -tableH / 2 + 0.06;
                 furnGroup.add(legBR);
 
                 // Surround with dining chairs
-                const chairMat = new THREE.MeshStandardMaterial({ color: "#1e293b", roughness: 0.8 });
+                const chairMat = new THREE.MeshStandardMaterial({
+                  color: resolvedColor || "#1e293b",
+                  roughness: resolvedRoughness,
+                  metalness: resolvedMetalness
+                });
                 const makeChair = (cx: number, cz: number, rotY: number) => {
                   const chair = new THREE.Group();
                   chair.position.set(cx, 0, cz);
@@ -902,11 +1123,26 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
                   return chair;
                 };
 
-                // Add 4 chairs
-                furnGroup.add(makeChair(0, (f.h || 0.9) / 2 + 0.22, Math.PI)); // bottom chair facing north
-                furnGroup.add(makeChair(0, -(f.h || 0.9) / 2 - 0.22, 0)); // top chair facing south
-                furnGroup.add(makeChair(-(f.w || 1.4) / 2 - 0.22, 0, Math.PI / 2)); // left chair facing east
-                furnGroup.add(makeChair((f.w || 1.4) / 2 + 0.22, 0, -Math.PI / 2)); // right chair facing west
+                // Dynamic chairs calculation (matches 2D drawing seats count)
+                // Top & Bottom sides: Space chairs evenly.
+                const numChairsPerSide = Math.max(1, Math.floor(tableW / 0.65));
+                if (numChairsPerSide === 1) {
+                  furnGroup.add(makeChair(0, tableH / 2 + 0.22, Math.PI)); // bottom facing north
+                  furnGroup.add(makeChair(0, -tableH / 2 - 0.22, 0)); // top facing south
+                } else {
+                  for (let i = 0; i < numChairsPerSide; i++) {
+                    const offsetFraction = (i / (numChairsPerSide - 1)) - 0.5; // [-0.5, 0.5]
+                    const cx = offsetFraction * (tableW - 0.5);
+                    furnGroup.add(makeChair(cx, tableH / 2 + 0.22, Math.PI));
+                    furnGroup.add(makeChair(cx, -tableH / 2 - 0.22, 0));
+                  }
+                }
+
+                // Left & Right ends: add 1 chair on each end if table is deep enough (height >= 0.8m)
+                if (tableH >= 0.8) {
+                  furnGroup.add(makeChair(-tableW / 2 - 0.22, 0, Math.PI / 2)); // left chair facing east
+                  furnGroup.add(makeChair(tableW / 2 + 0.22, 0, -Math.PI / 2)); // right chair facing west
+                }
 
               } else if (ftype.includes("tv")) {
                 // TV Console cabinet stand
@@ -915,7 +1151,11 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
                 const standD = f.h || 0.45;
                 const stand = new THREE.Mesh(
                   new THREE.BoxGeometry(standW, standH, standD),
-                  new THREE.MeshStandardMaterial({ color: "#1e293b", roughness: 0.6 })
+                  new THREE.MeshStandardMaterial({
+                    color: resolvedColor || "#1e293b",
+                    roughness: resolvedRoughness,
+                    metalness: resolvedMetalness
+                  })
                 );
                 stand.position.set(0, standH / 2, 0);
                 stand.castShadow = true;
@@ -957,7 +1197,11 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
                 // Desk Table
                 const desk = new THREE.Mesh(
                   new THREE.BoxGeometry(f.w || 1.2, 0.04, f.h || 0.6),
-                  new THREE.MeshStandardMaterial({ color: "#7c2d12", roughness: 0.5 })
+                  new THREE.MeshStandardMaterial({
+                    color: resolvedColor || "#7c2d12",
+                    roughness: resolvedRoughness,
+                    metalness: resolvedMetalness
+                  })
                 );
                 desk.position.set(0, 0.75, 0);
                 desk.castShadow = true;
@@ -990,7 +1234,11 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
               } else {
                 // General cabinet or counter console
                 const counterGeo = new THREE.BoxGeometry(f.w || 1.2, 0.85, f.h || 0.6);
-                const counterMat = new THREE.MeshStandardMaterial({ color: "#1e293b", roughness: 0.5 });
+                const counterMat = new THREE.MeshStandardMaterial({
+                  color: resolvedColor || "#1e293b",
+                  roughness: resolvedRoughness,
+                  metalness: resolvedMetalness
+                });
                 const counter = new THREE.Mesh(counterGeo, counterMat);
                 counter.position.set(0, 0.425, 0);
                 counter.castShadow = true;
@@ -1002,7 +1250,11 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
                 // Toilet bowl
                 const bowl = new THREE.Mesh(
                   new THREE.CylinderGeometry(0.18, 0.14, 0.4, 16),
-                  new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.05 })
+                  new THREE.MeshStandardMaterial({
+                    color: resolvedColor || "#ffffff",
+                    roughness: resolvedRoughness || 0.05,
+                    metalness: resolvedMetalness
+                  })
                 );
                 bowl.position.set(0, 0.2, 0.1);
                 bowl.castShadow = true;
@@ -1011,7 +1263,11 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
                 // Flush tank
                 const tank = new THREE.Mesh(
                   new THREE.BoxGeometry(0.42, 0.45, 0.2),
-                  new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.05 })
+                  new THREE.MeshStandardMaterial({
+                    color: resolvedColor || "#ffffff",
+                    roughness: resolvedRoughness || 0.05,
+                    metalness: resolvedMetalness
+                  })
                 );
                 tank.position.set(0, 0.625, -0.12);
                 tank.castShadow = true;
@@ -1029,7 +1285,11 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
                 // Sink vanity cabinet
                 const cabinet = new THREE.Mesh(
                   new THREE.BoxGeometry(f.w || 0.6, 0.75, f.h || 0.45),
-                  new THREE.MeshStandardMaterial({ color: "#475569", roughness: 0.7 })
+                  new THREE.MeshStandardMaterial({
+                    color: resolvedColor || "#475569",
+                    roughness: resolvedRoughness || 0.7,
+                    metalness: resolvedMetalness
+                  })
                 );
                 cabinet.position.set(0, 0.375, 0);
                 cabinet.castShadow = true;
@@ -1077,7 +1337,11 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
               } else {
                 // White Porcelain Bathtub
                 const tubGeo = new THREE.BoxGeometry(f.w || 0.7, 0.6, f.h || 1.4);
-                const tubMat = new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.1 });
+                const tubMat = new THREE.MeshStandardMaterial({
+                  color: resolvedColor || "#ffffff",
+                  roughness: resolvedRoughness || 0.1,
+                  metalness: resolvedMetalness
+                });
                 const tub = new THREE.Mesh(tubGeo, tubMat);
                 tub.position.set(0, 0.3, 0);
                 tub.castShadow = true;
@@ -1090,6 +1354,21 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
                 water.position.set(0, 0.58, 0);
                 furnGroup.add(water);
               }
+            } else {
+              // Generic Fallback Object (Box)
+              const boxW = f.w || 0.8;
+              const boxH = ftype.includes("bbq") ? 0.95 : 0.75;
+              const boxD = f.h || 0.8;
+              const boxGeo = new THREE.BoxGeometry(boxW, boxH, boxD);
+              const boxMat = new THREE.MeshStandardMaterial({
+                color: resolvedColor || (ftype.includes("bbq") ? "#1e293b" : "#cbd5e1"),
+                roughness: resolvedRoughness || 0.5,
+                metalness: resolvedMetalness
+              });
+              const box = new THREE.Mesh(boxGeo, boxMat);
+              box.position.set(0, boxH / 2, 0);
+              box.castShadow = true;
+              furnGroup.add(box);
             }
           }
 
