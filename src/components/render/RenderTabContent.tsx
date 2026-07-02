@@ -29,11 +29,6 @@ interface RenderJob {
 
 const MODELS = [
   {
-    id: "nano-banana-pro",
-    name: "Nano Banana Pro (PiAPI)",
-    isPro: true,
-  },
-  {
     id: "nano-banana-2",
     name: "Nano Banana 2 (Gemini 3.1 Flash Image)",
     isPro: true,
@@ -93,7 +88,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
   const [isDraggingRef, setIsDraggingRef] = useState(false);
 
   const [selectedModel, setSelectedModel] = useState(
-    "nano-banana-pro",
+    "nano-banana-2",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
 
