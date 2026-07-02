@@ -68,6 +68,7 @@ export interface Opening {
   y: number;
   w: number;
   rotation: number;
+  style?: string;
 }
 
 export interface FloorPlanData {
@@ -858,6 +859,7 @@ export const FloorPlanEditor: React.FC = () => {
   const [showRoomsModal, setShowRoomsModal] = useState(false);
   const [autoRenderPending, setAutoRenderPending] = useState(false);
   const [wallThickness, setWallThickness] = useState<number>(100); // 100mm (4 inches)
+  const [activeStructureSubmenu, setActiveStructureSubmenu] = useState<"door" | "window" | "stairs" | null>(null);
   const [showStyleModal, setShowStyleModal] = useState(false);
   const [showFinishModal, setShowFinishModal] = useState<"flooring" | "walls" | "ceiling" | "doors" | "windows" | null>(null);
   const [selectedStyle, setSelectedStyle] = useState<string>("");
@@ -1032,7 +1034,7 @@ export const FloorPlanEditor: React.FC = () => {
     (role: "user" | "assistant", content: string) => {
       setMessages((prev) => [
         ...prev,
-        { id: Date.now().toString(), role, content, timestamp: new Date() },
+        { id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, role, content, timestamp: new Date() },
       ]);
     },
     []
@@ -1435,7 +1437,15 @@ QUY TẮC THIẾT KẾ BẮT BUỘC (TUÂN THỦ TUYỆT ĐỐI):
    - Hành lang / lối đi: rộng tối thiểu 1.0m
    Lưu ý: nếu lô đất nhỏ không đủ để đạt kích thước khuyến nghị, hãy ưu tiên đạt kích thước TỐI THIỂU và phân bổ phần diện tích còn lại cho các phòng chính lớn hơn.
 
-3. QUY TẮC BỐ TRÍ CÁC PHÒNG CHUẨN CÔNG NĂNG:
+3. TỶ LỆ KÍCH THƯỚC GIỮA CÁC PHÒNG (ĐIỀU CHỈNH THÔNG MINH):
+   - Phòng khách và Phòng sinh hoạt chung: Phải có diện tích to nhất hoặc bằng phòng ngủ Master (thường chiếm từ 25% - 35% tổng diện tích mặt bằng tầng).
+   - Phòng ngủ Master (hoặc phòng ngủ chính): Phải to hơn rõ rệt so với phòng ngủ thường/phòng ngủ phụ (ví dụ: ngủ Master 14m² - 20m², ngủ thường 9m² - 12m²).
+   - Phòng bếp và Phòng ăn: Có diện tích lớn vừa phải, đủ rộng để bố trí bàn ăn và hệ tủ bếp chữ L/chữ I thuận tiện đi lại.
+   - Phòng vệ sinh / Toilet / WC: Thiết kế nhỏ gọn, tối giản diện tích (chỉ từ 2m² - 5m² tùy loại WC nhỏ hay tắm đứng), tuyệt đối không thiết kế phòng vệ sinh quá to chiếm dụng không gian của phòng khách hay phòng ngủ.
+   - Phòng giặt, Phòng kho, Lối đi hành lang: Thiết kế diện tích tối thiểu, vừa đủ công năng để tối ưu không gian cho các phòng chính.
+   - Phân chia tỷ lệ diện tích thông minh: Tự động tính toán phân chia diện tích lô đất để các không gian sinh hoạt chính (Khách, Bếp, Ngủ) chiếm phần lớn diện tích, các không gian phụ (WC, Giặt, Hành lang) chiếm tỷ lệ nhỏ phù hợp.
+
+4. QUY TẮC BỐ TRÍ CÁC PHÒNG CHUẨN CÔNG NĂNG:
    - Phòng khách: Đặt gần cửa chính/lối vào, làm trung tâm kết nối các khu vực, thuận tiện tiếp cận các phòng khác.
    - Phòng bếp: Đặt liền kề hoặc gần phòng ăn. Không đặt bếp làm lối đi bắt buộc để vào các phòng khác. Hạn chế đặt sát phòng ngủ nếu còn phương án tốt hơn.
    - Phòng ăn: Liền kề phòng bếp và kết nối thuận tiện với phòng khách.
@@ -1444,21 +1454,24 @@ QUY TẮC THIẾT KẾ BẮT BUỘC (TUÂN THỦ TUYỆT ĐỐI):
    - Phòng làm việc: Đặt ở khu vực yên tĩnh, tách biệt với phòng khách.
    - Phòng giặt: Gần khu vực sân hoặc ban công nếu có.
 
-4. LUỒNG GIAO THÔNG & ÁNH SÁNG:
+5. LUỒNG GIAO THÔNG & ÁNH SÁNG:
    - Có thể đi từ cửa chính đến mọi phòng mà không phải đi xuyên qua phòng ngủ. Hạn chế đi xuyên qua bếp để đến các khu vực khác. Đường di chuyển ngắn, rõ ràng, hợp lý.
    - Ưu tiên các phòng chính (phòng khách, phòng ngủ) tiếp xúc với mặt ngoài công trình để có cửa sổ đón ánh sáng tự nhiên nhiều nhất.
 
-5. HÌNH HỌC & ĐỘ LIỀN MẠCH:
+6. HÌNH HỌC & ĐỘ LIỀN MẠCH:
    - Ưu tiên các phòng có hình chữ nhật hoặc hình vuông.
    - Các phòng bắt buộc phải thiết kế LIỀN MẠCH, TIẾP GIÁP TRỰC TIẾP và KHÍT NHAU (chia sẻ cạnh tường chung). KHÔNG chồng lấn (overlap) và không tạo góc chết hoặc không gian khó sử dụng.
    - Tọa độ x, y, w, h tính bằng mét (số thực). Tên phòng (name) ghi rõ bằng tiếng Việt (ví dụ: 'Phòng khách', 'Phòng ngủ 1', 'Phòng ngủ 2', 'Phòng bếp', 'Phòng ăn', 'Toilet 1', 'Toilet 2').
 
-6. THỨ TỰ ƯU TIÊN KHI CÓ XUNG ĐỘT PHƯƠNG ÁN:
+7. THỨ TỰ ƯU TIÊN KHI CÓ XUNG ĐỘT PHƯƠNG ÁN:
    1. Công năng sử dụng.
    2. Luồng giao thông.
    3. Mức độ riêng tư.
    4. Hiệu quả sử dụng diện tích.
    5. Thẩm mỹ và tính cân đối.
+
+8. ĐỒNG NHẤT HÌNH DẠNG GIỮA CÁC TẦNG (QUAN TRỌNG):
+   - Mọi tầng lầu bên trên phải có hình dạng và kích thước đường biên ranh giới bên ngoài trùng khít 100% với Tầng Trệt và đa giác mảnh đất (${shape}) đã thiết lập. Không được để ranh giới các tầng lệch nhau hoặc có tầng chỉ thiết kế hình chữ nhật đơn giản trong khi tầng khác đi theo hình dạng phức tạp. Tổng thể các phòng ở mọi tầng đều phải bao phủ hoàn toàn ranh giới của mảnh đất đã định.
 
 Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
 {
@@ -1482,51 +1495,61 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
         const parsed = safeJsonParse(textResult) as Record<string, any> | null;
 
         if (parsed && Array.isArray(parsed.rooms)) {
-          const validatedRooms: Room[] = parsed.rooms.map(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (r: any, idx: number) => {
-              const name = (r.name || "Phòng").toLowerCase();
-              // Minimum room sizes per room type (to fit furniture)
-              let minW = 1.5;
-              let minH = 1.5;
-              if (name.includes("khách") || name.includes("living") || name.includes("sinh hoạt")) {
-                minW = 3.0; minH = 3.5;
-              } else if (name.includes("ngủ") || name.includes("bed")) {
-                minW = 2.5; minH = 3.0;
-              } else if (name.includes("bếp") || name.includes("kitchen")) {
-                minW = 2.0; minH = 2.5;
-              } else if (name.includes("ăn") || name.includes("dining")) {
-                minW = 2.5; minH = 2.5;
-              } else if (name.includes("tắm") || name.includes("wc") || name.includes("toilet") || name.includes("vệ sinh")) {
-                minW = 1.2; minH = 1.6;
-              } else if (name.includes("gara") || name.includes("garage") || name.includes("xe")) {
-                minW = 2.8; minH = 5.0;
-              } else if (name.includes("giặt") || name.includes("laundry")) {
-                minW = 1.5; minH = 1.8;
-              } else if (name.includes("làm việc") || name.includes("office")) {
-                minW = 2.5; minH = 2.5;
-              } else if (name.includes("sảnh") || name.includes("lối vào") || name.includes("entry")) {
-                minW = 1.5; minH = 1.8;
-              } else if (name.includes("hành lang") || name.includes("lối đi")) {
-                minW = 1.0; minH = 2.0;
+          const validatedRooms: Room[] = parsed.rooms
+            .filter((r: any) => r && typeof r === "object")
+            .map(
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (r: any, idx: number) => {
+                const name = (r.name || "Phòng").toLowerCase();
+                // Minimum room sizes per room type (to fit furniture)
+                let minW = 1.5;
+                let minH = 1.5;
+                if (name.includes("khách") || name.includes("living") || name.includes("sinh hoạt")) {
+                  minW = 3.0; minH = 3.5;
+                } else if (name.includes("ngủ") || name.includes("bed")) {
+                  minW = 2.5; minH = 3.0;
+                } else if (name.includes("bếp") || name.includes("kitchen")) {
+                  minW = 2.0; minH = 2.5;
+                } else if (name.includes("ăn") || name.includes("dining")) {
+                  minW = 2.5; minH = 2.5;
+                } else if (name.includes("tắm") || name.includes("wc") || name.includes("toilet") || name.includes("vệ sinh")) {
+                  minW = 1.2; minH = 1.6;
+                } else if (name.includes("gara") || name.includes("garage") || name.includes("xe")) {
+                  minW = 2.8; minH = 5.0;
+                } else if (name.includes("giặt") || name.includes("laundry")) {
+                  minW = 1.5; minH = 1.8;
+                } else if (name.includes("làm việc") || name.includes("office")) {
+                  minW = 2.5; minH = 2.5;
+                } else if (name.includes("sảnh") || name.includes("lối vào") || name.includes("entry")) {
+                  minW = 1.5; minH = 1.8;
+                } else if (name.includes("hành lang") || name.includes("lối đi")) {
+                  minW = 1.0; minH = 2.0;
+                }
+                const parsedW = parseFloat(r.w);
+                const parsedH = parseFloat(r.h);
+                const rw = Math.max(minW, Math.min(landW, isNaN(parsedW) ? minW : parsedW));
+                const rh = Math.max(minH, Math.min(landL, isNaN(parsedH) ? minH : parsedH));
+
+                const parsedX = parseFloat(r.x);
+                const parsedY = parseFloat(r.y);
+                const rx = isNaN(parsedX) ? 0 : parsedX;
+                const ry = isNaN(parsedY) ? 0 : parsedY;
+
+                const roomObj = {
+                  id: `room_${floor}_${idx}_${Date.now()}`,
+                  name: r.name || "Phòng",
+                  x: Math.max(0, Math.min(landW - rw, rx)),
+                  y: Math.max(0, Math.min(landL - rh, ry)),
+                  w: rw,
+                  h: rh,
+                  color: r.color || getRoomColor(r.name || ""),
+                };
+                return {
+                  ...roomObj,
+                  furniture: getDefaultFurnitureForRoom(roomObj),
+                };
               }
-              const rw = Math.max(minW, Math.min(landW, parseFloat(r.w) || minW));
-              const rh = Math.max(minH, Math.min(landL, parseFloat(r.h) || minH));
-              const roomObj = {
-                id: `room_${floor}_${idx}_${Date.now()}`,
-                name: r.name || "Phòng",
-                x: Math.max(0, Math.min(landW - rw, parseFloat(r.x) || 0)),
-                y: Math.max(0, Math.min(landL - rh, parseFloat(r.y) || 0)),
-                w: rw,
-                h: rh,
-                color: r.color || getRoomColor(r.name || ""),
-              };
-              return {
-                ...roomObj,
-                furniture: getDefaultFurnitureForRoom(roomObj),
-              };
-            }
-          );
+            );
           const openings: Opening[] = validatedRooms.slice(1).map((room, i) => ({
             id: `open_${floor}_${i}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
             type: "door",
@@ -1591,8 +1614,10 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
     e.evt.preventDefault();
     const scaleBy = 1.12;
     const stage = e.target.getStage();
+    if (!stage) return;
     const old = stage.scaleX();
     const pointer = stage.getPointerPosition();
+    if (!pointer) return;
     const to = { x: (pointer.x - stage.x()) / old, y: (pointer.y - stage.y()) / old };
     const newScale = Math.max(0.3, Math.min(4, e.evt.deltaY < 0 ? old * scaleBy : old / scaleBy));
     setZoom(newScale);
@@ -1603,7 +1628,10 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
   const handleStageMouseDown = (e: any) => {
     if (e.target === e.target.getStage()) {
       setIsPanning(true);
-      const p = e.target.getStage().getPointerPosition();
+      const stage = e.target.getStage();
+      if (!stage) return;
+      const p = stage.getPointerPosition();
+      if (!p) return;
       panStart.current = { x: p.x - pan.x, y: p.y - pan.y };
       setSelectedRoomId(null);
       setSelectedFurnitureId(null);
@@ -1614,13 +1642,16 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleStageMouseMove = (e: any) => {
     if (!isPanning) return;
-    const p = e.target.getStage().getPointerPosition();
+    const stage = e.target.getStage();
+    if (!stage) return;
+    const p = stage.getPointerPosition();
+    if (!p) return;
     setPan({ x: p.x - panStart.current.x, y: p.y - panStart.current.y });
   };
   const handleStageMouseUp = () => setIsPanning(false);
 
   // ── Render 3D ──────────────────────────────────────────────────────────
-  const handleRender3D = useCallback(async () => {
+  const handleRender3D = useCallback(async (mode: "Floorplan to 3D" | "Floorplan to 3D Floorplan" = "Floorplan to 3D") => {
     if (!floorPlan || floorPlan.rooms.length === 0) {
       toast.error("Vui lòng tạo mặt bằng trước!");
       return;
@@ -1632,16 +1663,31 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
     setIsRendering3D(true);
     setSidebarTab("renders");
     setRenderResult(null);
-    addMessage("assistant", "🎨 Đang render phối cảnh 3D siêu thực từ mặt bằng...");
+    addMessage(
+      "assistant",
+      mode === "Floorplan to 3D Floorplan"
+        ? "🎨 Đang render mặt bằng 3D sa bàn cắt tường từ bản vẽ..."
+        : "🎨 Đang render phối cảnh 3D siêu thực từ mặt bằng..."
+    );
 
     try {
       let base64Image = "";
-      if (activeTab === "visualize" && capture3DRef.current) {
-        base64Image = capture3DRef.current();
-      } else if (stageRef.current) {
-        setSelectedRoomId(null);
-        await new Promise((r) => setTimeout(r, 100));
-        base64Image = stageRef.current.toDataURL({ pixelRatio: 2 });
+      if (mode === "Floorplan to 3D Floorplan") {
+        if (stageRef.current) {
+          const originalSelectedRoomId = selectedRoomId;
+          setSelectedRoomId(null);
+          await new Promise((r) => setTimeout(r, 100));
+          base64Image = stageRef.current.toDataURL({ pixelRatio: 2 });
+          setSelectedRoomId(originalSelectedRoomId);
+        }
+      } else {
+        if (activeTab === "visualize" && capture3DRef.current) {
+          base64Image = capture3DRef.current();
+        } else if (stageRef.current) {
+          setSelectedRoomId(null);
+          await new Promise((r) => setTimeout(r, 100));
+          base64Image = stageRef.current.toDataURL({ pixelRatio: 2 });
+        }
       }
       if (!base64Image) throw new Error("Không thể chụp canvas.");
 
@@ -1743,7 +1789,18 @@ User prompt: "${enhancedPrompt}"`
         }
       }
 
-      const renderPrompt = `You are a professional 3D architectural visualizer.
+      let renderPrompt = "";
+      if (mode === "Floorplan to 3D Floorplan") {
+        renderPrompt = `You are a professional architectural renderer.
+Your task is to transform the provided 2D floor plan drawing into a clean, 3D floor plan layout (cut-wall isometric/dollhouse view).
+Strict Guidelines:
+- Style: 3D Floor plan layout, isometric view from above, cut walls, no ceiling.
+- Do NOT render a standing interior perspective view. This must be a bird's-eye view of the entire floor plan.
+- Remove all text, room labels, measurements, dimensions, drawing lines, grids, and arrow symbols.
+- Render clean walls, windows, doors, floor finishes, and furniture arranged exactly as shown in the layout.
+- High-quality realistic materials and lighting.`;
+      } else {
+        renderPrompt = `You are a professional 3D architectural visualizer.
 Your task is to transform the provided 3D spatial layout preview of the [${roomForRender}] into a hyper-realistic, photorealistic interior render.
 Style: ${gatherInfo.extras || "Modern Vietnamese contemporary"}.
 
@@ -1759,11 +1816,12 @@ Requirements:
 - Natural light flooding in, warm shadows, 8K photorealistic quality, realistic textures (polished wood, fabric, metal, marble).
 - Magazine-quality composition (ArchDaily style).
 - Pure photorealistic render only, absolutely NO lines, sketch boundaries, dimensions, or UI text from the preview interface.${cameraPrompt}${customRoomPrompt}${customFurniturePrompt}`;
+      }
 
       // Post asynchronous render job to backend queue
       const jobData = {
         userId: user?._id || "",
-        type: "Floorplan to 3D",
+        type: mode,
         inputImageUrls: [_imageUrl],
         referenceImageUrls: [],
         status: "pending",
@@ -1773,7 +1831,7 @@ Requirements:
         settings: {
           prompt: renderPrompt,
           numImages: 1,
-          aspectRatio: (activeTab === "visualize" && selectedCameraRoomId && cameras[selectedCameraRoomId]?.aspectRatio) || "4:3",
+          aspectRatio: mode === "Floorplan to 3D Floorplan" ? "4:3" : ((activeTab === "visualize" && selectedCameraRoomId && cameras[selectedCameraRoomId]?.aspectRatio) || "4:3"),
           model: "nano-banana-2",
           resolution: "1K",
         },
@@ -1790,8 +1848,13 @@ Requirements:
         const finalUrl = newJob.outputImageUrls?.[0];
         if (finalUrl) {
           setRenderResult(finalUrl);
-          toast.success("Render 3D hoàn tất!");
-          addMessage("assistant", "✅ Phối cảnh 3D đã hoàn thành! Bạn có thể tải về bên dưới.");
+          toast.success(mode === "Floorplan to 3D Floorplan" ? "Render mặt bằng 3D hoàn tất!" : "Render 3D hoàn tất!");
+          addMessage(
+            "assistant",
+            mode === "Floorplan to 3D Floorplan"
+              ? "✅ Mặt bằng 3D sa bàn đã hoàn thành! Bạn có thể tải về bên dưới."
+              : "✅ Phối cảnh 3D đã hoàn thành! Bạn có thể tải về bên dưới."
+          );
         }
         setIsRendering3D(false);
         setActiveJobId(null);
@@ -1800,18 +1863,28 @@ Requirements:
         setRenderProgress(newJob.progress || 10);
         setRenderStatusMessage(newJob.statusMessage || "Khởi tạo...");
         
-        addMessage("assistant", "🎨 Đang gửi yêu cầu tạo phối cảnh 3D lên hệ thống...");
-        toast.info("Đã gửi yêu cầu kết xuất 3D!");
+        addMessage(
+          "assistant",
+          mode === "Floorplan to 3D Floorplan"
+            ? "🎨 Đang gửi yêu cầu tạo mặt bằng 3D sa bàn lên hệ thống..."
+            : "🎨 Đang gửi yêu cầu tạo phối cảnh 3D lên hệ thống..."
+        );
+        toast.info(mode === "Floorplan to 3D Floorplan" ? "Đã gửi yêu cầu kết xuất mặt bằng 3D!" : "Đã gửi yêu cầu kết xuất 3D!");
       }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       console.error("Render 3D error:", e);
-      addMessage("assistant", "❌ Lỗi render 3D. Vui lòng thử lại.");
+      addMessage(
+        "assistant",
+        mode === "Floorplan to 3D Floorplan"
+          ? "❌ Lỗi render mặt bằng 3D. Vui lòng thử lại."
+          : "❌ Lỗi render phối cảnh 3D. Vui lòng thử lại."
+      );
       toast.error(e.message || "Lỗi render.");
       setIsRendering3D(false);
       setActiveJobId(null);
     }
-  }, [floorPlan, selectedRoomId, gatherInfo, user, addMessage]);
+  }, [floorPlan, selectedRoomId, gatherInfo, user, addMessage, activeTab, selectedCameraRoomId, cameras]);
 
   // ── Auto-initialize furniture for existing floor plans ───────────────────
   useEffect(() => {
@@ -2299,23 +2372,23 @@ Requirements:
           if (isJacuzzi) {
             return (
               <Group>
-                <Rect x={-iw} y={-ih} width={iw * 2} height={ih * 2} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={4} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
-                <Rect x={-iw + 4} y={-ih + 4} width={(iw - 4) * 2} height={(ih - 4) * 2} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={3} />
-                <Circle x={0} y={0} radius={Math.min(iw, ih) * 0.75} fill="#f1f5f9" stroke="#475569" strokeWidth={0.8} />
+                <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={4} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
+                <Rect x={-iw / 2 + 4} y={-ih / 2 + 4} width={iw - 8} height={ih - 8} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={3} />
+                <Circle x={0} y={0} radius={Math.min(iw, ih) * 0.375} fill="#f1f5f9" stroke="#475569" strokeWidth={0.8} />
                 <Circle x={0} y={0} radius={3} fill="#0f172a" />
-                <Circle x={-iw + 10} y={0} radius={1.5} fill="#475569" />
-                <Circle x={iw - 10} y={0} radius={1.5} fill="#475569" />
-                <Circle x={0} y={-ih + 10} radius={1.5} fill="#475569" />
-                <Circle x={0} y={ih - 10} radius={1.5} fill="#475569" />
+                <Circle x={-iw / 2 + 10} y={0} radius={1.5} fill="#475569" />
+                <Circle x={iw / 2 - 10} y={0} radius={1.5} fill="#475569" />
+                <Circle x={0} y={-ih / 2 + 10} radius={1.5} fill="#475569" />
+                <Circle x={0} y={ih / 2 - 10} radius={1.5} fill="#475569" />
               </Group>
             );
           }
           return (
             <Group>
-              <Rect x={-iw} y={-ih} width={iw * 2} height={ih * 2} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={10} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
-              <Rect x={-iw + 4} y={-ih + 4} width={(iw - 4) * 2} height={(ih - 4) * 2} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={8} />
-              <Circle x={iw - 8} y={ih - 8} radius={2.5} fill="#94a3b8" />
-              <Line points={[iw - 8, ih - 8, iw - 15, ih - 15]} stroke="#94a3b8" strokeWidth={1.5} lineCap="round" />
+              <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={10} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
+              <Rect x={-iw / 2 + 4} y={-ih / 2 + 4} width={iw - 8} height={ih - 8} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={8} />
+              <Circle x={iw / 2 - 8} y={ih / 2 - 8} radius={2.5} fill="#94a3b8" />
+              <Line points={[iw / 2 - 8, ih / 2 - 8, iw / 2 - 15, ih / 2 - 15]} stroke="#94a3b8" strokeWidth={1.5} lineCap="round" />
             </Group>
           );
         }
@@ -2510,20 +2583,69 @@ Requirements:
           </Group>
         );
       case "stairs":
-        return (
-          <Group>
-            {/* Stair boundaries */}
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={1} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.08} shadowOffset={{ x: 1, y: 1 }} />
-            {/* Stair steps lines */}
-            <Line points={[-iw / 2, -ih * 0.3, iw / 2, -ih * 0.3]} stroke="#475569" strokeWidth={1} />
-            <Line points={[-iw / 2, -ih * 0.1, iw / 2, -ih * 0.1]} stroke="#475569" strokeWidth={1} />
-            <Line points={[-iw / 2, ih * 0.1, iw / 2, ih * 0.1]} stroke="#475569" strokeWidth={1} />
-            <Line points={[-iw / 2, ih * 0.3, iw / 2, ih * 0.3]} stroke="#475569" strokeWidth={1} />
-            {/* Direction Arrow */}
-            <Line points={[0, ih * 0.4, 0, -ih * 0.4]} stroke="#0f172a" strokeWidth={1.2} />
-            <Line points={[-4, -ih * 0.4 + 4, 0, -ih * 0.4, 4, -ih * 0.4 + 4]} stroke="#0f172a" strokeWidth={1.2} />
-          </Group>
-        );
+        {
+          const style = item.style || "straight";
+          if (style === "l_landing") {
+            return (
+              <Group>
+                <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={1} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.08} shadowOffset={{ x: 1, y: 1 }} />
+                <Rect x={iw / 2 - iw / 3} y={-ih / 2} width={iw / 3} height={ih / 3} fill="#f8fafc" stroke="#475569" strokeWidth={1} />
+                <Line points={[-iw / 2, ih / 6, iw / 2 - iw / 3, ih / 6]} stroke="#475569" strokeWidth={1} />
+                <Line points={[-iw / 2, -ih / 6, iw / 2 - iw / 3, -ih / 6]} stroke="#475569" strokeWidth={1} />
+                <Line points={[iw / 6, -ih / 2, iw / 6, -ih / 2 + ih / 3]} stroke="#475569" strokeWidth={1} />
+                <Line points={[-iw / 6, -ih / 2, -iw / 6, -ih / 2 + ih / 3]} stroke="#475569" strokeWidth={1} />
+                <Line points={[-iw / 4, ih * 0.4, -iw / 4, -ih / 6, iw / 6, -ih / 6, iw / 6, -ih * 0.4]} stroke="#0f172a" strokeWidth={1.2} />
+                <Line points={[iw / 6 - 4, -ih * 0.4 + 4, iw / 6, -ih * 0.4, iw / 6 + 4, -ih * 0.4 + 4]} stroke="#0f172a" strokeWidth={1.2} />
+              </Group>
+            );
+          }
+          if (style === "l_winder") {
+            return (
+              <Group>
+                <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={1} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.08} shadowOffset={{ x: 1, y: 1 }} />
+                <Line points={[iw / 2 - iw / 3, -ih / 2, iw / 2 - iw / 3, -ih / 2 + ih / 3]} stroke="#475569" strokeWidth={1} />
+                <Line points={[iw / 2 - iw / 3, -ih / 2 + ih / 3, iw / 2, -ih / 2 + ih / 3]} stroke="#475569" strokeWidth={1} />
+                <Line points={[iw / 2, -ih / 2, iw / 2 - iw / 3, -ih / 2 + ih / 3]} stroke="#475569" strokeWidth={1} />
+                <Line points={[-iw / 2, ih / 6, iw / 2 - iw / 3, ih / 6]} stroke="#475569" strokeWidth={1} />
+                <Line points={[-iw / 2, -ih / 6, iw / 2 - iw / 3, -ih / 6]} stroke="#475569" strokeWidth={1} />
+                <Line points={[iw / 6, -ih / 2, iw / 6, -ih / 2 + ih / 3]} stroke="#475569" strokeWidth={1} />
+                <Line points={[-iw / 6, -ih / 2, -iw / 6, -ih / 2 + ih / 3]} stroke="#475569" strokeWidth={1} />
+                <Line points={[-iw / 4, ih * 0.4, -iw / 4, -ih / 6, iw / 6, -ih / 6, iw / 6, -ih * 0.4]} stroke="#0f172a" strokeWidth={1.2} />
+                <Line points={[iw / 6 - 4, -ih * 0.4 + 4, iw / 6, -ih * 0.4, iw / 6 + 4, -ih * 0.4 + 4]} stroke="#0f172a" strokeWidth={1.2} />
+              </Group>
+            );
+          }
+          if (style === "u") {
+            return (
+              <Group>
+                <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={1} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.08} shadowOffset={{ x: 1, y: 1 }} />
+                <Line points={[0, -ih / 2 + ih / 4, 0, ih / 2]} stroke="#0f172a" strokeWidth={1.5} />
+                <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih / 4} fill="#f8fafc" stroke="#475569" strokeWidth={1} />
+                <Line points={[-iw / 2, -ih / 8, 0, -ih / 8]} stroke="#475569" strokeWidth={1} />
+                <Line points={[-iw / 2, ih / 8, 0, ih / 8]} stroke="#475569" strokeWidth={1} />
+                <Line points={[-iw / 2, ih * 0.35, 0, ih * 0.35]} stroke="#475569" strokeWidth={1} />
+                <Line points={[0, -ih / 8, iw / 2, -ih / 8]} stroke="#475569" strokeWidth={1} />
+                <Line points={[0, ih / 8, iw / 2, ih / 8]} stroke="#475569" strokeWidth={1} />
+                <Line points={[0, ih * 0.35, iw / 2, ih * 0.35]} stroke="#475569" strokeWidth={1} />
+                <Line points={[-iw / 4, ih * 0.4, -iw / 4, -ih / 4, iw / 4, -ih / 4, iw / 4, ih * 0.4]} stroke="#0f172a" strokeWidth={1.2} />
+                <Line points={[iw / 4 - 4, ih * 0.4 - 4, iw / 4, ih * 0.4, iw / 4 + 4, ih * 0.4 - 4]} stroke="#0f172a" strokeWidth={1.2} />
+              </Group>
+            );
+          }
+          return (
+            <Group>
+              <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={1} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.08} shadowOffset={{ x: 1, y: 1 }} />
+              <Line points={[-iw / 2, -ih * 0.35, iw / 2, -ih * 0.35]} stroke="#475569" strokeWidth={1} />
+              <Line points={[-iw / 2, -ih * 0.2, iw / 2, -ih * 0.2]} stroke="#475569" strokeWidth={1} />
+              <Line points={[-iw / 2, -ih * 0.05, iw / 2, -ih * 0.05]} stroke="#475569" strokeWidth={1} />
+              <Line points={[-iw / 2, ih * 0.1, iw / 2, ih * 0.1]} stroke="#475569" strokeWidth={1} />
+              <Line points={[-iw / 2, ih * 0.25, iw / 2, ih * 0.25]} stroke="#475569" strokeWidth={1} />
+              <Line points={[-iw / 2, ih * 0.4, iw / 2, ih * 0.4]} stroke="#475569" strokeWidth={1} />
+              <Line points={[0, ih * 0.42, 0, -ih * 0.42]} stroke="#0f172a" strokeWidth={1.2} />
+              <Line points={[-4, -ih * 0.42 + 4, 0, -ih * 0.42, 4, -ih * 0.42 + 4]} stroke="#0f172a" strokeWidth={1.2} />
+            </Group>
+          );
+        }
       case "plant_pots":
         return (
           <Group>
@@ -3123,6 +3245,37 @@ Requirements:
     }
   };
 
+  // ── Update ALL Rooms Finish (apply to entire floor) ──────────────────────
+  const updateAllRoomsFinish = (
+    targetType: "style" | "flooring" | "walls" | "ceiling" | "doors" | "windows",
+    value: string,
+    isColor = false
+  ) => {
+    if (floorPlan) {
+      pushHistory(floorPlan);
+      const updatedRooms = floorPlan.rooms.map((r) => {
+        if (targetType === "style") {
+          return { ...r, style: value };
+        } else {
+          const currentFinishes = r.finishes || {};
+          return {
+            ...r,
+            finishes: {
+              ...currentFinishes,
+              [targetType]: value
+            }
+          };
+        }
+      });
+      const updatedPlan = { ...floorPlan, rooms: updatedRooms };
+      setFloorPlan(updatedPlan);
+      const nextPlans = [...floorPlans];
+      nextPlans[activeFloorIndex] = updatedPlan;
+      setFloorPlans(nextPlans);
+      if (value) toast.success(`Áp dụng cho toàn bộ ${updatedRooms.length} phòng trong tầng`);
+    }
+  };
+
   // ── Furnish selected room with default furniture ─────────────────────────
   const furnishSelectedRoom = (room: Room) => {
     if (!floorPlan) return;
@@ -3337,7 +3490,7 @@ Requirements:
     toast.success(`Đã thêm ${FURNITURE_METADATA[type]?.name || type}! Bạn có thể kéo thả để di chuyển.`);
   };
 
-  const handleAddDoor = () => {
+  const handleAddDoor = (style: string = "hinged") => {
     if (!floorPlan) {
       toast.error("Vui lòng tạo mặt bằng trước!");
       return;
@@ -3348,8 +3501,9 @@ Requirements:
       type: "door",
       x: 3.0,
       y: 3.0,
-      w: 0.9,
+      w: style === "garage" ? 2.4 : 0.9,
       rotation: 0,
+      style,
     };
     const updatedOpenings = [...(floorPlan.openings || []), newOpening];
     const updatedPlan = { ...floorPlan, openings: updatedOpenings };
@@ -3358,10 +3512,15 @@ Requirements:
     nextPlans[activeFloorIndex] = updatedPlan;
     setFloorPlans(nextPlans);
     setSelectedOpeningId(newOpening.id);
-    toast.success("Đã thêm một cửa đi mới! Hãy kéo thả cửa đến vị trí mong muốn.");
+
+    let doorName = "cửa mở bản lề";
+    if (style === "garage") doorName = "cửa cuốn nhà xe";
+    else if (style === "sliding") doorName = "cửa lùa trượt";
+
+    toast.success(`Đã thêm một ${doorName} mới! Hãy kéo thả cửa đến vị trí mong muốn.`);
   };
 
-  const handleAddWindow = () => {
+  const handleAddWindow = (style: string = "hinged") => {
     if (!floorPlan) {
       toast.error("Vui lòng tạo mặt bằng trước!");
       return;
@@ -3374,6 +3533,7 @@ Requirements:
       y: 3.0,
       w: 1.2,
       rotation: 0,
+      style,
     };
     const updatedOpenings = [...(floorPlan.openings || []), newOpening];
     const updatedPlan = { ...floorPlan, openings: updatedOpenings };
@@ -3382,250 +3542,257 @@ Requirements:
     nextPlans[activeFloorIndex] = updatedPlan;
     setFloorPlans(nextPlans);
     setSelectedOpeningId(newOpening.id);
-    toast.success("Đã thêm một cửa sổ mới! Hãy kéo thả cửa sổ đến vị trí mong muốn.");
+
+    let windowName = "cửa sổ mở bản lề";
+    if (style === "blinds") windowName = "cửa chớp lá sách";
+    else if (style === "sliding") windowName = "cửa sổ lùa trượt";
+
+    toast.success(`Đã thêm một ${windowName} mới! Hãy kéo thả cửa sổ đến vị trí mong muốn.`);
   };
 
   // ── Render Openings ────────────────────────────────────────────────────
   const renderOpenings = (plan: FloorPlanData) => {
-    if (!plan.openings) return null;
+    if (!plan || !plan.openings) return null;
     const scale = METER_TO_PX * zoom;
     const thickness = (wallThickness / 1000) * scale;
 
-    return plan.openings.map((open) => {
-      const ox = pan.x + open.x * scale;
-      const oy = pan.y + open.y * scale;
-      const ow = open.w * scale;
-      const isSelected = selectedOpeningId === open.id;
-      const strokeColor = isSelected ? "#00b5cd" : "#1e293b";
-      const strokeWidth = isSelected ? 3 : 2;
+    return plan.openings
+      .filter((open) => open && typeof open.x === "number" && typeof open.y === "number")
+      .map((open) => {
+        const ox = pan.x + open.x * scale;
+        const oy = pan.y + open.y * scale;
+        const ow = open.w * scale;
+        const isSelected = selectedOpeningId === open.id;
+        const strokeColor = isSelected ? "#00b5cd" : "#1e293b";
+        const strokeWidth = isSelected ? 3 : 2;
 
-      if (open.type === "door") {
-        const arcPoints = [];
-        const segments = 12;
-        for (let i = 0; i <= segments; i++) {
-          const angle = (i * Math.PI) / (segments * 2);
-          arcPoints.push(Math.cos(angle) * ow, -Math.sin(angle) * ow);
+        if (open.type === "door") {
+          const style = open.style || "hinged";
+
+          return (
+            <Group
+              key={open.id}
+              x={ox}
+              y={oy}
+              rotation={open.rotation}
+              draggable={true}
+              onDragMove={(e) => {
+                e.cancelBubble = true;
+                const newX = (e.target.x() - pan.x) / scale;
+                const newY = (e.target.y() - pan.y) / scale;
+                const roundedX = Math.round(newX * 20) / 20; // 0.05m
+                const roundedY = Math.round(newY * 20) / 20;
+                e.target.x(pan.x + roundedX * scale);
+                e.target.y(pan.y + roundedY * scale);
+              }}
+              onClick={(e) => {
+                e.cancelBubble = true;
+                setSelectedOpeningId(open.id);
+                setSelectedRoomId(null);
+                setSelectedFurnitureId(null);
+                setSelectedFurnitureRoomId(null);
+              }}
+              onTap={(e) => {
+                e.cancelBubble = true;
+                setSelectedOpeningId(open.id);
+                setSelectedRoomId(null);
+                setSelectedFurnitureId(null);
+                setSelectedFurnitureRoomId(null);
+              }}
+              onDblClick={(e) => {
+                e.cancelBubble = true;
+                rotateOpening(open.id);
+              }}
+              onDblTap={(e) => {
+                e.cancelBubble = true;
+                rotateOpening(open.id);
+              }}
+              onMouseEnter={(e) => {
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = "move";
+              }}
+              onMouseLeave={(e) => {
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = "default";
+              }}
+              onDragEnd={(e) => {
+                e.cancelBubble = true;
+                const newX = (e.target.x() - pan.x) / scale;
+                const newY = (e.target.y() - pan.y) / scale;
+                const roundedX = Math.round(newX * 20) / 20; // snap to 0.05m
+                const roundedY = Math.round(newY * 20) / 20;
+
+                if (plan) {
+                  pushHistory(plan);
+                  const updatedOpenings = plan.openings.map((o) => {
+                    if (o.id === open.id) {
+                      return { ...o, x: roundedX, y: roundedY };
+                    }
+                    return o;
+                  });
+                  const updatedPlan = { ...plan, openings: updatedOpenings };
+                  setFloorPlan(updatedPlan);
+                  const nextPlans = [...floorPlans];
+                  nextPlans[activeFloorIndex] = updatedPlan;
+                  setFloorPlans(nextPlans);
+                  toast.success(`Đã di chuyển cửa đến (${roundedX}m, ${roundedY}m)`);
+                }
+              }}
+            >
+              {style === "garage" ? (
+                <Group>
+                  <Rect x={-ow / 2} y={-thickness / 2} width={ow} height={thickness} fill="white" stroke={strokeColor} strokeWidth={strokeWidth} cornerRadius={1} />
+                  <Line points={[-ow / 2 + 4, -thickness / 4, ow / 2 - 4, -thickness / 4]} stroke={strokeColor} strokeWidth={1} />
+                  <Line points={[-ow / 2 + 4, 0, ow / 2 - 4, 0]} stroke={strokeColor} strokeWidth={1} />
+                  <Line points={[-ow / 2 + 4, thickness / 4, ow / 2 - 4, thickness / 4]} stroke={strokeColor} strokeWidth={1} />
+                  <Rect x={-ow / 2} y={-thickness} width={ow} height={thickness * 2} fill="transparent" />
+                </Group>
+              ) : style === "sliding" ? (
+                <Group>
+                  <Rect x={-ow / 2} y={-thickness / 2} width={ow} height={thickness} fill="#f1f5f9" stroke={strokeColor} strokeWidth={strokeWidth - 0.5} cornerRadius={1} />
+                  <Line points={[-ow / 2 + 2, -thickness / 4, 2, -thickness / 4]} stroke={strokeColor} strokeWidth={strokeWidth} />
+                  <Line points={[-2, thickness / 4, ow / 2 - 2, thickness / 4]} stroke={strokeColor} strokeWidth={strokeWidth} />
+                  <Rect x={-ow / 2} y={-thickness} width={ow} height={thickness * 2} fill="transparent" />
+                </Group>
+              ) : (
+                <Group>
+                  {(() => {
+                    const arcPoints = [];
+                    const segments = 12;
+                    for (let i = 0; i <= segments; i++) {
+                      const angle = (i * Math.PI) / (segments * 2);
+                      arcPoints.push(Math.cos(angle) * ow, -Math.sin(angle) * ow);
+                    }
+                    return (
+                      <Group>
+                        <Rect x={0} y={-ow} width={ow} height={ow} fill="transparent" />
+                        <Line points={arcPoints} stroke={strokeColor} strokeWidth={isSelected ? 1.5 : 1} dash={[3, 3]} />
+                        <Line points={[0, 0, 0, -ow]} stroke={strokeColor} strokeWidth={strokeWidth} />
+                      </Group>
+                    );
+                  })()}
+                </Group>
+              )}
+
+              {isSelected && (
+                <Circle x={0} y={0} radius={6} fill="#00b5cd" stroke="white" strokeWidth={1.5} />
+              )}
+            </Group>
+          );
+        } else {
+          const style = open.style || "hinged";
+
+          return (
+            <Group
+              key={open.id}
+              x={ox}
+              y={oy}
+              rotation={open.rotation}
+              draggable={true}
+              onDragMove={(e) => {
+                e.cancelBubble = true;
+                const newX = (e.target.x() - pan.x) / scale;
+                const newY = (e.target.y() - pan.y) / scale;
+                const roundedX = Math.round(newX * 20) / 20; // 0.05m
+                const roundedY = Math.round(newY * 20) / 20;
+                e.target.x(pan.x + roundedX * scale);
+                e.target.y(pan.y + roundedY * scale);
+              }}
+              onClick={(e) => {
+                e.cancelBubble = true;
+                setSelectedOpeningId(open.id);
+                setSelectedRoomId(null);
+                setSelectedFurnitureId(null);
+                setSelectedFurnitureRoomId(null);
+              }}
+              onTap={(e) => {
+                e.cancelBubble = true;
+                setSelectedOpeningId(open.id);
+                setSelectedRoomId(null);
+                setSelectedFurnitureId(null);
+                setSelectedFurnitureRoomId(null);
+              }}
+              onDblClick={(e) => {
+                e.cancelBubble = true;
+                rotateOpening(open.id);
+              }}
+              onDblTap={(e) => {
+                e.cancelBubble = true;
+                rotateOpening(open.id);
+              }}
+              onMouseEnter={(e) => {
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = "move";
+              }}
+              onMouseLeave={(e) => {
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = "default";
+              }}
+              onDragEnd={(e) => {
+                e.cancelBubble = true;
+                const newX = (e.target.x() - pan.x) / scale;
+                const newY = (e.target.y() - pan.y) / scale;
+                const roundedX = Math.round(newX * 20) / 20; // snap to 0.05m
+                const roundedY = Math.round(newY * 20) / 20;
+
+                if (plan) {
+                  pushHistory(plan);
+                  const updatedOpenings = plan.openings.map((o) => {
+                    if (o.id === open.id) {
+                      return { ...o, x: roundedX, y: roundedY };
+                    }
+                    return o;
+                  });
+                  const updatedPlan = { ...plan, openings: updatedOpenings };
+                  setFloorPlan(updatedPlan);
+                  const nextPlans = [...floorPlans];
+                  nextPlans[activeFloorIndex] = updatedPlan;
+                  setFloorPlans(nextPlans);
+                  toast.success(`Đã di chuyển cửa sổ đến (${roundedX}m, ${roundedY}m)`);
+                }
+              }}
+            >
+              <Rect x={-ow / 2} y={-12} width={ow} height={24} fill="transparent" />
+              {style === "blinds" ? (
+                <Group>
+                  <Rect x={-ow / 2} y={-thickness / 2} width={ow} height={thickness} fill="white" stroke={strokeColor} strokeWidth={strokeWidth} cornerRadius={1} />
+                  <Line points={[-ow / 2 + 3, -thickness / 4, -ow / 2 + 6, thickness / 4]} stroke={strokeColor} strokeWidth={1} />
+                  <Line points={[-ow / 4, -thickness / 4, -ow / 4 + 3, thickness / 4]} stroke={strokeColor} strokeWidth={1} />
+                  <Line points={[0, -thickness / 4, 3, thickness / 4]} stroke={strokeColor} strokeWidth={1} />
+                  <Line points={[ow / 4, -thickness / 4, ow / 4 + 3, thickness / 4]} stroke={strokeColor} strokeWidth={1} />
+                  <Line points={[ow / 2 - 6, -thickness / 4, ow / 2 - 3, thickness / 4]} stroke={strokeColor} strokeWidth={1} />
+                </Group>
+              ) : style === "sliding" ? (
+                <Group>
+                  <Rect x={-ow / 2} y={-thickness / 2} width={ow} height={thickness} fill="#f1f5f9" stroke={strokeColor} strokeWidth={strokeWidth - 0.5} cornerRadius={1} />
+                  <Line points={[-ow / 2 + 2, -thickness / 4, 2, -thickness / 4]} stroke={strokeColor} strokeWidth={strokeWidth} />
+                  <Line points={[-2, thickness / 4, ow / 2 - 2, thickness / 4]} stroke={strokeColor} strokeWidth={strokeWidth} />
+                </Group>
+              ) : (
+                <Group>
+                  <Rect x={-ow / 2} y={-thickness / 2} width={ow} height={thickness} fill="white" stroke={strokeColor} strokeWidth={strokeWidth} cornerRadius={1} />
+                  <Line points={[-ow / 2, 0, ow / 2, 0]} stroke={isSelected ? "#00b5cd" : "#94a3b8"} strokeWidth={isSelected ? 1.5 : 1} />
+                </Group>
+              )}
+
+              {isSelected && (
+                <Circle x={0} y={0} radius={6} fill="#00b5cd" stroke="white" strokeWidth={1.5} />
+              )}
+            </Group>
+          );
         }
-
-        return (
-          <Group
-            key={open.id}
-            x={ox}
-            y={oy}
-            rotation={open.rotation}
-            draggable={true}
-            onDragMove={(e) => {
-              e.cancelBubble = true;
-              const newX = (e.target.x() - pan.x) / scale;
-              const newY = (e.target.y() - pan.y) / scale;
-              const roundedX = Math.round(newX * 20) / 20; // 0.05m
-              const roundedY = Math.round(newY * 20) / 20;
-              e.target.x(pan.x + roundedX * scale);
-              e.target.y(pan.y + roundedY * scale);
-            }}
-            onClick={(e) => {
-              e.cancelBubble = true;
-              setSelectedOpeningId(open.id);
-              setSelectedRoomId(null);
-              setSelectedFurnitureId(null);
-              setSelectedFurnitureRoomId(null);
-            }}
-            onTap={(e) => {
-              e.cancelBubble = true;
-              setSelectedOpeningId(open.id);
-              setSelectedRoomId(null);
-              setSelectedFurnitureId(null);
-              setSelectedFurnitureRoomId(null);
-            }}
-            onDblClick={(e) => {
-              e.cancelBubble = true;
-              rotateOpening(open.id);
-            }}
-            onDblTap={(e) => {
-              e.cancelBubble = true;
-              rotateOpening(open.id);
-            }}
-            onMouseEnter={(e) => {
-              const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "move";
-            }}
-            onMouseLeave={(e) => {
-              const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "default";
-            }}
-            onDragEnd={(e) => {
-              e.cancelBubble = true;
-              const newX = (e.target.x() - pan.x) / scale;
-              const newY = (e.target.y() - pan.y) / scale;
-              const roundedX = Math.round(newX * 20) / 20; // snap to 0.05m
-              const roundedY = Math.round(newY * 20) / 20;
-
-              if (floorPlan) {
-                pushHistory(floorPlan);
-                const updatedOpenings = floorPlan.openings.map((o) => {
-                  if (o.id === open.id) {
-                    return { ...o, x: roundedX, y: roundedY };
-                  }
-                  return o;
-                });
-                const updatedPlan = { ...floorPlan, openings: updatedOpenings };
-                setFloorPlan(updatedPlan);
-                const nextPlans = [...floorPlans];
-                nextPlans[activeFloorIndex] = updatedPlan;
-                setFloorPlans(nextPlans);
-                toast.success(`Đã di chuyển cửa đến (${roundedX}m, ${roundedY}m)`);
-              }
-            }}
-          >
-            {/* Invisible large hit area to make dragging easy */}
-            <Rect
-              x={0}
-              y={-ow}
-              width={ow}
-              height={ow}
-              fill="transparent"
-            />
-            <Line
-              points={arcPoints}
-              stroke={strokeColor}
-              strokeWidth={isSelected ? 1.5 : 1}
-              dash={[3, 3]}
-            />
-            <Line
-              points={[0, 0, 0, -ow]}
-              stroke={strokeColor}
-              strokeWidth={strokeWidth}
-            />
-            {/* Indication circle at pivot point when selected */}
-            {isSelected && (
-              <Circle
-                x={0}
-                y={0}
-                radius={6}
-                fill="#00b5cd"
-                stroke="white"
-                strokeWidth={1.5}
-              />
-            )}
-          </Group>
-        );
-      } else {
-        return (
-          <Group
-            key={open.id}
-            x={ox}
-            y={oy}
-            rotation={open.rotation}
-            draggable={true}
-            onDragMove={(e) => {
-              e.cancelBubble = true;
-              const newX = (e.target.x() - pan.x) / scale;
-              const newY = (e.target.y() - pan.y) / scale;
-              const roundedX = Math.round(newX * 20) / 20; // 0.05m
-              const roundedY = Math.round(newY * 20) / 20;
-              e.target.x(pan.x + roundedX * scale);
-              e.target.y(pan.y + roundedY * scale);
-            }}
-            onClick={(e) => {
-              e.cancelBubble = true;
-              setSelectedOpeningId(open.id);
-              setSelectedRoomId(null);
-              setSelectedFurnitureId(null);
-              setSelectedFurnitureRoomId(null);
-            }}
-            onTap={(e) => {
-              e.cancelBubble = true;
-              setSelectedOpeningId(open.id);
-              setSelectedRoomId(null);
-              setSelectedFurnitureId(null);
-              setSelectedFurnitureRoomId(null);
-            }}
-            onDblClick={(e) => {
-              e.cancelBubble = true;
-              rotateOpening(open.id);
-            }}
-            onDblTap={(e) => {
-              e.cancelBubble = true;
-              rotateOpening(open.id);
-            }}
-            onMouseEnter={(e) => {
-              const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "move";
-            }}
-            onMouseLeave={(e) => {
-              const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "default";
-            }}
-            onDragEnd={(e) => {
-              e.cancelBubble = true;
-              const newX = (e.target.x() - pan.x) / scale;
-              const newY = (e.target.y() - pan.y) / scale;
-              const roundedX = Math.round(newX * 20) / 20; // snap to 0.05m
-              const roundedY = Math.round(newY * 20) / 20;
-
-              if (floorPlan) {
-                pushHistory(floorPlan);
-                const updatedOpenings = floorPlan.openings.map((o) => {
-                  if (o.id === open.id) {
-                    return { ...o, x: roundedX, y: roundedY };
-                  }
-                  return o;
-                });
-                const updatedPlan = { ...floorPlan, openings: updatedOpenings };
-                setFloorPlan(updatedPlan);
-                const nextPlans = [...floorPlans];
-                nextPlans[activeFloorIndex] = updatedPlan;
-                setFloorPlans(nextPlans);
-                toast.success(`Đã di chuyển cửa sổ đến (${roundedX}m, ${roundedY}m)`);
-              }
-            }}
-          >
-            {/* Invisible large hit area to make dragging easy */}
-            <Rect
-              x={-ow / 2}
-              y={-12}
-              width={ow}
-              height={24}
-              fill="transparent"
-            />
-            <Rect
-              x={-ow / 2}
-              y={-thickness / 2}
-              width={ow}
-              height={thickness}
-              fill="white"
-              stroke={strokeColor}
-              strokeWidth={strokeWidth}
-              cornerRadius={1}
-            />
-            <Line
-              points={[-ow / 2, 0, ow / 2, 0]}
-              stroke={isSelected ? "#00b5cd" : "#94a3b8"}
-              strokeWidth={isSelected ? 1.5 : 1}
-            />
-            {/* Indication circle at pivot point when selected */}
-            {isSelected && (
-              <Circle
-                x={0}
-                y={0}
-                radius={6}
-                fill="#00b5cd"
-                stroke="white"
-                strokeWidth={1.5}
-              />
-            )}
-          </Group>
-        );
-      }
-    });
+      });
   };
 
   // ── Render floor plan on Konva ──────────────────────────────────────────
   const renderKonvaFloorPlan = (plan: FloorPlanData) => {
+    if (!plan || !plan.rooms) return null;
     const scale = METER_TO_PX * zoom;
     const thickness = (wallThickness / 1000) * scale;
 
-    return plan.rooms.map((room) => {
+    return plan.rooms
+      .filter((room) => room && typeof room.x === "number" && typeof room.y === "number")
+      .map((room) => {
       const isSelected = selectedRoomId === room.id;
       const isDragged = draggedRoomId === room.id;
 
@@ -3972,10 +4139,15 @@ Requirements:
   };
 
   const renderKonvaFurniture = (plan: FloorPlanData) => {
+    if (!plan || !plan.rooms) return null;
     const scale = METER_TO_PX * zoom;
 
-    return plan.rooms.flatMap((room) => {
-      return (room.furniture || []).map((item) => {
+    return plan.rooms
+      .filter((room) => room && typeof room.x === "number" && typeof room.y === "number")
+      .flatMap((room) => {
+        return (room.furniture || [])
+          .filter((item) => item && typeof item.x === "number" && typeof item.y === "number")
+          .map((item) => {
         const iw = item.w * scale;
         const ih = item.h * scale;
 
@@ -4182,10 +4354,12 @@ Requirements:
 
   // ── Render Cameras (Visualize Mode) ─────────────────────────────────────
   const renderCameras = () => {
-    if (!floorPlan) return null;
+    if (!floorPlan || !floorPlan.rooms) return null;
     const scale = METER_TO_PX * zoom;
 
-    return floorPlan.rooms.map((room) => {
+    return floorPlan.rooms
+      .filter((room) => room && typeof room.x === "number" && typeof room.y === "number")
+      .map((room) => {
       const cam = cameras[room.id];
       if (!cam) return null;
 
@@ -4344,7 +4518,7 @@ Requirements:
 
   // ── Land boundary ──────────────────────────────────────────────────────
   const renderLandBoundary = () => {
-    if (!floorPlan || floorPlan.rooms.length === 0) return null;
+    if (!floorPlan || !floorPlan.rooms || floorPlan.rooms.length === 0) return null;
     const landW = gatherInfo.landWidth || 5;
     const landL = gatherInfo.landLength || 15;
     const scale = METER_TO_PX * zoom;
@@ -4352,10 +4526,13 @@ Requirements:
     const shapePoints = gatherInfo.shapePoints || getDefaultPointsForShape(shape, landW, landL);
 
     if (shapePoints && shapePoints.length > 0) {
-      const points = shapePoints.flatMap(p => [
-        pan.x + p.x * scale,
-        pan.y + p.y * scale
-      ]);
+      const points = (shapePoints || [])
+        .filter(p => p && typeof p.x === "number" && typeof p.y === "number")
+        .flatMap(p => [
+          pan.x + p.x * scale,
+          pan.y + p.y * scale
+        ]);
+      if (points.length === 0) return null;
       return (
         <Line
           points={points}
@@ -4521,7 +4698,7 @@ Requirements:
 
           {floorPlan && (
             <button
-              onClick={handleRender3D}
+              onClick={() => handleRender3D("Floorplan to 3D")}
               disabled={isRendering3D}
               className="flex items-center gap-2 px-4 py-1.5 bg-[#d4a853] hover:bg-[#c49843] disabled:opacity-50 text-[#1a1612] text-xs font-bold rounded-lg transition-all cursor-pointer"
             >
@@ -5037,37 +5214,176 @@ Requirements:
 
               {/* Structure Popover */}
               {activeBottomPopup === "structure" && (
-                <div className="mb-3 w-48 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-150">
-                  <button
-                    onClick={() => {
-                      handleAddDoor();
-                      setActiveBottomPopup(null);
-                    }}
-                    className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all flex items-center justify-between cursor-pointer"
-                  >
-                    <span>Cửa đi</span>
-                    <Plus className="w-3.5 h-3.5 text-[#00b5cd]" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleAddWindow();
-                      setActiveBottomPopup(null);
-                    }}
-                    className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all flex items-center justify-between cursor-pointer"
-                  >
-                    <span>Cửa sổ</span>
-                    <Plus className="w-3.5 h-3.5 text-[#00b5cd]" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleAddFurniture("stairs");
-                      setActiveBottomPopup(null);
-                    }}
-                    className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all flex items-center justify-between cursor-pointer"
-                  >
-                    <span>Cầu thang</span>
-                    <Plus className="w-3.5 h-3.5 text-[#00b5cd]" />
-                  </button>
+                <div className="relative">
+                  <div className="absolute bottom-full mb-3 left-0 w-44 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 z-50 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                    <button
+                      onMouseEnter={() => setActiveStructureSubmenu("door")}
+                      className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-xl border border-transparent transition-all flex items-center justify-between cursor-pointer ${
+                        activeStructureSubmenu === "door"
+                          ? "bg-slate-100 border-slate-200 text-slate-800"
+                          : "text-slate-700 hover:bg-slate-50 hover:border-slate-100"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3h18v18H3z"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>
+                        <span>Door</span>
+                      </span>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                    </button>
+                    <button
+                      onMouseEnter={() => setActiveStructureSubmenu("stairs")}
+                      className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-xl border border-transparent transition-all flex items-center justify-between cursor-pointer ${
+                        activeStructureSubmenu === "stairs"
+                          ? "bg-slate-100 border-slate-200 text-slate-800"
+                          : "text-slate-700 hover:bg-slate-50 hover:border-slate-100"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M3 22v-4h4v-4h4v-4h4V6h5"/></svg>
+                        <span>Stairs</span>
+                      </span>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                    </button>
+                    <button
+                      onMouseEnter={() => setActiveStructureSubmenu("window")}
+                      className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-xl border border-transparent transition-all flex items-center justify-between cursor-pointer ${
+                        activeStructureSubmenu === "window"
+                          ? "bg-slate-100 border-slate-200 text-slate-800"
+                          : "text-slate-700 hover:bg-slate-50 hover:border-slate-100"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
+                        <span>Window</span>
+                      </span>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                    </button>
+                  </div>
+
+                  {/* Flyout Submenus positioned to the right of main popover */}
+                  {activeStructureSubmenu === "door" && (
+                    <div
+                      onMouseLeave={() => setActiveStructureSubmenu(null)}
+                      className="absolute bottom-full mb-3 left-[180px] ml-1 w-44 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 z-50 animate-in fade-in slide-in-from-left-2 duration-150"
+                    >
+                      <button
+                        onClick={() => {
+                          handleAddDoor("garage");
+                          setActiveBottomPopup(null);
+                          setActiveStructureSubmenu(null);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all cursor-pointer"
+                      >
+                        Garage Door
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleAddDoor("hinged");
+                          setActiveBottomPopup(null);
+                          setActiveStructureSubmenu(null);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all cursor-pointer"
+                      >
+                        Hinged Door
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleAddDoor("sliding");
+                          setActiveBottomPopup(null);
+                          setActiveStructureSubmenu(null);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all cursor-pointer"
+                      >
+                        Sliding Door
+                      </button>
+                    </div>
+                  )}
+
+                  {activeStructureSubmenu === "stairs" && (
+                    <div
+                      onMouseLeave={() => setActiveStructureSubmenu(null)}
+                      className="absolute bottom-full mb-3 left-[180px] ml-1 w-56 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 z-50 animate-in fade-in slide-in-from-left-2 duration-150"
+                    >
+                      <button
+                        onClick={() => {
+                          handleAddFurniture("stairs", 1.5, 1.5, "l_landing");
+                          setActiveBottomPopup(null);
+                          setActiveStructureSubmenu(null);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all cursor-pointer"
+                      >
+                        L–shaped staircase (landing)
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleAddFurniture("stairs", 1.5, 1.5, "l_winder");
+                          setActiveBottomPopup(null);
+                          setActiveStructureSubmenu(null);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all cursor-pointer"
+                      >
+                        L–shaped staircase (winder)
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleAddFurniture("stairs", 1.0, 2.0, "straight");
+                          setActiveBottomPopup(null);
+                          setActiveStructureSubmenu(null);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all cursor-pointer"
+                      >
+                        Straight staircase
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleAddFurniture("stairs", 1.8, 1.8, "u");
+                          setActiveBottomPopup(null);
+                          setActiveStructureSubmenu(null);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all cursor-pointer"
+                      >
+                        U–shaped staircase
+                      </button>
+                    </div>
+                  )}
+
+                  {activeStructureSubmenu === "window" && (
+                    <div
+                      onMouseLeave={() => setActiveStructureSubmenu(null)}
+                      className="absolute bottom-full mb-3 left-[180px] ml-1 w-44 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 z-50 animate-in fade-in slide-in-from-left-2 duration-150"
+                    >
+                      <button
+                        onClick={() => {
+                          handleAddWindow("blinds");
+                          setActiveBottomPopup(null);
+                          setActiveStructureSubmenu(null);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all cursor-pointer"
+                      >
+                        Blinds Window
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleAddWindow("hinged");
+                          setActiveBottomPopup(null);
+                          setActiveStructureSubmenu(null);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all cursor-pointer"
+                      >
+                        Hinged Window
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleAddWindow("sliding");
+                          setActiveBottomPopup(null);
+                          setActiveStructureSubmenu(null);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all cursor-pointer"
+                      >
+                        Sliding Window
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -5097,7 +5413,13 @@ Requirements:
 
                 <button
                   onClick={() => {
-                    setActiveBottomPopup(p => p === "structure" ? null : "structure");
+                    setActiveBottomPopup(p => {
+                      const next = p === "structure" ? null : "structure";
+                      if (next !== "structure") {
+                        setActiveStructureSubmenu(null);
+                      }
+                      return next;
+                    });
                   }}
                   className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
                     activeBottomPopup === "structure"
@@ -5459,20 +5781,38 @@ Requirements:
                       </button>
                     </div>
 
-                    {/* Render Scene Button */}
-                    <button
-                      onClick={async () => {
-                        setSelectedRoomId(selectedCameraRoomId);
-                        setTimeout(() => {
-                          handleRender3D();
-                        }, 100);
-                      }}
-                      disabled={isRendering3D}
-                      className="w-full py-3 bg-[#00b5cd] hover:bg-[#00a3b8] text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Sparkles className="w-4 h-4" />
-                      {isRendering3D ? "Rendering..." : "Render scene"}
-                    </button>
+                    {/* Render Scene Buttons Container */}
+                    <div className="flex flex-col gap-2 w-full">
+                      {/* Render Room Button (Floor to 3D) */}
+                      <button
+                        onClick={async () => {
+                          setSelectedRoomId(selectedCameraRoomId);
+                          setTimeout(() => {
+                            handleRender3D("Floorplan to 3D");
+                          }, 100);
+                        }}
+                        disabled={isRendering3D}
+                        className="w-full py-3 bg-[#00b5cd] hover:bg-[#00a3b8] text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        {isRendering3D ? "Rendering Room..." : "Render Room (Floor to 3D)"}
+                      </button>
+
+                      {/* Render 3D Floorplan Button (Floorplan to 3D Floorplan) */}
+                      <button
+                        onClick={async () => {
+                          setSelectedRoomId(selectedCameraRoomId);
+                          setTimeout(() => {
+                            handleRender3D("Floorplan to 3D Floorplan");
+                          }, 100);
+                        }}
+                        disabled={isRendering3D}
+                        className="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        {isRendering3D ? "Rendering Floorplan..." : "Render 3D Floorplan"}
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="text-center py-8 text-xs text-slate-400 font-medium">
@@ -6043,143 +6383,121 @@ Requirements:
                       </div>
                     </div>
 
-                    {/* DESIGN REFERENCES */}
+                    {/* DESIGN REFERENCES — áp dụng cho toàn tầng */}
                     <div className="space-y-3">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Tham chiếu thiết kế</span>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Design References</span>
+                        <button
+                          onClick={() => {
+                            if (floorPlan && floorPlan.rooms.length > 0) {
+                              updateAllRoomsFinish("style", "");
+                              ["flooring", "walls", "ceiling", "doors", "windows"].forEach(t =>
+                                updateAllRoomsFinish(t as any, "")
+                              );
+                            }
+                            toast.success("Đã reset toàn bộ vật liệu hoàn thiện");
+                          }}
+                          className="text-[10px] text-slate-400 hover:text-slate-600 font-bold transition-colors cursor-pointer"
+                        >
+                          Reset all
+                        </button>
+                      </div>
+
+                      {/* Style */}
                       <button
-                        onClick={() => setShowStyleModal(true)}
+                        onClick={() => setActiveFinishTarget({ type: "style", roomId: "__all__" })}
                         className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
                       >
                         <div className="flex items-center gap-2.5">
-                          <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
-                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                          </div>
+                          <div className="w-5 h-5 rounded-full border border-slate-200" style={{ backgroundColor: ROOM_STYLES.find(s => s.value === (floorPlan?.rooms[0]?.style || ""))?.color || "#e2e8f0" }} />
                           <span>Phong cách (Style)</span>
                         </div>
-                        <span className="text-slate-500 font-medium">
-                          {selectedStyle ? selectedStyle : <Plus className="w-4 h-4 text-[#00b5cd]" />}
-                        </span>
+                        <span className="text-slate-500 font-medium">{floorPlan?.rooms[0]?.style || "Traditional"}</span>
                       </button>
-                    </div>
 
-                    {/* Finishes */}
-                    <div className="space-y-3">
-                    <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Vật liệu hoàn thiện</span>
-                    
-                    {/* Flooring */}
-                    <button
-                      onClick={() => setShowFinishModal("flooring")}
-                      className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
-                          <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M4 19h16v2H4v-2zm0-4h16v2H4v-2zm0-4h16v2H4v-2zm0-4h16v2H4V7zm0-4h16v2H4V3z"/></svg>
+                      {/* Flooring */}
+                      <button
+                        onClick={() => setActiveFinishTarget({ type: "flooring", roomId: "__all__" })}
+                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-5 h-5 rounded-full border border-slate-200" style={{ backgroundColor: ROOM_FLOORINGS.find(f => f.value === (floorPlan?.rooms[0]?.finishes?.flooring || ""))?.color || "#e2e8f0" }} />
+                          <span>Lát sàn (Flooring)</span>
                         </div>
-                        <span>Lát sàn (Flooring)</span>
-                      </div>
-                      <span className="text-[#00b5cd] font-medium">{finishes.flooring.name}</span>
-                    </button>
-
-                  {/* Walls */}
-                  <button
-                    onClick={() => setShowFinishModal("walls")}
-                    className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
-                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M12 2a10 10 0 0 0-10 10c0 5.52 4.48 10 10 10s10-4.48 10-10a10 10 0 0 0-10-10zm1 14.5h-2v-2h2v2zm0-4h-2v-6h2v6z"/></svg>
-                      </div>
-                      <span>Sơn tường (Walls)</span>
-                    </div>
-                    {finishes.walls.type === "color" ? (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-3.5 h-3.5 rounded border border-slate-200" style={{ backgroundColor: finishes.walls.value }} />
-                        <span className="text-slate-500 text-[11px] font-mono">{finishes.walls.value}</span>
-                      </div>
-                    ) : (
-                      <span className="text-[#00b5cd] font-medium">{finishes.walls.name}</span>
-                    )}
-                  </button>
-
-                  {/* Ceiling */}
-                  <button
-                    onClick={() => setShowFinishModal("ceiling")}
-                    className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
-                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M12 2L2 22h20L12 2zm0 4l7.5 13h-15L12 6z"/></svg>
-                      </div>
-                      <span>Trần nhà (Ceiling)</span>
-                    </div>
-                    {finishes.ceiling.type === "color" ? (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-3.5 h-3.5 rounded border border-slate-200" style={{ backgroundColor: finishes.ceiling.value }} />
-                        <span className="text-slate-500 text-[11px] font-mono">{finishes.ceiling.value}</span>
-                      </div>
-                    ) : (
-                      <span className="text-[#00b5cd] font-medium">{finishes.ceiling.name}</span>
-                    )}
-                  </button>
-
-                  {/* Doors */}
-                  <button
-                    onClick={() => setShowFinishModal("doors")}
-                    className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
-                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M13.5 12H3"/></svg>
-                      </div>
-                      <span>Cửa đi (Doors)</span>
-                    </div>
-                    <span className="text-[#00b5cd] font-medium">{finishes.doors.name}</span>
-                  </button>
-
-                  {/* Windows */}
-                  <button
-                    onClick={() => setShowFinishModal("windows")}
-                    className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
-                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-9 14H4v-5h7v5zm0-7H4V6h7v5zm9 7h-7v-5h7v5zm0-7h-7V6h7v5z"/></svg>
-                      </div>
-                      <span>Cửa sổ (Windows)</span>
-                    </div>
-                    {finishes.windows.type === "color" ? (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-3.5 h-3.5 rounded border border-slate-200" style={{ backgroundColor: finishes.windows.value }} />
-                        <span className="text-slate-500 text-[11px] font-mono">{finishes.windows.value}</span>
-                      </div>
-                    ) : (
-                      <span className="text-[#00b5cd] font-medium">{finishes.windows.name}</span>
-                    )}
-                  </button>
-
-                  {/* Add Doors / Windows manually */}
-                  <div className="space-y-3 pt-4 border-t border-slate-200">
-                    <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Thêm Cửa / Cửa Sổ</span>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={handleAddDoor}
-                        className="flex items-center justify-center gap-1.5 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl transition-all cursor-pointer text-xs"
-                      >
-                        <Plus className="w-3.5 h-3.5 text-[#00b5cd]" />
-                        Thêm Cửa Đi
+                        <span className="text-slate-500 font-medium">{ROOM_FLOORINGS.find(f => f.value === floorPlan?.rooms[0]?.finishes?.flooring)?.name || "Chưa chọn"}</span>
                       </button>
+
+                      {/* Walls */}
                       <button
-                        onClick={handleAddWindow}
-                        className="flex items-center justify-center gap-1.5 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl transition-all cursor-pointer text-xs"
+                        onClick={() => setActiveFinishTarget({ type: "walls", roomId: "__all__" })}
+                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
                       >
-                        <Plus className="w-3.5 h-3.5 text-[#00b5cd]" />
-                        Thêm Cửa Sổ
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-5 h-5 rounded-full border border-slate-200" style={{ backgroundColor: ROOM_WALLS.find(w => w.value === floorPlan?.rooms[0]?.finishes?.walls)?.color || "#ffffff" }} />
+                          <span>Sơn tường (Walls)</span>
+                        </div>
+                        <span className="text-slate-500 font-medium">{ROOM_WALLS.find(w => w.value === floorPlan?.rooms[0]?.finishes?.walls)?.name || "Chưa chọn"}</span>
+                      </button>
+
+                      {/* Ceiling */}
+                      <button
+                        onClick={() => setActiveFinishTarget({ type: "ceiling", roomId: "__all__" })}
+                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-5 h-5 rounded-full border border-slate-200" style={{ backgroundColor: ROOM_CEILINGS.find(c => c.value === floorPlan?.rooms[0]?.finishes?.ceiling)?.color || "#ffffff" }} />
+                          <span>Trần nhà (Ceiling)</span>
+                        </div>
+                        <span className="text-slate-500 font-medium">{ROOM_CEILINGS.find(c => c.value === floorPlan?.rooms[0]?.finishes?.ceiling)?.name || "Chưa chọn"}</span>
+                      </button>
+
+                      {/* Doors */}
+                      <button
+                        onClick={() => setActiveFinishTarget({ type: "doors", roomId: "__all__" })}
+                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-5 h-5 rounded-full border border-slate-200" style={{ backgroundColor: ROOM_DOORS.find(d => d.value === floorPlan?.rooms[0]?.finishes?.doors)?.color || "#d0a97a" }} />
+                          <span>Cửa đi (Doors)</span>
+                        </div>
+                        <span className="text-slate-500 font-medium">{ROOM_DOORS.find(d => d.value === floorPlan?.rooms[0]?.finishes?.doors)?.name || "Chưa chọn"}</span>
+                      </button>
+
+                      {/* Windows */}
+                      <button
+                        onClick={() => setActiveFinishTarget({ type: "windows", roomId: "__all__" })}
+                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-5 h-5 rounded-full border border-slate-200" style={{ backgroundColor: ROOM_WINDOWS.find(w => w.value === floorPlan?.rooms[0]?.finishes?.windows)?.color || "#1c1c1e" }} />
+                          <span>Cửa sổ (Windows)</span>
+                        </div>
+                        <span className="text-slate-500 font-medium">{ROOM_WINDOWS.find(w => w.value === floorPlan?.rooms[0]?.finishes?.windows)?.name || "Chưa chọn"}</span>
                       </button>
                     </div>
-                  </div>
-                </div>
-              </>
-            )}
+
+                    {/* Add Doors / Windows manually */}
+                    <div className="space-y-3 pt-2 border-t border-slate-200">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Thêm Cửa / Cửa Sổ</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => handleAddDoor()}
+                          className="flex items-center justify-center gap-1.5 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl transition-all cursor-pointer text-xs"
+                        >
+                          <Plus className="w-3.5 h-3.5 text-[#00b5cd]" />
+                          Thêm Cửa Đi
+                        </button>
+                        <button
+                          onClick={() => handleAddWindow()}
+                          className="flex items-center justify-center gap-1.5 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl transition-all cursor-pointer text-xs"
+                        >
+                          <Plus className="w-3.5 h-3.5 text-[#00b5cd]" />
+                          Thêm Cửa Sổ
+                        </button>
+                      </div>
+                    </div>
+                  </>
+              )}
           </div>
         )
       }
@@ -6197,21 +6515,28 @@ Requirements:
         let itemsList: { name: string; value: string; color: string; image?: string }[] = [];
         let currentValue = "";
 
+        const isAllRooms = activeFinishTarget?.roomId === "__all__";
+
         if (isRoomMode && activeFinishTarget && floorPlan) {
-          const room = floorPlan.rooms.find(r => r.id === activeFinishTarget.roomId);
+          // Get representative room for display (first room if __all__)
+          const room = isAllRooms
+            ? floorPlan.rooms[0]
+            : floorPlan.rooms.find(r => r.id === activeFinishTarget.roomId);
           if (room) {
             const type = activeFinishTarget.type;
+            if (isAllRooms) {
+              title = type === "style" ? "Style — toàn bộ tầng" : `${type.charAt(0).toUpperCase() + type.slice(1)} — toàn bộ tầng`;
+            } else {
+              title = type === "style" ? "Add style" : `Select ${type.charAt(0).toUpperCase() + type.slice(1)}`;
+            }
             if (type === "style") {
-              title = "Add style";
               showSearch = true;
               itemsList = ROOM_STYLES.filter((s) =>
                 s.name.toLowerCase().includes(searchMaterial.toLowerCase())
               );
               currentValue = room.style || "";
             } else {
-              title = `Select ${type.charAt(0).toUpperCase() + type.slice(1)}`;
               currentValue = room.finishes?.[type] || "";
-              
               if (type === "flooring") {
                 hasTabs = true;
                 showCategorySelect = finishTab === "material";
@@ -6241,7 +6566,11 @@ Requirements:
 
         const handleSelect = (val: string, isColor = false) => {
           if (isRoomMode && activeFinishTarget) {
-            updateRoomFinish(activeFinishTarget.roomId, activeFinishTarget.type, val, isColor);
+            if (isAllRooms) {
+              updateAllRoomsFinish(activeFinishTarget.type, val, isColor);
+            } else {
+              updateRoomFinish(activeFinishTarget.roomId, activeFinishTarget.type, val, isColor);
+            }
           } else if (selectedFurnitureId && selectedFurnitureData) {
             updateFurnitureProperty(selectedFurnitureData.room.id, selectedFurnitureData.furniture.id, {
               material: isColor ? undefined : val,

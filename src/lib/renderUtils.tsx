@@ -5,9 +5,6 @@ import { toast } from "sonner";
 export const globalImageCache: Record<string, string> = {};
 
 export const getAIClient = async (modelName: string) => {
-  // @ts-expect-error: window.aistudio is injected in AIStudio environment
-  const isAIStudio = typeof window !== "undefined" && window.aistudio;
-
   let userApiKey = "";
   try {
     const res = await apiClient.get<ApiResponse<{ apiKey?: string }>>("/api/v1/auth/me");
@@ -18,37 +15,15 @@ export const getAIClient = async (modelName: string) => {
     console.error("Error fetching user API key:", e);
   }
 
-  if (isAIStudio) {
-    if (
-      modelName === "gemini-3.1-flash-image" ||
-      modelName === "gemini-3-pro-image" ||
-      modelName === "gemini-2.5-flash" ||
-      modelName === "veo-3.1-generate-preview" ||
-      modelName === "veo-3.1-lite-generate-preview"
-    ) {
-      // @ts-expect-error: window.aistudio is injected in AIStudio environment
-      if (!(await window.aistudio.hasSelectedApiKey())) {
-        // @ts-expect-error: window.aistudio is injected in AIStudio environment
-        await window.aistudio.openSelectKey();
-      }
-    }
-    return new GoogleGenAI({
-      apiKey:
-        userApiKey ||
-        process.env.API_KEY ||
-        process.env.GEMINI_API_KEY,
-    });
-  } else {
-    // In published app, use our backend proxy to securely inject the API key at runtime
-    const baseUrl = window.location.origin + "/api/gemini-proxy";
-    return new GoogleGenAI({
-      apiKey: userApiKey || "dummy", // The backend proxy will overwrite this with the real key if 'dummy'
-      httpOptions: {
-        baseUrl,
-        headers: userApiKey ? { "x-user-api-key": userApiKey } : undefined,
-      },
-    });
-  }
+  // Use our backend proxy to securely inject the API key at runtime (prevents CORS blocks)
+  const baseUrl = window.location.origin + "/api/gemini-proxy";
+  return new GoogleGenAI({
+    apiKey: userApiKey || "dummy", // The backend proxy will overwrite this with the real key if 'dummy'
+    httpOptions: {
+      baseUrl,
+      headers: userApiKey ? { "x-user-api-key": userApiKey } : undefined,
+    },
+  });
 };
 
 export const safeJsonParse = (text: string | null | undefined): Record<string, unknown> | unknown[] | null => {

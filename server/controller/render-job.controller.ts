@@ -319,7 +319,7 @@ export const renderJobController = {
 
       const aspect = aspectRatio || "1:1";
 
-      const isGeminiModel = isGeminiNativeModel;
+      const isGeminiModel = isGeminiNativeModel || !!process.env.OPENROUTER_API_KEY;
 
       if (isGeminiModel) {
         try {

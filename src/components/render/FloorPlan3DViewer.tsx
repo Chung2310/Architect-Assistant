@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { Sky } from "three/examples/jsm/objects/Sky.js";
 import { FloorPlanData, Room, Opening, FurnitureItem } from "./FloorPlanEditor";
 
 interface FloorPlan3DViewerProps {
@@ -23,6 +24,22 @@ interface FloorPlan3DViewerProps {
 // ── Constants ──────────────────────────────────────────────────────────────
 const WALL_HEIGHT = 2.7; // Height of walls in meters
 const CEILING_HEIGHT = 2.75;
+
+// ── Named finish → hex color maps (must mirror FloorPlanEditor constants) ────
+const FLOORING_COLOR_MAP: Record<string, string> = {
+  "terrazzo": "#cbd5e1",
+  "concrete - light": "#e2e8f0",
+  "concrete - dark": "#94a3b8",
+  "white wood panelling": "#f8fafc",
+  "oak wood": "#e3c29b",
+};
+
+const WALL_COLOR_MAP: Record<string, string> = {
+  "terracotta fan tile": "#c2410c",
+  "white plaster": "#ffffff",
+  "exposed brick": "#b91c1c",
+  "concrete render": "#cbd5e1",
+};
 
 // ── Helpers for Procedural Canvas Textures ──────────────────────────────────
 function createWoodTexture(): THREE.Texture {
@@ -112,6 +129,78 @@ function createCarpetTexture(): THREE.Texture {
   return texture;
 }
 
+function createGrassTexture(): THREE.Texture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    // Base grass green
+    const grad = ctx.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0, "#4ade80");
+    grad.addColorStop(0.5, "#22c55e");
+    grad.addColorStop(1, "#16a34a");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 256);
+    
+    // Draw blade-of-grass strokes
+    ctx.strokeStyle = "rgba(134,239,172,0.5)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 200; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + (Math.random() - 0.5) * 6, y - 8 - Math.random() * 8);
+      ctx.stroke();
+    }
+    // Dark variation spots
+    ctx.fillStyle = "rgba(21,128,61,0.3)";
+    for (let i = 0; i < 80; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      ctx.beginPath();
+      ctx.ellipse(x, y, 4 + Math.random() * 8, 2 + Math.random() * 4, Math.random() * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(30, 30);
+  return texture;
+}
+
+function createCloudTexture(): THREE.Texture {
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.clearRect(0, 0, size, size);
+    // Draw puffy cloud shape using overlapping radial gradients
+    const puffs = [
+      { x: 128, y: 140, r: 70 },
+      { x: 80, y: 155, r: 50 },
+      { x: 176, y: 155, r: 55 },
+      { x: 55, y: 170, r: 38 },
+      { x: 200, y: 172, r: 40 },
+    ];
+    puffs.forEach(({ x, y, r }) => {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, "rgba(255,255,255,0.95)");
+      g.addColorStop(0.6, "rgba(240,248,255,0.7)");
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+  return new THREE.CanvasTexture(canvas);
+}
+
 export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
   floorPlan,
   wallThickness = 100,
@@ -129,6 +218,11 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
   const cubeCameraRef = useRef<THREE.CubeCamera | null>(null);
   const cubeRenderTargetRef = useRef<THREE.WebGLCubeRenderTarget | null>(null);
 
+  const activeCameraRef = useRef(activeCamera);
+  useEffect(() => {
+    activeCameraRef.current = activeCamera;
+  }, [activeCamera]);
+
   useEffect(() => {
     const container = mountRef.current;
     if (!container) return;
@@ -138,11 +232,45 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     const height = container.clientHeight || 500;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color("#f1f5f9"); // Slate-100 background
+    // Atmospheric haze fog matching sky horizon colour
+    scene.fog = new THREE.FogExp2(0xbde0f5, 0.012);
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
-    camera.position.set(9, 9, 9);
+    
+    // Position camera using activeCamera if available
+    let hasPlacedCamera = false;
+    let targetX = 0, targetY = 1.25, targetZ = 0;
+    const currentActiveCam = activeCameraRef.current;
+    
+    if (currentActiveCam && floorPlan) {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      floorPlan.rooms.forEach((r) => {
+        minX = Math.min(minX, r.x);
+        maxX = Math.max(maxX, r.x + r.w);
+        minY = Math.min(minY, r.y);
+        maxY = Math.max(maxY, r.y + r.h);
+      });
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+
+      const rx = currentActiveCam.x - centerX;
+      const rz = currentActiveCam.y - centerY;
+      const h = 1.25;
+      camera.position.set(rx, h, rz);
+
+      const rad = ((currentActiveCam.rotation - 90) * Math.PI) / 180;
+      targetX = rx + Math.cos(rad) * 10;
+      targetZ = rz + Math.sin(rad) * 10;
+      camera.lookAt(new THREE.Vector3(targetX, h, targetZ));
+      
+      if (currentActiveCam.fov) {
+        camera.fov = currentActiveCam.fov;
+      }
+      hasPlacedCamera = true;
+    } else {
+      camera.position.set(9, 9, 9);
+    }
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
@@ -162,24 +290,94 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     controls.maxPolarAngle = Math.PI / 2 - 0.05; // Prevent camera going below ground
     controls.minDistance = 1; // allow close flycam zooming
     controls.maxDistance = 40;
+    
+    if (hasPlacedCamera) {
+      controls.target.set(targetX, 1.25, targetZ);
+    } else {
+      controls.target.set(0, 0, 0);
+    }
+    controls.update();
     controlsRef.current = controls;
 
-    // 3. Lighting Setup
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    // 3. Lighting Setup — warm sun + sky fill
+    const ambientLight = new THREE.AmbientLight(0xd4e8ff, 0.9); // sky-tinted ambient
     scene.add(ambientLight);
 
-    const sunLight = new THREE.DirectionalLight(0xfffaf0, 0.8);
-    sunLight.position.set(15, 25, 10);
+    const sunLight = new THREE.DirectionalLight(0xfff5d0, 1.2); // warm sunlight
+    sunLight.position.set(20, 40, 15);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width = 2048;
     sunLight.shadow.mapSize.height = 2048;
     sunLight.shadow.bias = -0.0005;
+    sunLight.shadow.camera.near = 0.5;
+    sunLight.shadow.camera.far = 100;
+    sunLight.shadow.camera.left = -30;
+    sunLight.shadow.camera.right = 30;
+    sunLight.shadow.camera.top = 30;
+    sunLight.shadow.camera.bottom = -30;
     scene.add(sunLight);
 
-    // Soft fill light from opposite angle
-    const fillLight = new THREE.DirectionalLight(0xbae6fd, 0.3);
-    fillLight.position.set(-15, 10, -10);
+    // Soft blue sky fill from opposite angle
+    const fillLight = new THREE.DirectionalLight(0x87ceeb, 0.4);
+    fillLight.position.set(-20, 15, -15);
     scene.add(fillLight);
+
+    // ── Sky dome (Three.js Sky shader) ──────────────────────────────────
+    const sky = new Sky();
+    sky.scale.setScalar(10000);
+    scene.add(sky);
+    const skyUniforms = sky.material.uniforms;
+    skyUniforms["turbidity"].value = 4;        // atmospheric thickness
+    skyUniforms["rayleigh"].value = 1.5;       // sky blue scatter
+    skyUniforms["mieCoefficient"].value = 0.005;
+    skyUniforms["mieDirectionalG"].value = 0.85;
+    // Sun position — 45° elevation, south azimuth
+    const phi = THREE.MathUtils.degToRad(90 - 42);  // elevation 42°
+    const theta = THREE.MathUtils.degToRad(180);     // south
+    const sunPosition = new THREE.Vector3();
+    sunPosition.setFromSphericalCoords(1, phi, theta);
+    skyUniforms["sunPosition"].value.copy(sunPosition);
+
+    // Match sunLight direction to Sky sun
+    sunLight.position.set(sunPosition.x * 40, sunPosition.y * 40, sunPosition.z * 40);
+
+    // ── Large green grass ground plane ──────────────────────────────────
+    const grassTex = createGrassTexture();
+    const grassGeo = new THREE.PlaneGeometry(400, 400);
+    const grassMat = new THREE.MeshStandardMaterial({
+      map: grassTex,
+      roughness: 0.85,
+      metalness: 0.0,
+    });
+    const grassPlane = new THREE.Mesh(grassGeo, grassMat);
+    grassPlane.rotation.x = -Math.PI / 2;
+    grassPlane.position.y = -0.01;
+    grassPlane.receiveShadow = true;
+    scene.add(grassPlane);
+
+    // ── Fluffy cloud sprites ─────────────────────────────────────────────
+    const cloudTex = createCloudTexture();
+    const cloudMat = new THREE.SpriteMaterial({
+      map: cloudTex,
+      transparent: true,
+      opacity: 0.88,
+      depthWrite: false,
+    });
+    const cloudConfigs = [
+      { x: -60, y: 28, z: -80, sx: 50, sy: 25 },
+      { x: 30, y: 32, z: -100, sx: 70, sy: 30 },
+      { x: 90, y: 26, z: -70, sx: 55, sy: 22 },
+      { x: -120, y: 35, z: -130, sx: 80, sy: 35 },
+      { x: 60, y: 40, z: -150, sx: 90, sy: 38 },
+      { x: -30, y: 30, z: -60, sx: 45, sy: 20 },
+      { x: 130, y: 30, z: -90, sx: 60, sy: 28 },
+    ];
+    cloudConfigs.forEach(({ x, y, z, sx, sy }) => {
+      const cloud = new THREE.Sprite(cloudMat.clone());
+      cloud.position.set(x, y, z);
+      cloud.scale.set(sx, sy, 1);
+      scene.add(cloud);
+    });
 
     // CubeCamera for real-time reflections
     const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(256, {
@@ -379,41 +577,47 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     const centerX = (minX + maxX) / 2;
     const centerY = (minY + maxY) / 2;
 
-    // Create a solid base ground under the building
-    const groundW = (maxX - minX) + 6;
-    const groundH = (maxY - minY) + 6;
-    const groundGeo = new THREE.BoxGeometry(groundW, 0.2, groundH);
-    const groundMat = new THREE.MeshStandardMaterial({
-      color: "#cbd5e1", // Light grey
-      roughness: 0.9,
+    // Concrete / pavement pad directly under the building footprint
+    const groundW = (maxX - minX) + 4;
+    const groundH = (maxY - minY) + 4;
+    const padGeo = new THREE.BoxGeometry(groundW, 0.18, groundH);
+    const padMat = new THREE.MeshStandardMaterial({
+      color: "#d1d5db", // light concrete
+      roughness: 0.95,
     });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.position.set(0, -0.1, 0); // slightly below 0
-    ground.receiveShadow = true;
-    scene.add(ground);
+    const pad = new THREE.Mesh(padGeo, padMat);
+    pad.position.set(0, -0.09, 0);
+    pad.receiveShadow = true;
+    scene.add(pad);
 
-    // Materials setup from Finishes
-    let flooringMat: THREE.Material;
-    const flooringVal = finishes?.flooring?.value || "natural_oak";
-    if (flooringVal.includes("oak") || flooringVal.includes("wood")) {
-      const woodTex = createWoodTexture();
-      flooringMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.6 });
-    } else if (flooringVal.includes("tile") || flooringVal.includes("marble")) {
-      const tileTex = createTileTexture();
-      flooringMat = new THREE.MeshStandardMaterial({ map: tileTex, roughness: 0.3 });
-    } else if (flooringVal.includes("carpet")) {
-      const carpetTex = createCarpetTexture();
-      flooringMat = new THREE.MeshStandardMaterial({ map: carpetTex, roughness: 0.9 });
-    } else {
-      flooringMat = new THREE.MeshStandardMaterial({ color: flooringVal.startsWith("#") ? flooringVal : "#e2e8f0", roughness: 0.7 });
-    }
+    // ── Helper: resolve a flooring value (name or hex) to a Three.js Material
+    const makeFlooringMat = (val: string): THREE.Material => {
+      const v = val.toLowerCase();
+      if (v.includes("oak") || v.includes("wood")) {
+        return new THREE.MeshStandardMaterial({ map: createWoodTexture(), roughness: 0.6 });
+      } else if (v.includes("tile") || v.includes("marble") || v.includes("terrazzo")) {
+        return new THREE.MeshStandardMaterial({ map: createTileTexture(), roughness: 0.3 });
+      } else if (v.includes("carpet")) {
+        return new THREE.MeshStandardMaterial({ map: createCarpetTexture(), roughness: 0.9 });
+      } else if (v.includes("concrete")) {
+        const hexColor = FLOORING_COLOR_MAP[v] || "#e2e8f0";
+        return new THREE.MeshStandardMaterial({ color: hexColor, roughness: 0.95 });
+      } else if (val.startsWith("#")) {
+        return new THREE.MeshStandardMaterial({ color: val, roughness: 0.7 });
+      }
+      // Fallback: look up in named map, otherwise default
+      const hexColor = FLOORING_COLOR_MAP[v] || "#e2e8f0";
+      return new THREE.MeshStandardMaterial({ color: hexColor, roughness: 0.7 });
+    };
 
-    const wallColor = finishes?.walls?.value || "#ffffff";
-    const wallMat = new THREE.MeshStandardMaterial({
-      color: wallColor,
-      roughness: 0.8,
-    });
+    // ── Helper: resolve a wall value (name or hex) to a valid hex string
+    const resolveWallColor = (val: string): string => {
+      if (!val) return "#ffffff";
+      if (val.startsWith("#")) return val;
+      return WALL_COLOR_MAP[val.toLowerCase()] || "#ffffff";
+    };
 
+    // Materials setup from Finishes (used for openings/windows/doors)
     const windowColor = finishes?.windows?.value || "#1c1c1e";
     const glassMat = new THREE.MeshStandardMaterial({
       color: "#38bdf8",
@@ -425,13 +629,13 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
       envMapIntensity: 1.5,
     });
     const frameMat = new THREE.MeshStandardMaterial({
-      color: windowColor,
+      color: windowColor.startsWith("#") ? windowColor : "#1c1c1e",
       roughness: 0.5,
     });
 
     const doorColor = finishes?.doors?.value || "#d0a97a";
     const doorMat = new THREE.MeshStandardMaterial({
-      color: doorColor.startsWith("#") ? doorColor : "#854d0e", // wood brown fallback
+      color: doorColor.startsWith("#") ? doorColor : "#854d0e",
       roughness: 0.6,
     });
 
@@ -443,25 +647,17 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
       const rx = room.x + room.w / 2 - centerX;
       const rz = room.y + room.h / 2 - centerY;
 
-      // Room-specific materials setup
-      let roomFlooringMat: THREE.Material;
-      const roomFlooringVal = (typeof room.finishes?.flooring === "object" ? (room.finishes?.flooring as any)?.value : room.finishes?.flooring) || finishes?.flooring?.value || "natural_oak";
-      if (roomFlooringVal.includes("oak") || roomFlooringVal.includes("wood")) {
-        const woodTex = createWoodTexture();
-        roomFlooringMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.6 });
-      } else if (roomFlooringVal.includes("tile") || roomFlooringVal.includes("marble")) {
-        const tileTex = createTileTexture();
-        roomFlooringMat = new THREE.MeshStandardMaterial({ map: tileTex, roughness: 0.3 });
-      } else if (roomFlooringVal.includes("carpet")) {
-        const carpetTex = createCarpetTexture();
-        roomFlooringMat = new THREE.MeshStandardMaterial({ map: carpetTex, roughness: 0.9 });
-      } else {
-        roomFlooringMat = new THREE.MeshStandardMaterial({ color: roomFlooringVal.startsWith("#") ? roomFlooringVal : "#e2e8f0", roughness: 0.7 });
-      }
+      // Room-specific materials setup — use per-room finishes with fallback to global
+      const rawRoomFlooringVal = (typeof room.finishes?.flooring === "object"
+        ? (room.finishes?.flooring as any)?.value
+        : room.finishes?.flooring) || finishes?.flooring?.value || "natural_oak";
+      const roomFlooringMat = makeFlooringMat(rawRoomFlooringVal);
 
-      const roomWallColor = (typeof room.finishes?.walls === "object" ? (room.finishes?.walls as any)?.value : room.finishes?.walls) || finishes?.walls?.value || "#ffffff";
+      const rawRoomWallVal = (typeof room.finishes?.walls === "object"
+        ? (room.finishes?.walls as any)?.value
+        : room.finishes?.walls) || finishes?.walls?.value || "#ffffff";
       const roomWallMat = new THREE.MeshStandardMaterial({
-        color: roomWallColor,
+        color: resolveWallColor(rawRoomWallVal),
         roughness: 0.8,
       });
 

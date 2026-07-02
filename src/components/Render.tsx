@@ -604,15 +604,7 @@ ${cropInfo}
 
           const userApiKey = user?.apiKey || "";
 
-          // @ts-expect-error - aistudio is injected by AI Studio environment
-          const isAIStudio = typeof window !== "undefined" && window.aistudio;
-          if (isAIStudio && !userApiKey) {
-            // @ts-expect-error - aistudio is injected by AI Studio environment
-            if (!(await window.aistudio.hasSelectedApiKey())) {
-              // @ts-expect-error - aistudio is injected by AI Studio environment
-              await window.aistudio.openSelectKey();
-            }
-          }
+          const isAIStudio = false;
 
           const apiKey =
             userApiKey ||

@@ -91,10 +91,12 @@ export const geminiService = {
     const modelName = (params.model as string) || "";
     const systemInstruction = params.systemInstruction || params.config?.systemInstruction || params.generationConfig?.systemInstruction;
     const isImageModel =
-      modelName.includes("image-preview") ||
+      modelName.includes("image") ||
       modelName.includes("imagen") ||
       modelName.includes("generateImages") ||
-      modelName.includes("banana");
+      modelName.includes("banana") ||
+      modelName.includes("flux") ||
+      modelName.includes("midjourney");
     const isVideoModel = modelName.includes("veo");
 
     const isGeminiNativeImageModel =
@@ -124,20 +126,14 @@ export const geminiService = {
     );
 
 
-    // ─── XỬ LÝ MODEL HÌNH ẢNH / VIDEO QUA PIAPI ─────────────────────────────────
-    if (piapiKey && (isImageModel || isVideoModel) && !isGeminiNativeImageModel) {
-      const { contents, generationConfig, config: reqConfig } = params;
+    // ─── XỬ LÝ TOÀN BỘ MODEL HÌNH ẢNH QUA OPENROUTER ────────────────────────────
+    if (isImageModel) {
+      if (!openRouterKey) {
+        throw new Error("Không tìm thấy OPENROUTER_API_KEY trong cấu hình hệ thống (.env).");
+      }
 
-      // ─── Xử lý sinh ảnh (Image) ───
-      if (isImageModel) {
-        let targetModel = "nano-banana-pro";
-        if (modelName === "gemini-3-pro-image" || modelName === "nano-banana-pro" || modelName === "igen-image-pro") {
-          targetModel = "nano-banana-pro";
-        } else if (modelName === "gemini-3.1-flash-image" || modelName === "nano-banana-2" || modelName === "igen-image-flash") {
-          targetModel = "nano-banana-2";
-        } else if (modelName.includes("image-preview")) {
-          targetModel = "nano-banana-pro";
-        }
+      const generateViaOpenRouter = async (modelId: string) => {
+        const { contents, generationConfig, config: reqConfig } = params;
 
         let promptText = "";
         let inputImageBase64 = "";
@@ -148,7 +144,7 @@ export const geminiService = {
           : (contents && contents.parts ? [{ parts: contents.parts }] : []);
 
         for (const content of contentsArray) {
-          if (content.parts && Array.isArray(content.parts)) {
+          if (content && typeof content === "object" && content.parts && Array.isArray(content.parts)) {
             for (const part of content.parts) {
               if (part.text) {
                 promptText += part.text + "\n";
@@ -171,236 +167,250 @@ export const geminiService = {
           aspectRatio = imageConfig.aspectRatio;
         }
 
+        // Upload input image if present and model is Gemini
         let uploadedImageUrl = "";
-        if (inputImageBase64) {
+        if (inputImageBase64 && modelId.includes("gemini")) {
           const fileStr = `data:${inputImageMimeType};base64,${inputImageBase64}`;
-          logger.info(`[Gemini Service] Uploading input image to Cloudinary...`);
+          logger.info(`[Gemini Service - OpenRouter Image] Uploading input image to Cloudinary...`);
           uploadedImageUrl = await cloudinaryService.uploadMedia(fileStr, "temp_staging");
         }
 
-        logger.info(`[Gemini Service] Provider: PiAPI image. Model: ${targetModel}, Aspect: ${aspectRatio}`);
-        const piapiRes = await piapiService.generateImage(promptText, targetModel, {
-          aspectRatio,
-          image: uploadedImageUrl || undefined
+        // Normalize aspect ratio to OpenRouter allowed aspects
+        const allowedAspects = [
+          "1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"
+        ];
+        let aspect = "1:1";
+        if (aspectRatio) {
+          const matched = allowedAspects.find(a => aspectRatio.includes(a));
+          if (matched) {
+            aspect = matched;
+          }
+        }
+
+        logger.info(`[Gemini Service - OpenRouter Image] Calling OpenRouter images API for model: ${modelId}, aspect: ${aspect}`);
+        
+        const headers: Record<string, string> = {
+          "Authorization": `Bearer ${openRouterKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://staging-architect.igentechsolutions.com",
+          "X-Title": "iGen Architect Assistant",
+        };
+
+        const body: Record<string, any> = {
+          model: modelId,
+          prompt: promptText,
+          response_format: "b64_json",
+          aspect_ratio: aspect
+        };
+
+        if (uploadedImageUrl && modelId.includes("gemini")) {
+          body.input_references = [{
+            type: "image_url",
+            image_url: {
+              url: uploadedImageUrl
+            }
+          }];
+        }
+
+        const response = await fetch("https://openrouter.ai/api/v1/images", {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body)
         });
 
-        const imgFetchRes = await fetch(piapiRes.url);
-        if (!imgFetchRes.ok) {
-          throw new Error(`Failed to download generated image: ${imgFetchRes.status}`);
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`OpenRouter image generation failed: ${response.status} - ${errorText}`);
         }
-        const arrayBuffer = await imgFetchRes.arrayBuffer();
-        const base64 = Buffer.from(arrayBuffer).toString("base64");
-        const mimeType = imgFetchRes.headers.get("content-type") || "image/png";
+
+        const json = (await response.json()) as {
+          data?: Array<{ b64_json?: string; url?: string }>;
+        };
+
+        const b64 = json.data?.[0]?.b64_json;
+        const imgUrl = json.data?.[0]?.url;
+
+        let finalBase64 = "";
+        let finalMimeType = "image/png";
+
+        if (b64) {
+          finalBase64 = b64;
+        } else if (imgUrl) {
+          const imgFetchRes = await fetch(imgUrl);
+          if (!imgFetchRes.ok) {
+            throw new Error(`Failed to download OpenRouter generated image from URL: ${imgUrl}`);
+          }
+          const arrayBuffer = await imgFetchRes.arrayBuffer();
+          finalBase64 = Buffer.from(arrayBuffer).toString("base64");
+          finalMimeType = imgFetchRes.headers.get("content-type") || "image/png";
+        } else {
+          throw new Error("Không nhận được dữ liệu hình ảnh từ OpenRouter Image API");
+        }
+
+        logger.info(`[Gemini Service - OpenRouter Image] Successfully generated image via OpenRouter!`);
 
         return {
-          candidates: [
-            {
+          generatedImages: [{
+            image: {
+              imageBytes: finalBase64,
+              mimeType: finalMimeType
+            }
+          }],
+          candidates: [{
+            content: {
+              parts: [{
+                inlineData: {
+                  data: finalBase64,
+                  mimeType: finalMimeType
+                }
+              }],
+              role: "model"
+            },
+            finishReason: "STOP"
+          }],
+          response: {
+            candidates: [{
               content: {
-                parts: [
-                  {
-                    inlineData: {
-                      data: base64,
-                      mimeType: mimeType
-                    }
+                parts: [{
+                  inlineData: {
+                    data: finalBase64,
+                    mimeType: finalMimeType
                   }
-                ],
+                }],
                 role: "model"
               },
               finishReason: "STOP"
-            }
-          ]
-        };
-      }
-
-      // ─── Xử lý sinh video (Veo) ───
-      if (isVideoModel) {
-        const normalizedModel = modelName.toLowerCase();
-        let piapiVideoModel = "veo31-video-fast-audio";
-
-        if (
-          normalizedModel === "veo-3.1-generate-preview" ||
-          normalizedModel === "veo31-video-audio" ||
-          normalizedModel === "piapi-veo31-video-audio" ||
-          normalizedModel === "veo"
-        ) {
-          piapiVideoModel = "veo31-video-audio";
-        } else if (
-          normalizedModel === "veo-3.1-fast-generate-preview" ||
-          normalizedModel === "veo31-video-fast-audio" ||
-          normalizedModel === "piapi-veo31-video-fast-audio"
-        ) {
-          piapiVideoModel = "veo31-video-fast-audio";
-        } else if (
-          normalizedModel === "veo-3.1-lite-generate-preview" ||
-          normalizedModel === "veo31-video-fast-no-audio" ||
-          normalizedModel === "piapi-veo31-video-fast-no-audio"
-        ) {
-          piapiVideoModel = "veo31-video-fast-no-audio";
-        } else if (normalizedModel.includes("veo-3.1") || normalizedModel.includes("veo31") || normalizedModel.startsWith("veo3")) {
-          piapiVideoModel = "veo31-video-audio";
-        }
-
-        let promptText = "";
-        const referenceImageUris: string[] = [];
-        const contentsArray = Array.isArray(contents)
-          ? contents
-          : (contents && contents.parts ? [{ parts: contents.parts }] : []);
-
-        for (const content of contentsArray) {
-          if (content.parts && Array.isArray(content.parts)) {
-            for (const part of content.parts) {
-              if (part.text) {
-                promptText += part.text + "\n";
-              } else if (part.inlineData && part.inlineData.data) {
-                referenceImageUris.push(`data:${part.inlineData.mimeType || "image/jpeg"};base64,${part.inlineData.data}`);
-              } else if (part.fileData && part.fileData.fileUri) {
-                referenceImageUris.push(part.fileData.fileUri);
-              }
-            }
+            }]
           }
-        }
-        promptText = promptText.trim();
-        if (systemInstruction) {
-          promptText = `${String(systemInstruction).trim()}\n\n${promptText}`.trim();
-        }
-
-        const mergedConfig = { ...(generationConfig || {}), ...(reqConfig || {}) };
-        const videoConfig = (mergedConfig?.videoConfig as Record<string, unknown>) || (mergedConfig?.imageConfig as Record<string, unknown>) || {};
-        const aspectRatio = (videoConfig.aspectRatio as string) || (mergedConfig.aspectRatio as string) || "16:9";
-        const durationSeconds = (videoConfig.durationSeconds as number) || (mergedConfig.durationSeconds as number) || 5;
-
-        logger.info(`[Gemini Service] Provider: PiAPI video. Model: ${piapiVideoModel}, Aspect: ${aspectRatio}, Duration: ${durationSeconds}s`);
-        const piapiVideoRes = await piapiService.generateVideo(
-          promptText,
-          piapiVideoModel,
-          durationSeconds,
-          {
-            aspectRatio,
-            referenceImageUris: referenceImageUris.length > 0 ? referenceImageUris : undefined,
-          }
-        );
-
-        return {
-          candidates: [
-            {
-              content: {
-                parts: [
-                  {
-                    fileData: {
-                      mimeType: "video/mp4",
-                      fileUri: piapiVideoRes.url
-                    }
-                  }
-                ],
-                role: "model"
-              },
-              finishReason: "STOP"
-            }
-          ]
         };
-      }
-    }
-
-    // ─── XỬ LÝ MODEL IMAGEN NATIVE QUA GOOGLE GENAI SDK ─────────────────────────
-    if (isGeminiNativeImageModel) {
-      if (!apiKey) {
-        throw new Error("API Key không hợp lệ hoặc không có quyền truy cập.");
-      }
-
-      const ai = new GoogleGenAI({ apiKey: apiKey as string });
-      logger.info(`[Gemini Service] Provider: Gemini native image. Requested model: ${modelName}`);
-
-      const imageConfig = params.config?.imageConfig || params.generationConfig?.imageConfig || {};
-      const aspectRatio = imageConfig.aspectRatio || "1:1";
-
-      // Chọn model Gemini native dựa trên model được yêu cầu:
-      // - nano-banana-2 / igen-image-flash / gemini-3.1-flash-image → Flash (nhanh hơn, rẻ hơn)
-      // - Các model khác → Pro (chất lượng cao hơn)
-      const isFlashVariant =
-        modelName === "gemini-3.1-flash-image" ||
-        modelName === "gemini-3.1-flash-image-preview";
-
-      const IMAGE_GEN_MODEL = isFlashVariant ? "gemini-3.1-flash-image" : "gemini-3-pro-image";
-      logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL} (variant: ${isFlashVariant ? 'flash' : 'pro'}), aspect: ${aspectRatio}`);
-
-      const contentsArray = Array.isArray(params.contents)
-        ? params.contents
-        : params.contents
-          ? [params.contents]
-          : [];
-
-      const aspectRatioPart =
-        aspectRatio && aspectRatio !== "1:1"
-          ? [{ text: `[Aspect ratio: ${aspectRatio}]` }]
-          : [];
-
-      const finalContents = contentsArray.length > 0
-        ? contentsArray.map((content, index) => {
-            if (
-              index === contentsArray.length - 1 &&
-              content &&
-              typeof content === "object" &&
-              "parts" in content &&
-              Array.isArray((content as { parts?: unknown[] }).parts)
-            ) {
-              const typedContent = content as {
-                role?: string;
-                parts: Array<Record<string, unknown>>;
-              };
-
-              return {
-                role: typedContent.role,
-                parts: [...typedContent.parts, ...aspectRatioPart],
-              };
-            }
-
-            return content;
-          })
-        : typeof params.contents === "string"
-          ? `${params.contents}${aspectRatioPart.length > 0 ? `\n[Aspect ratio: ${aspectRatio}]` : ""}`
-          : extractTextFromContents(params.contents);
-
-      const imageConfigForSdk: Record<string, unknown> = {
-        responseModalities: ["TEXT", "IMAGE"],
       };
-      if (systemInstruction) {
-        imageConfigForSdk.systemInstruction = systemInstruction;
-      }
 
-      let response;
+      // Map modelName to OpenRouter model
+      let openRouterModel = "google/gemini-3.1-flash-image-preview";
+      const lowerModel = modelName.toLowerCase();
+      if (
+        lowerModel.includes("pro") || 
+        lowerModel === "gemini-3-pro-image" || 
+        lowerModel === "nano-banana-pro" || 
+        lowerModel === "igen-image-pro" ||
+        lowerModel.includes("midjourney")
+      ) {
+        openRouterModel = "google/gemini-3-pro-image-preview";
+      }
 
       try {
-        response = await ai.models.generateContent({
-          model: IMAGE_GEN_MODEL,
-          contents: finalContents,
-          config: imageConfigForSdk,
-        });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return await generateViaOpenRouter(openRouterModel);
       } catch (err: any) {
-        const errStr = err?.message || JSON.stringify(err) || "";
-        const statusCode = err?.status || err?.statusCode || 0;
-        logger.error(`[Gemini Service] Native Image generation failed (Status: ${statusCode}, Msg: ${errStr}).`);
+        const errStr = err.message || "";
+        const isLocationBlock =
+          errStr.includes("location") ||
+          errStr.includes("supported") ||
+          errStr.includes("Studio");
+
+        if (isLocationBlock) {
+          logger.warn(`[Gemini Service - OpenRouter Image] Gemini model blocked by location. Falling back to Flux.2 Flex on OpenRouter...`);
+          try {
+            // Fallback model: Flux.2 Flex on OpenRouter (never geoblocked)
+            return await generateViaOpenRouter("black-forest-labs/flux.2-flex");
+          } catch (fluxErr: any) {
+            throw new Error(`OpenRouter image generation failed: ${fluxErr.message}`);
+          }
+        }
         throw err;
       }
+    }
 
-      const parts = response.candidates?.[0]?.content?.parts || [];
-      const imageParts = parts.filter((p: { inlineData?: { data?: string; mimeType?: string } }) => p.inlineData?.data);
-      if (imageParts.length === 0) {
-        throw new Error("Không nhận được dữ liệu ảnh từ mô hình native của Gemini.");
+    // ─── XỬ LÝ MODEL VIDEO QUA PIAPI ───────────────────────────────────────────
+    if (piapiKey && isVideoModel) {
+      const { contents, generationConfig, config: reqConfig } = params;
+
+      const normalizedModel = modelName.toLowerCase();
+      let piapiVideoModel = "veo31-video-fast-audio";
+
+      if (
+        normalizedModel === "veo-3.1-generate-preview" ||
+        normalizedModel === "veo31-video-audio" ||
+        normalizedModel === "piapi-veo31-video-audio" ||
+        normalizedModel === "veo"
+      ) {
+        piapiVideoModel = "veo31-video-audio";
+      } else if (
+        normalizedModel === "veo-3.1-fast-generate-preview" ||
+        normalizedModel === "veo31-video-fast-audio" ||
+        normalizedModel === "piapi-veo31-video-fast-audio"
+      ) {
+        piapiVideoModel = "veo31-video-fast-audio";
+      } else if (
+        normalizedModel === "veo-3.1-lite-generate-preview" ||
+        normalizedModel === "veo31-video-fast-no-audio" ||
+        normalizedModel === "piapi-veo31-video-fast-no-audio"
+      ) {
+        piapiVideoModel = "veo31-video-fast-no-audio";
+      } else if (normalizedModel.includes("veo-3.1") || normalizedModel.includes("veo31") || normalizedModel.startsWith("veo3")) {
+        piapiVideoModel = "veo31-video-audio";
       }
 
-      // Trả về format tương thích với controller (generatedImages[0].image.imageBytes)
-      return {
-        generatedImages: imageParts.map((p: { inlineData: { data: string; mimeType: string } }) => ({
-          image: {
-            imageBytes: p.inlineData.data,
-            mimeType: p.inlineData.mimeType || "image/jpeg",
+      let promptText = "";
+      const referenceImageUris: string[] = [];
+      const contentsArray = Array.isArray(contents)
+        ? contents
+        : (contents && contents.parts ? [{ parts: contents.parts }] : []);
+
+      for (const content of contentsArray) {
+        if (content.parts && Array.isArray(content.parts)) {
+          for (const part of content.parts) {
+            if (part.text) {
+              promptText += part.text + "\n";
+            } else if (part.inlineData && part.inlineData.data) {
+              referenceImageUris.push(`data:${part.inlineData.mimeType || "image/jpeg"};base64,${part.inlineData.data}`);
+            } else if (part.fileData && part.fileData.fileUri) {
+              referenceImageUris.push(part.fileData.fileUri);
+            }
           }
-        })),
-        // Cũng giữ candidates để tương thích ngược
-        candidates: response.candidates,
+        }
+      }
+      promptText = promptText.trim();
+      if (systemInstruction) {
+        promptText = `${String(systemInstruction).trim()}\n\n${promptText}`.trim();
+      }
+
+      const mergedConfig = { ...(generationConfig || {}), ...(reqConfig || {}) };
+      const videoConfig = (mergedConfig?.videoConfig as Record<string, unknown>) || (mergedConfig?.imageConfig as Record<string, unknown>) || {};
+      const aspectRatio = (videoConfig.aspectRatio as string) || (mergedConfig.aspectRatio as string) || "16:9";
+      const durationSeconds = (videoConfig.durationSeconds as number) || (mergedConfig.durationSeconds as number) || 5;
+
+      logger.info(`[Gemini Service] Provider: PiAPI video. Model: ${piapiVideoModel}, Aspect: ${aspectRatio}, Duration: ${durationSeconds}s`);
+      const piapiVideoRes = await piapiService.generateVideo(
+        promptText,
+        piapiVideoModel,
+        durationSeconds,
+        {
+          aspectRatio,
+          referenceImageUris: referenceImageUris.length > 0 ? referenceImageUris : undefined,
+        }
+      );
+
+      return {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  fileData: {
+                    mimeType: "video/mp4",
+                    fileUri: piapiVideoRes.url
+                  }
+                }
+              ],
+              role: "model"
+            },
+            finishReason: "STOP"
+          }
+        ]
       };
     }
+
+
 
     // ── 3. TEXT MODEL via OpenRouter (bắt buộc nếu có OPENROUTER_API_KEY) ──
     if (openRouterKey && !isImageModel && !isVideoModel) {
