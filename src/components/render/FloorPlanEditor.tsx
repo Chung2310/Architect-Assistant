@@ -1538,7 +1538,7 @@ Trả về JSON thuần túý, TUYỆT ĐỐI KHÔNG thêm text ngoài:
     const extras = info.extras || "phong cách hiện đại";
 
     const shapePoints = info.shapePoints || getDefaultPointsForShape(shape, landW, landL);
-    let shapeInstruction = "";
+    let shapeInstruction: string;
     
     // Add custom cutout rule description based on shape name
     let cutoutDescription = "";
@@ -1586,7 +1586,7 @@ Trả về JSON thuần túý, TUYỆT ĐỐI KHÔNG thêm text ngoài:
       // Fallback: if totalFloors = 1 or no per-floor selection, use the full rooms string
       if (totalFloors === 1) return rooms;
       // For multi-floor fallback, try to parse from the combined rooms string by floor label
-      const floorLabel = floorIndex === 0 ? "Tầng trệt" : `Tầng ${floorIndex}`;
+      const floorLabel = `Tầng ${floorIndex + 1}`;
       const regex = new RegExp(`${floorLabel}:\\s*([^.]+)`, "i");
       const match = rooms.match(regex);
       return match ? match[1].trim() : rooms;
@@ -1594,7 +1594,7 @@ Trả về JSON thuần túý, TUYỆT ĐỐI KHÔNG thêm text ngoài:
 
     try {
       for (let floor = 0; floor < totalFloors; floor++) {
-        const floorLabel = floor === 0 ? "Tầng Trệt" : `Tầng ${floor}`;
+        const floorLabel = `Tầng ${floor + 1}`;
         const floorRooms = getRoomsForFloor(floor);
         const promptModel = "gemini-2.5-flash";
         const ai = await getAIClient(promptModel);
@@ -4786,10 +4786,8 @@ Requirements:
   // ── Floor tabs ─────────────────────────────────────────────────────────
   const floorLabels =
     gatherInfo.floors && gatherInfo.floors > 0
-      ? Array.from({ length: gatherInfo.floors }, (_, i) =>
-          i === 0 ? "Tầng Trệt" : `Tầng ${i}`
-        )
-      : ["Tầng Trệt"];
+      ? Array.from({ length: gatherInfo.floors }, (_, i) => `Tầng ${i + 1}`)
+      : ["Tầng 1"];
 
   // ── Status label ───────────────────────────────────────────────────────
   const _canvasStatusLabel = isGenerating
@@ -6645,7 +6643,7 @@ Requirements:
                       <div>
                         <div className="flex items-center gap-2">
                           <h3 className="text-sm font-bold text-slate-800">
-                            {activeFloorIndex === 0 ? "Tầng Trệt" : `Tầng ${activeFloorIndex}`}
+                            {`Tầng ${activeFloorIndex + 1}`}
                           </h3>
                         </div>
                         <span className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">Tên tầng</span>

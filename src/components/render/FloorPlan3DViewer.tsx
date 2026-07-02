@@ -210,6 +210,14 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
   const cubeCameraRef = useRef<THREE.CubeCamera | null>(null);
   const cubeRenderTargetRef = useRef<THREE.WebGLCubeRenderTarget | null>(null);
 
+  let draw3DScene: (
+    scene: THREE.Scene,
+    plan: FloorPlanData,
+    thicknessMM: number,
+    finishes: FloorPlan3DViewerProps["finishes"],
+    cubeTexture: THREE.Texture | null
+  ) => void;
+
   useEffect(() => {
     const container = mountRef.current;
     if (!container) return;
@@ -448,7 +456,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
   }, [activeCamera, floorPlan]);
 
   // ── Draw helper to compile floorplan meshes ──────────────────────────────
-  function draw3DScene(
+  draw3DScene = function (
     scene: THREE.Scene,
     plan: FloorPlanData,
     thicknessMM: number,
