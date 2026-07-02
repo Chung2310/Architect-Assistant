@@ -15,6 +15,7 @@ const router = Router();
 router.post("/deduct-credits", authMiddleware, renderJobController.deductCredits);
 router.get("/all", authMiddleware, adminMiddleware, renderJobController.getAllJobs);
 router.get("/", authMiddleware, renderJobController.getMyJobs);
+router.get("/:id", authMiddleware, renderJobController.getJobById);
 router.post("/", authMiddleware, renderJobController.createJob);
 router.patch("/:id", authMiddleware, renderJobController.updateJob);
 router.delete("/:id", authMiddleware, renderJobController.deleteJob);

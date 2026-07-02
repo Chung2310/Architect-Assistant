@@ -29,18 +29,13 @@ interface RenderJob {
 
 const MODELS = [
   {
-    id: "gemini-3-pro-image",
-    name: "iGen 3 Pro Image",
+    id: "nano-banana-pro",
+    name: "Nano Banana Pro (PiAPI)",
     isPro: true,
   },
   {
-    id: "gemini-3.1-flash-image",
-    name: "iGen 3.1 Flash Image",
-    isPro: false,
-  },
-  {
-    id: "nano-banana-pro",
-    name: "Nano Banana Pro (PiAPI)",
+    id: "nano-banana-2",
+    name: "Nano Banana 2 (Gemini 3.1 Flash Image)",
     isPro: true,
   },
 ];
@@ -98,7 +93,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
   const [isDraggingRef, setIsDraggingRef] = useState(false);
 
   const [selectedModel, setSelectedModel] = useState(
-    "gemini-3-pro-image",
+    "nano-banana-pro",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
 
