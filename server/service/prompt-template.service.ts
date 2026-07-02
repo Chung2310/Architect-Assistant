@@ -120,7 +120,7 @@ function buildFloorplanCleanupDirective(mode: "space" | "axonometric") {
     "Tuyệt đối không được thêm, bớt, đổi chỗ, tách, nối, mở rộng, thu hẹp hay xoay bất kỳ thành phần kiến trúc nào so với bản vẽ gốc.",
     "Mọi thành phần kiến trúc phải khóa cùng theo bản vẽ: tường, cột, vách, cửa đi, cửa sổ, lối thông tầng, lối đi, trục giao thông, lối thoát hiểm, WC, hộp kỹ thuật, sàn trong và ranh giới từng phòng.",
     "Phải xóa hoàn toàn chữ, nhãn phòng, số đo kích thước, hatch, ký hiệu CAD, đường tim, nét đứt, ký hiệu mở cửa, khung bản vẽ và mọi dấu vết đồ họa 2D không thuộc vật thể 3D.",
-    "Không được để ảnh cuối trong giống bản vẽ được tô màu; phải là mô hình 3D sạch, rõ, không còn annotation.",
+    "Không được để ảnh cuối trong giống bản vẽ 2D được tô màu; phải là mô hình 3D có màu sắc sinh động và vật liệu rõ ràng, sạch, rõ, không còn annotation.",
   ].join(" ");
 }
 
@@ -167,6 +167,12 @@ function buildFloorplanNegativePrompt(mode: "space" | "axonometric") {
     "2D overlay",
     "title block",
     "watermark",
+    "white clay model",
+    "monochrome",
+    "grayscale",
+    "raw plaster",
+    "all-white rendering",
+    "untextured model",
   ].join(", ");
 }
 
@@ -338,7 +344,7 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
       ],
     );
   } else if (activeSubTabKey === "floorplan to 3d floorplan") {
-    textPrompt += `Loại ảnh: floorplan 2D kỹ thuật.\nStyle công trình: ${buildingStyle}\nPhong cách: ${interiorStyle}\nKhông được biến floorplan thành ảnh nội thất thông thường.\nYêu cầu làm sạch bản vẽ: ${floorplanAxonometricCleanupDirective}\n`;
+    textPrompt += `Loại ảnh: floorplan 2D kỹ thuật.\nStyle công trình: ${buildingStyle}\nPhong cách: ${interiorStyle}\nKhông được biến floorplan thành ảnh nội thất thông thường.\nYêu cầu làm sạch bản vẽ: ${floorplanAxonometricCleanupDirective}\nYêu cầu màu sắc: Mô hình phối cảnh 3D axonometric phải có màu sắc sinh động, đầy đủ vật liệu (ví dụ: sàn gỗ hoặc gạch màu, tường sơn màu ấm/sáng/kem, đồ nội thất có màu sắc và chất liệu rõ ràng như gỗ, vải, da), tuyệt đối không để màu trắng toàn bộ (clay model) hay đơn sắc monochrome.\nYêu cầu phân tích: BẮT BUỘC nhận diện tất cả các nhãn chữ chỉ tên phòng hoặc công năng viết trên bản vẽ (ví dụ: Phòng khách, Phòng ngủ, WC, Bếp, Thang...). Hãy mô tả rõ bố cục và vị trí các phòng này trong prompt để mô hình sinh ảnh dựng đúng công năng phòng.\n`;
     if (referenceImages.length > 0) {
       textPrompt += `Quy tắc ảnh tham khảo nội thất: Giữ nguyên tuyệt đối vị trí, loại và sắp xếp của từng món đồ nội thất có trong ảnh tham khảo. TUYỆT ĐỐI không di chuyển, xoay, thêm hoặc bỏ bất kỳ món đồ nào. Chỉ được áp dụng phong cách hoàn thiện bề mặt từ ảnh tham khảo lên vị trí đồ vật đã cố định theo bản vẽ.\n`;
     }
@@ -348,9 +354,11 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     textPrompt += `Negative prompt ưu tiên: ${floorplanAxonometricNegativePrompt}\n`;
     systemInstruction = [
       "Bạn là chuyên gia phân tích floorplan 2D và tái dựng thành không gian 3D chính xác.",
+      "BẮT BUỘC: Hãy đọc kỹ ảnh mặt bằng đầu vào, tìm và nhận diện đúng tất cả các nhãn chữ chỉ tên/công năng phòng (ví dụ: Phòng khách, Phòng ngủ, WC, Bếp, Cầu thang...). Bạn phải mô tả chi tiết vị trí của từng khu vực chức năng này trong prompt cuối cùng để mô hình sinh ảnh xếp đúng vị trí, tuyệt đối không được tự ý đổi công năng phòng (không biến WC thành phòng ngủ, không vẽ nhầm phòng ngủ thành phòng khách).",
       "Mặt bằng là sự thật tuyệt đối: tường, cửa, thang, vách và nhãn phòng phải được tôn trọng.",
       "Nhãn phòng và ký hiệu chỉ dùng để suy luận bố trí, không được xuất hiện lại trong ảnh kết quả.",
       "Không được phép bổ sung, xóa bỏ hoặc sửa đổi bất kỳ thành phần kiến trúc nào không có trong bản vẽ; nếu không chắc, phải giữ nguyên thay vì tự bịa.",
+      "Mô hình 3D axonometric phải được tô màu đầy đủ, sinh động cho sàn, tường, và đồ nội thất theo phong cách thiết kế đã chọn. KHÔNG được tạo mô hình đất sét trắng (white clay model) hay đơn sắc trắng.",
       referenceImages.length > 0
         ? "Khi có ảnh tham khảo nội thất: từng món đồ tham khảo chỉ được dùng để khóa đúng chủng loại, hướng và vị trí tương ứng theo mặt bằng; không tự ý thêm bớt hay di chuyển."
         : "Nếu không có ảnh tham khảo nội thất, bố trí đồ đạc phải bám logic mặt bằng và chỉ dựng những gì suy ra chắc chắn từ bản vẽ.",
@@ -358,11 +366,11 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     ].join(" ");
     responseSchema = objectSchema(
       {
-        phan_tich_khoa_goc_ghi_hinh: stringField("Tóm tắt cách khóa logic floorplan."),
+        phan_tich_khoa_goc_ghi_hinh: stringField("Phân tích chi tiết mặt bằng: nhận diện và liệt kê tất cả các phòng/khu vực chức năng kèm nhãn tên tương ứng để đảm bảo mô hình không hiểu sai lệch."),
         logic_phong_cach_va_cong_trinh: stringField("Tổng hợp phong cách và logic công trình."),
         quyet_dinh_cat_tuong: stringField("Mô tả chiến lược cắt tường nếu cần."),
         thiet_lap_anh_sang_va_studio: stringField("Thiết lập ánh sáng và cách trình bày."),
-        prompt_tieng_viet_toi_uu: stringField("Prompt cuối cùng."),
+        prompt_tieng_viet_toi_uu: stringField("Prompt render cuối cùng. Phải mô tả rõ ràng vị trí cụ thể của từng phòng/khu vực chức năng đã nhận diện."),
         prompt_phu_dinh: stringField("Các lỗi cần tránh."),
       },
       [

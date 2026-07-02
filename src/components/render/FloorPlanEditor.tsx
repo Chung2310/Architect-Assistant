@@ -1947,7 +1947,13 @@ User prompt: "${enhancedPrompt}"`
 Your task is to transform the provided floorplan preview into a polished 3D floorplan illustration with a clean axonometric/3D floorplan style.
 Style: ${gatherInfo.extras || "Modern Vietnamese contemporary"}.
 
+Color and Material Guidelines:
+- The 3D floorplan model MUST be fully colored and textured.
+- Use realistic, vivid colors and materials: wooden or tiled floors with rich warm colors, painted interior walls (such as warm white, beige, or light grey), and colored furniture with distinct textures (wood grain, fabric, leather, metal).
+- Absolutely do NOT output a white clay model, raw plaster model, monochrome rendering, or all-white/grey visualization. It must look lively and colorful.
+
 Strict Layout & Furniture Preservation Guidelines:
+- The floorplan consists of these rooms and layout: ${roomsDesc}. Each room must retain its specific function, placement, and interior elements as defined in the preview.
 - The input image is a floorplan preview. You MUST strictly preserve the exact room layout, wall positions, doors, windows and furniture arrangement.
 - Do NOT add, remove, or rearrange any furniture.
 - Keep all architectural proportions correct.
@@ -1958,7 +1964,7 @@ Requirements:
 - Crisp presentation with clean lines, subtle ambient lighting, and clear separation between floors, walls, and furniture.
 - Soft shadows that enhance depth without being overly photorealistic.
 - Avoid realistic photographic staging, people, or repeated interior decoration details.
-- Output should resemble a professional 3D floorplan/axonometric render, not a typical interior photograph.${cameraPrompt}${customRoomPrompt}${customFurniturePrompt}`
+- Output should resemble a professional 3D floorplan/axonometric render, not a typical interior photograph. Negative prompt: white clay model, monochrome, grayscale, raw plaster, all-white rendering, untextured model.${cameraPrompt}${customRoomPrompt}${customFurniturePrompt}`
         : `You are a professional 3D architectural visualizer.
 Your task is to transform the provided 3D spatial layout preview of the [${roomForRender}] into a hyper-realistic, photorealistic interior render.
 Style: ${gatherInfo.extras || "Modern Vietnamese contemporary"}.
