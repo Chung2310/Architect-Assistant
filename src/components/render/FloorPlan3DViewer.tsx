@@ -210,253 +210,12 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
   const cubeCameraRef = useRef<THREE.CubeCamera | null>(null);
   const cubeRenderTargetRef = useRef<THREE.WebGLCubeRenderTarget | null>(null);
 
-  let draw3DScene: (
-    scene: THREE.Scene,
-    plan: FloorPlanData,
-    thicknessMM: number,
-    finishes: FloorPlan3DViewerProps["finishes"],
-    cubeTexture: THREE.Texture | null
-  ) => void;
 
-  useEffect(() => {
-    const container = mountRef.current;
-    if (!container) return;
 
-    // 1. Initialize Scene, Camera, and Renderer
-    const width = container.clientWidth || 800;
-    const height = container.clientHeight || 500;
 
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color("#bae6fd"); // Sky blue background
-    sceneRef.current = scene;
 
-    // Add Sky Dome
-    const skyTex = createSkyTexture();
-    const skyGeo = new THREE.SphereGeometry(200, 32, 15);
-    const skyMat = new THREE.MeshBasicMaterial({
-      map: skyTex,
-      side: THREE.BackSide,
-    });
-    const sky = new THREE.Mesh(skyGeo, skyMat);
-    sky.rotation.y = Math.PI / 4; // align clouds to camera angle
-    scene.add(sky);
-
-    const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
-    camera.position.set(9, 9, 9);
-    cameraRef.current = camera;
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    
-    container.innerHTML = "";
-    container.appendChild(renderer.domElement);
-    rendererRef.current = renderer;
-
-    // 2. Orbit Controls
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.maxPolarAngle = Math.PI / 2 - 0.05; // Prevent camera going below ground
-    controls.minDistance = 1; // allow close flycam zooming
-    controls.maxDistance = 40;
-    controlsRef.current = controls;
-
-    // 3. Lighting Setup
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-    scene.add(ambientLight);
-
-    const sunLight = new THREE.DirectionalLight(0xfffaf0, 0.8);
-    sunLight.position.set(15, 25, 10);
-    sunLight.castShadow = true;
-    sunLight.shadow.mapSize.width = 2048;
-    sunLight.shadow.mapSize.height = 2048;
-    sunLight.shadow.bias = -0.0005;
-    scene.add(sunLight);
-
-    // Soft fill light from opposite angle
-    const fillLight = new THREE.DirectionalLight(0xbae6fd, 0.3);
-    fillLight.position.set(-15, 10, -10);
-    scene.add(fillLight);
-
-    // CubeCamera for real-time reflections
-    const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(256, {
-      generateMipmaps: true,
-      minFilter: THREE.LinearMipmapLinearFilter,
-      format: THREE.RGBAFormat,
-    });
-    cubeRenderTargetRef.current = cubeRenderTarget;
-
-    const cubeCamera = new THREE.CubeCamera(0.1, 100, cubeRenderTarget);
-    cubeCamera.position.set(0, 1.2, 0); // centered, eye-level
-    scene.add(cubeCamera);
-    cubeCameraRef.current = cubeCamera;
-
-    // 4. Draw Floorplan Elements
-    draw3DScene(scene, floorPlan, wallThickness, finishes, cubeRenderTarget.texture);
-
-    // Initial update of the reflection cubemap
-    cubeCamera.update(renderer, scene);
-
-    // 5. Animation Loop
-    const animate = () => {
-      animFrameIdRef.current = requestAnimationFrame(animate);
-      if (controls.enabled) {
-        controls.update();
-      }
-      renderer.render(scene, camera);
-    };
-    animate();
-
-    // 6. Resize Handler
-    const handleResize = () => {
-      if (!container || !rendererRef.current) return;
-      const w = container.clientWidth;
-      const h = container.clientHeight;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      rendererRef.current.setSize(w, h);
-    };
-    window.addEventListener("resize", handleResize);
-
-    const resizeObserver = new ResizeObserver(() => {
-      handleResize();
-    });
-    resizeObserver.observe(container);
-
-    // 7. Cleanup
-    return () => {
-      window.removeEventListener("resize", handleResize);
-      resizeObserver.disconnect();
-      if (animFrameIdRef.current) {
-        cancelAnimationFrame(animFrameIdRef.current);
-      }
-      
-      // Dispose materials & geometries
-      scene.traverse((object) => {
-        if (object instanceof THREE.Mesh) {
-          object.geometry.dispose();
-          if (Array.isArray(object.material)) {
-            object.material.forEach((mat) => mat.dispose());
-          } else {
-            object.material.dispose();
-          }
-        }
-      });
-
-      if (cubeRenderTargetRef.current) {
-        cubeRenderTargetRef.current.dispose();
-      }
-
-      controls.dispose();
-      renderer.dispose();
-      container.innerHTML = "";
-    };
-  }, [floorPlan, wallThickness, finishes]);
-
-  // Expose screenshot capture function to parent
-  useEffect(() => {
-    if (onCaptureRef) {
-      onCaptureRef.current = () => {
-        const renderer = rendererRef.current;
-        const scene = sceneRef.current;
-        const camera = cameraRef.current;
-        const container = mountRef.current;
-        if (!renderer || !scene || !camera || !container) return "";
-
-        // 1. Store original canvas display size
-        const originalWidth = container.clientWidth || 800;
-        const originalHeight = container.clientHeight || 500;
-
-        // 2. Temporarily resize renderer & camera to high-resolution 2K (4:3 aspect ratio)
-        const targetW = 2048;
-        const targetH = 1536;
-        renderer.setSize(targetW, targetH);
-        camera.aspect = targetW / targetH;
-        camera.updateProjectionMatrix();
-
-        // 3. Render the high-resolution frame
-        renderer.render(scene, camera);
-
-        // 4. Capture the WebGL canvas as DataURL
-        const dataUrl = renderer.domElement.toDataURL("image/png");
-
-        // 5. Restore original renderer size & aspect ratio
-        renderer.setSize(originalWidth, originalHeight);
-        camera.aspect = originalWidth / originalHeight;
-        camera.updateProjectionMatrix();
-        renderer.render(scene, camera); // render original viewport again
-
-        return dataUrl;
-      };
-    }
-    return () => {
-      if (onCaptureRef) {
-        onCaptureRef.current = null;
-      }
-    };
-  }, [onCaptureRef]);
-
-  // Synchronize 3D camera with 2D activeCamera
-  useEffect(() => {
-    const scene = sceneRef.current;
-    const camera = cameraRef.current;
-    const controls = controlsRef.current;
-    const renderer = rendererRef.current;
-    if (!scene || !camera || !floorPlan || !controls) return;
-
-    if (activeCamera) {
-      // 1. Calculate center offset to map coordinates correctly
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      floorPlan.rooms.forEach((r) => {
-        minX = Math.min(minX, r.x);
-        maxX = Math.max(maxX, r.x + r.w);
-        minY = Math.min(minY, r.y);
-        maxY = Math.max(maxY, r.y + r.h);
-      });
-      const centerX = (minX + maxX) / 2;
-      const centerY = (minY + maxY) / 2;
-
-      // 2. Position camera at height 1.25m (chest level for better perspective)
-      const rx = activeCamera.x - centerX;
-      const rz = activeCamera.y - centerY;
-      const height = 1.25;
-      camera.position.set(rx, height, rz);
-
-      // 3. Aim camera in target direction (based on activeCamera.rotation angle)
-      const rad = ((activeCamera.rotation - 90) * Math.PI) / 180;
-      const targetX = rx + Math.cos(rad) * 10;
-      const targetZ = rz + Math.sin(rad) * 10;
-
-      camera.lookAt(new THREE.Vector3(targetX, height, targetZ));
-
-      if (activeCamera.fov) {
-        camera.fov = activeCamera.fov;
-        camera.updateProjectionMatrix();
-      }
-
-      // Configure OrbitControls to rotate and zoom centered on the camera's look-at point (Flycam zoom!)
-      controls.enabled = true;
-      controls.target.set(targetX, height, targetZ);
-      controls.update();
-
-      // Trigger redraw
-      if (renderer) {
-        renderer.render(scene, camera);
-      }
-    } else {
-      // Fallback to bird's eye dollhouse view
-      camera.position.set(9, 9, 9);
-      controls.enabled = true;
-      controls.target.set(0, 0, 0);
-      controls.update();
-    }
-  }, [activeCamera, floorPlan]);
-
-  // ── Draw helper to compile floorplan meshes ──────────────────────────────
-  draw3DScene = function (
+// ── Draw helper to compile floorplan meshes ──────────────────────────────
+  function draw3DScene(
     scene: THREE.Scene,
     plan: FloorPlanData,
     thicknessMM: number,
@@ -1827,6 +1586,243 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
       });
     }
   }
+
+  useEffect(() => {
+    const container = mountRef.current;
+    if (!container) return;
+
+    // 1. Initialize Scene, Camera, and Renderer
+    const width = container.clientWidth || 800;
+    const height = container.clientHeight || 500;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color("#bae6fd"); // Sky blue background
+    sceneRef.current = scene;
+
+    // Add Sky Dome
+    const skyTex = createSkyTexture();
+    const skyGeo = new THREE.SphereGeometry(200, 32, 15);
+    const skyMat = new THREE.MeshBasicMaterial({
+      map: skyTex,
+      side: THREE.BackSide,
+    });
+    const sky = new THREE.Mesh(skyGeo, skyMat);
+    sky.rotation.y = Math.PI / 4; // align clouds to camera angle
+    scene.add(sky);
+
+    const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
+    camera.position.set(9, 9, 9);
+    cameraRef.current = camera;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    
+    container.innerHTML = "";
+    container.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
+
+    // 2. Orbit Controls
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2 - 0.05; // Prevent camera going below ground
+    controls.minDistance = 1; // allow close flycam zooming
+    controls.maxDistance = 40;
+    controlsRef.current = controls;
+
+    // 3. Lighting Setup
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambientLight);
+
+    const sunLight = new THREE.DirectionalLight(0xfffaf0, 0.8);
+    sunLight.position.set(15, 25, 10);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.bias = -0.0005;
+    scene.add(sunLight);
+
+    // Soft fill light from opposite angle
+    const fillLight = new THREE.DirectionalLight(0xbae6fd, 0.3);
+    fillLight.position.set(-15, 10, -10);
+    scene.add(fillLight);
+
+    // CubeCamera for real-time reflections
+    const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(256, {
+      generateMipmaps: true,
+      minFilter: THREE.LinearMipmapLinearFilter,
+      format: THREE.RGBAFormat,
+    });
+    cubeRenderTargetRef.current = cubeRenderTarget;
+
+    const cubeCamera = new THREE.CubeCamera(0.1, 100, cubeRenderTarget);
+    cubeCamera.position.set(0, 1.2, 0); // centered, eye-level
+    scene.add(cubeCamera);
+    cubeCameraRef.current = cubeCamera;
+
+    // 4. Draw Floorplan Elements
+    draw3DScene(scene, floorPlan, wallThickness, finishes, cubeRenderTarget.texture);
+
+    // Initial update of the reflection cubemap
+    cubeCamera.update(renderer, scene);
+
+    // 5. Animation Loop
+    const animate = () => {
+      animFrameIdRef.current = requestAnimationFrame(animate);
+      if (controls.enabled) {
+        controls.update();
+      }
+      renderer.render(scene, camera);
+    };
+    animate();
+
+    // 6. Resize Handler
+    const handleResize = () => {
+      if (!container || !rendererRef.current) return;
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      rendererRef.current.setSize(w, h);
+    };
+    window.addEventListener("resize", handleResize);
+
+    const resizeObserver = new ResizeObserver(() => {
+      handleResize();
+    });
+    resizeObserver.observe(container);
+
+    // 7. Cleanup
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      resizeObserver.disconnect();
+      if (animFrameIdRef.current) {
+        cancelAnimationFrame(animFrameIdRef.current);
+      }
+      
+      // Dispose materials & geometries
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+          if (Array.isArray(object.material)) {
+            object.material.forEach((mat) => mat.dispose());
+          } else {
+            object.material.dispose();
+          }
+        }
+      });
+
+      if (cubeRenderTargetRef.current) {
+        cubeRenderTargetRef.current.dispose();
+      }
+
+      controls.dispose();
+      renderer.dispose();
+      container.innerHTML = "";
+    };
+  }, [floorPlan, wallThickness, finishes]);
+
+  // Expose screenshot capture function to parent
+  useEffect(() => {
+    if (onCaptureRef) {
+      onCaptureRef.current = () => {
+        const renderer = rendererRef.current;
+        const scene = sceneRef.current;
+        const camera = cameraRef.current;
+        const container = mountRef.current;
+        if (!renderer || !scene || !camera || !container) return "";
+
+        // 1. Store original canvas display size
+        const originalWidth = container.clientWidth || 800;
+        const originalHeight = container.clientHeight || 500;
+
+        // 2. Temporarily resize renderer & camera to high-resolution 2K (4:3 aspect ratio)
+        const targetW = 2048;
+        const targetH = 1536;
+        renderer.setSize(targetW, targetH);
+        camera.aspect = targetW / targetH;
+        camera.updateProjectionMatrix();
+
+        // 3. Render the high-resolution frame
+        renderer.render(scene, camera);
+
+        // 4. Capture the WebGL canvas as DataURL
+        const dataUrl = renderer.domElement.toDataURL("image/png");
+
+        // 5. Restore original renderer size & aspect ratio
+        renderer.setSize(originalWidth, originalHeight);
+        camera.aspect = originalWidth / originalHeight;
+        camera.updateProjectionMatrix();
+        renderer.render(scene, camera); // render original viewport again
+
+        return dataUrl;
+      };
+    }
+    return () => {
+      if (onCaptureRef) {
+        onCaptureRef.current = null;
+      }
+    };
+  }, [onCaptureRef]);
+
+  // Synchronize 3D camera with 2D activeCamera
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    const renderer = rendererRef.current;
+    if (!scene || !camera || !floorPlan || !controls) return;
+
+    if (activeCamera) {
+      // 1. Calculate center offset to map coordinates correctly
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      floorPlan.rooms.forEach((r) => {
+        minX = Math.min(minX, r.x);
+        maxX = Math.max(maxX, r.x + r.w);
+        minY = Math.min(minY, r.y);
+        maxY = Math.max(maxY, r.y + r.h);
+      });
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+
+      // 2. Position camera at height 1.25m (chest level for better perspective)
+      const rx = activeCamera.x - centerX;
+      const rz = activeCamera.y - centerY;
+      const height = 1.25;
+      camera.position.set(rx, height, rz);
+
+      // 3. Aim camera in target direction (based on activeCamera.rotation angle)
+      const rad = ((activeCamera.rotation - 90) * Math.PI) / 180;
+      const targetX = rx + Math.cos(rad) * 10;
+      const targetZ = rz + Math.sin(rad) * 10;
+
+      camera.lookAt(new THREE.Vector3(targetX, height, targetZ));
+
+      if (activeCamera.fov) {
+        camera.fov = activeCamera.fov;
+        camera.updateProjectionMatrix();
+      }
+
+      // Configure OrbitControls to rotate and zoom centered on the camera's look-at point (Flycam zoom!)
+      controls.enabled = true;
+      controls.target.set(targetX, height, targetZ);
+      controls.update();
+
+      // Trigger redraw
+      if (renderer) {
+        renderer.render(scene, camera);
+      }
+    } else {
+      // Fallback to bird's eye dollhouse view
+      camera.position.set(9, 9, 9);
+      controls.enabled = true;
+      controls.target.set(0, 0, 0);
+      controls.update();
+    }
+  }, [activeCamera, floorPlan]);
 
   const handleZoomIn = () => {
     const camera = cameraRef.current;

@@ -8,6 +8,20 @@ const PIAPI_BASE_URL = process.env.PIAPI_BASE_URL || "https://api.piapi.ai/api/v
 
 console.log(`[PiAPI Service] Loaded API Key status: ${PIAPI_API_KEY ? `Present (Length: ${PIAPI_API_KEY.length}, Prefix: ${PIAPI_API_KEY.substring(0, 8)}...)` : 'Missing'}`);
 
+async function fetchImageAsBase64(url: string): Promise<string> {
+  // If it's already a base64 Data URI, return as-is
+  if (url.startsWith("data:")) return url;
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Hình ảnh đầu vào không tồn tại hoặc đã bị xóa khỏi Cloudinary (mã lỗi: ${response.status}). Vui lòng tải lại ảnh mới lên.`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  const mimeType = response.headers.get("content-type") || "image/png";
+  return `data:${mimeType};base64,${buffer.toString("base64")}`;
+}
+
 export const piapiService = {
   /**
    * Tạo task sinh ảnh bất đồng bộ trên PiAPI
@@ -50,12 +64,19 @@ export const piapiService = {
       };
 
       if (options?.image) {
-        body.input_references = [{
-          type: "image_url",
-          image_url: {
-            url: options.image
-          }
-        }];
+        try {
+          console.log(`[OpenRouter Image Task] Converting image to base64 for OpenRouter: ${options.image}`);
+          const base64Image = await fetchImageAsBase64(options.image);
+          body.input_references = [{
+            type: "image_url",
+            image_url: {
+              url: base64Image
+            }
+          }];
+        } catch (fetchErr) {
+          console.error(`[OpenRouter Image Task] Failed to convert image to base64:`, fetchErr);
+          throw fetchErr;
+        }
       }
 
       try {

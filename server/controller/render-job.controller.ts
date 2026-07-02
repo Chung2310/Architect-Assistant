@@ -392,8 +392,8 @@ export const renderJobController = {
             progress = 10;
           }
         } catch (apiErr) {
-          logger.error(`[renderJobController] Failed to create PiAPI tasks: ${apiErr}`);
-          res.status(500).json({ success: false, message: "Không thể khởi tạo tác vụ trên PiAPI: " + (apiErr as Error).message });
+          logger.error(`[renderJobController] Failed to create image generation tasks: ${apiErr}`);
+          res.status(500).json({ success: false, message: "Không thể khởi tạo tác vụ sinh ảnh: " + (apiErr as Error).message });
           return;
         }
       }
