@@ -68,6 +68,7 @@ export interface Opening {
   y: number;
   w: number;
   rotation: number;
+  style?: string;
 }
 
 export interface FloorPlanData {
@@ -388,10 +389,15 @@ const FURNITURE_METADATA: Record<string, {
   stairs: {
     name: "Cầu thang",
     materials: [
-      { name: "Gỗ căm xe", value: "wood", color: "#854d0e" }
+      { name: "Gỗ căm xe", value: "wood", color: "#854d0e" },
+      { name: "Gỗ sồi trắng", value: "white_oak", color: "#e3c29b" },
+      { name: "Đá cẩm thạch", value: "marble", color: "#cbd5e1" }
     ],
     styles: [
-      { name: "Thẳng", value: "straight" }
+      { name: "Thẳng", value: "straight" },
+      { name: "L-shaped staircase (landing)", value: "l_shaped_landing" },
+      { name: "L-shaped staircase (winder)", value: "l_shaped_winder" },
+      { name: "U-shaped staircase", value: "u_shaped" }
     ]
   },
   plant_pots: {
@@ -890,6 +896,7 @@ export const FloorPlanEditor: React.FC = () => {
   }>>({});
   const [sidebarTab, setSidebarTab] = useState<"scene" | "renders">("scene");
   const [isGeneratingPromptIdea, setIsGeneratingPromptIdea] = useState(false);
+  const [renderMode, setRenderMode] = useState<"Floorplan to 3D" | "Floorplan to 3D Floorplan">("Floorplan to 3D");
   const capture3DRef = useRef<(() => string) | null>(null);
 
   // ── Undo/Redo history ────────────────────────────────────────────────────
@@ -1418,7 +1425,8 @@ QUY TẮC THIẾT KẾ BẮT BUỘC (TUÂN THỦ TUYỆT ĐỐI):
 1. YÊU CẦU PHÒNG & KHÔNG ĐỂ THỪA ĐẤT:
    - CHỈ tạo đúng các phòng đã được yêu cầu cụ thể cho ${floorLabel}: "${floorRooms}". TUYỆT ĐỐI KHÔNG thêm phòng phụ ngoài yêu cầu và KHÔNG được tự ý bớt phòng. Mảng "rooms" trả về phải gồm chính xác số lượng và loại phòng này, không tự ý thêm phòng thờ, phòng sinh hoạt chung, hành lang (hành lang được thiết kế như khoảng trống giao thông giữa các phòng, không khai báo thành thực thể phòng trong JSON trừ khi được yêu cầu), phòng làm việc, vv nếu không có trong yêu cầu.
    - KHÔNG ĐỂ THỪA ĐẤT: Tổng diện tích các phòng cộng lại và ghép lại phải bao phủ hoàn toàn diện tích cho phép của lô đất (đa giác ranh giới). Không được để trống bất kỳ góc nào hay để chừa đất trống ở các góc biên ranh giới.
-   - PHÂN BỔ DIỆN TÍCH THÔNG MINH: Để lấp đầy diện tích đất mà không thêm phòng phụ, hãy TỰ ĐỘNG TĂNG KÍCH THƯỚC của các phòng được yêu cầu sao cho tổng chiều rộng và chiều dài của các phòng ghép lại vừa khít với ranh giới đất ở mọi hướng.
+   - PHÂN BỔ TỶ LỆ DIỆN TÍCH THÔNG MINH (PHÒNG LỚN/NHỎ HỢP LÝ): Khi chia diện tích, hãy đảm bảo các phòng chính như Phòng khách (Living room), Phòng ngủ Master (Master Bedroom) phải RỘNG RÃI (ví dụ: phòng khách nên rộng nhất, chiếm từ 15m² - 25m²; phòng ngủ master từ 12m² - 18m²). Ngược lại, các phòng phụ như Phòng vệ sinh / Toilet / WC, Phòng giặt (Laundry), Lối đi phải thiết kế nhỏ gọn, HẸP và tiết kiệm diện tích tối đa (ví dụ: WC/Toilet chỉ nên rộng từ 2.2m² - 4m²). Tuyệt đối không để phòng vệ sinh quá rộng tương đương phòng ngủ hay phòng khách, gây lãng phí không gian.
+   - KHỚP KHÍT RANH GIỚI: Để lấp đầy diện tích đất mà không thêm phòng phụ, hãy TỰ ĐỘNG TĂNG KÍCH THƯỚC của các phòng được yêu cầu sao cho tổng chiều rộng và chiều dài của các phòng ghép lại vừa khít với ranh giới đất ở mọi hướng (nhưng phải giữ tỷ lệ phòng khách lớn và WC nhỏ).
 
 2. KÍCH THƯỚC TỐI THIỂU BẮT BUỘC CHO TỪNG LOẠI PHÒNG (phải đảm bảo đủ diện tích để bố trí nội thất):
    - Phòng khách (living room): tối thiểu 3.0m x 4.0m (12m²), ưu tiên 4m x 5m trở lên
@@ -1685,6 +1693,7 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
         }
       }
 
+      const renderJobType = renderMode;
       let cameraPrompt = "";
       if (activeTab === "visualize" && selectedCameraRoomId && cameras[selectedCameraRoomId]) {
         const cam = cameras[selectedCameraRoomId];
@@ -1743,7 +1752,24 @@ User prompt: "${enhancedPrompt}"`
         }
       }
 
-      const renderPrompt = `You are a professional 3D architectural visualizer.
+      const renderPrompt = renderJobType === "Floorplan to 3D Floorplan"
+        ? `You are a professional 3D architectural visualizer.
+Your task is to transform the provided floorplan preview into a polished 3D floorplan illustration with a clean axonometric/3D floorplan style.
+Style: ${gatherInfo.extras || "Modern Vietnamese contemporary"}.
+
+Strict Layout & Furniture Preservation Guidelines:
+- The input image is a floorplan preview. You MUST strictly preserve the exact room layout, wall positions, doors, windows and furniture arrangement.
+- Do NOT add, remove, or rearrange any furniture.
+- Keep all architectural proportions correct.
+- The result should look like a high-quality 3D floorplan render, with clear floor surfaces, walls, and subtle shadows.
+- Focus on the floorplan and spatial organization, not on photographic interior detail.
+
+Requirements:
+- Crisp presentation with clean lines, subtle ambient lighting, and clear separation between floors, walls, and furniture.
+- Soft shadows that enhance depth without being overly photorealistic.
+- Avoid realistic photographic staging, people, or repeated interior decoration details.
+- Output should resemble a professional 3D floorplan/axonometric render, not a typical interior photograph.${cameraPrompt}${customRoomPrompt}${customFurniturePrompt}`
+        : `You are a professional 3D architectural visualizer.
 Your task is to transform the provided 3D spatial layout preview of the [${roomForRender}] into a hyper-realistic, photorealistic interior render.
 Style: ${gatherInfo.extras || "Modern Vietnamese contemporary"}.
 
@@ -1763,7 +1789,7 @@ Requirements:
       // Post asynchronous render job to backend queue
       const jobData = {
         userId: user?._id || "",
-        type: "Floorplan to 3D",
+        type: renderJobType,
         inputImageUrls: [_imageUrl],
         referenceImageUrls: [],
         status: "pending",
@@ -1851,7 +1877,8 @@ Requirements:
     const area = rw * rh;
 
     // Wall margin: furniture edge stays at least M from any wall
-    const M = 0.12;
+    // M is dynamically calculated to be at least 10cm away from the inner face of the wall stroke
+    const M = Math.max(0.18, (wallThickness / 1000) / 2 + 0.10);
     // Clamp furniture center so edges = center ± size/2 are within [M, room_dim - M]
     const cx = (center: number, size: number) =>
       Math.max(M + size / 2, Math.min(rw - M - size / 2, center));
@@ -1932,12 +1959,33 @@ Requirements:
 
     // ── Phòng tắm lớn / Full Bathroom ─────────────────────────────────────
     } else if (lowerName.includes("tắm lớn") || lowerName.includes("full bath")) {
-      const lavW = 0.55; const lavH = 0.45;
-      const toiW = 0.42; const toiH = 0.65;
-      const mirW = 0.55; const mirH = 0.18;
-      items.push({ id: uid("lav"), type: "wc_lavabo",  x: cx(M+lavW/2, lavW), y: cy(M+lavH*1.5, lavH),        w: lavW, h: lavH });
-      items.push({ id: uid("mir"), type: "wc_mirror",  x: cx(M+mirW/2, mirW), y: cy(M+mirH/2, mirH),           w: mirW, h: mirH });
-      items.push({ id: uid("toi"), type: "wc_toilet",  x: cx(M+toiW/2, toiW), y: cy(rh-M-toiH/2, toiH),       w: toiW, h: toiH });
+      const lavW = Math.min(0.55, rw * 0.45);
+      const lavH = Math.min(0.45, rh * 0.22);
+      const toiW = Math.min(0.42, rw * 0.4);
+      const toiH = Math.min(0.65, rh * 0.32);
+      const mirW = lavW; const mirH = 0.15;
+
+      const lavX = cx(M + lavW/2, lavW);
+      const lavY = cy(M + mirH + M + lavH/2, lavH);
+
+      items.push({ id: uid("mir"), type: "wc_mirror",  x: lavX, y: cy(M+mirH/2, mirH), w: mirW, h: mirH });
+      items.push({ id: uid("lav"), type: "wc_lavabo",  x: lavX, y: lavY, w: lavW, h: lavH });
+
+      let toiX = cx(M + toiW/2, toiW);
+      let toiY = cy(rh - M - toiH/2, toiH);
+
+      const lavBottom = lavY + lavH/2;
+      const toiTop = toiY - toiH/2;
+      if (toiTop < lavBottom + 0.15) {
+        if (rw >= 1.6) {
+          toiX = cx(rw - M - toiW/2, toiW);
+          toiY = cy(rh - M - toiH/2, toiH);
+        } else {
+          toiY = cy(Math.max(lavBottom + 0.15 + toiH/2, rh - M - toiH/2), toiH);
+        }
+      }
+      items.push({ id: uid("toi"), type: "wc_toilet",  x: toiX, y: toiY, w: toiW, h: toiH });
+
       if (rw >= 1.6 && rh >= 2.0) {
         const btW = Math.min(rw*0.42, 0.8); const btH = Math.min(rh*0.45, 1.6);
         items.push({ id: uid("bt"), type: "wc_bathtub", x: cx(rw-M-btW/2, btW), y: cy(rh/2, btH),             w: btW,  h: btH });
@@ -1948,14 +1996,35 @@ Requirements:
 
     // ── Phòng vệ sinh phụ / Half Bathroom / WC ────────────────────────────
     } else if (lowerName.includes("vệ sinh") || lowerName.includes("wc") || lowerName.includes("toilet") || lowerName.includes("tắm")) {
-      const lavW = Math.min(0.55, rw * 0.5); const lavH = Math.min(0.45, rh * 0.3);
-      const toiW = Math.min(0.42, rw * 0.45); const toiH = Math.min(0.65, rh * 0.38);
+      const lavW = Math.min(0.55, rw * 0.45);
+      const lavH = Math.min(0.45, rh * 0.22);
+      const toiW = Math.min(0.42, rw * 0.4);
+      const toiH = Math.min(0.65, rh * 0.32);
       const mirW = lavW; const mirH = 0.15;
-      items.push({ id: uid("mir"), type: "wc_mirror",  x: cx(M+mirW/2, mirW), y: cy(M+mirH/2, mirH),           w: mirW, h: mirH });
-      items.push({ id: uid("lav"), type: "wc_lavabo",  x: cx(M+lavW/2, lavW), y: cy(M+mirH+M+lavH/2, lavH),    w: lavW, h: lavH });
-      items.push({ id: uid("toi"), type: "wc_toilet",  x: cx(M+toiW/2, toiW), y: cy(rh-M-toiH/2, toiH),       w: toiW, h: toiH });
+
+      const lavX = cx(M + lavW/2, lavW);
+      const lavY = cy(M + mirH + M + lavH/2, lavH);
+
+      items.push({ id: uid("mir"), type: "wc_mirror",  x: lavX, y: cy(M+mirH/2, mirH), w: mirW, h: mirH });
+      items.push({ id: uid("lav"), type: "wc_lavabo",  x: lavX, y: lavY, w: lavW, h: lavH });
+
+      let toiX = cx(M + toiW/2, toiW);
+      let toiY = cy(rh - M - toiH/2, toiH);
+
+      const lavBottom = lavY + lavH/2;
+      const toiTop = toiY - toiH/2;
+      if (toiTop < lavBottom + 0.15) {
+        if (rw >= 1.6) {
+          toiX = cx(rw - M - toiW/2, toiW);
+          toiY = cy(rh - M - toiH/2, toiH);
+        } else {
+          toiY = cy(Math.max(lavBottom + 0.15 + toiH/2, rh - M - toiH/2), toiH);
+        }
+      }
+      items.push({ id: uid("toi"), type: "wc_toilet",  x: toiX, y: toiY, w: toiW, h: toiH });
+
       // Shower stall if room is wide enough on right side
-      if (rw >= 1.8) {
+      if (rw >= 1.8 && rh >= 1.8) {
         const shW = Math.min(rw*0.38, 0.9); const shH = Math.min(rh*0.4, 0.9);
         items.push({ id: uid("sh"), type: "wc_shower",  x: cx(rw-M-shW/2, shW), y: cy(rh/2, shH),             w: shW,  h: shH });
       }
@@ -2509,21 +2578,116 @@ Requirements:
             <Circle x={0} y={0} radius={2} fill="#ffffff" stroke="#0f172a" strokeWidth={0.8} />
           </Group>
         );
-      case "stairs":
-        return (
-          <Group>
-            {/* Stair boundaries */}
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={1} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.08} shadowOffset={{ x: 1, y: 1 }} />
-            {/* Stair steps lines */}
-            <Line points={[-iw / 2, -ih * 0.3, iw / 2, -ih * 0.3]} stroke="#475569" strokeWidth={1} />
-            <Line points={[-iw / 2, -ih * 0.1, iw / 2, -ih * 0.1]} stroke="#475569" strokeWidth={1} />
-            <Line points={[-iw / 2, ih * 0.1, iw / 2, ih * 0.1]} stroke="#475569" strokeWidth={1} />
-            <Line points={[-iw / 2, ih * 0.3, iw / 2, ih * 0.3]} stroke="#475569" strokeWidth={1} />
-            {/* Direction Arrow */}
-            <Line points={[0, ih * 0.4, 0, -ih * 0.4]} stroke="#0f172a" strokeWidth={1.2} />
-            <Line points={[-4, -ih * 0.4 + 4, 0, -ih * 0.4, 4, -ih * 0.4 + 4]} stroke="#0f172a" strokeWidth={1.2} />
-          </Group>
-        );
+      case "stairs": {
+        const stairStyle = item.style || "straight";
+        if (stairStyle === "l_shaped_landing" || stairStyle === "l_shaped_winder") {
+          const isWinder = stairStyle === "l_shaped_winder";
+          return (
+            <Group>
+              {/* Outer L-shaped border */}
+              <Line
+                points={[
+                  -iw / 2, ih / 2,
+                  -iw / 2, -ih / 2,
+                  iw / 2, -ih / 2,
+                  iw / 2, 0,
+                  0, 0,
+                  0, ih / 2,
+                  -iw / 2, ih / 2
+                ]}
+                closed={true}
+                fill={fillColor}
+                stroke="#0f172a"
+                strokeWidth={1.5}
+              />
+              {/* Landing square border: from (-iw/2, -ih/2) to (0, 0) */}
+              {!isWinder ? (
+                <Rect x={-iw / 2} y={-ih / 2} width={iw / 2} height={ih / 2} fill="#cbd5e1" stroke="#475569" strokeWidth={0.8} />
+              ) : (
+                // Winder landing has diagonal split lines
+                <>
+                  <Line points={[-iw / 2, -ih / 2, 0, 0]} stroke="#475569" strokeWidth={1} />
+                  <Line points={[-iw / 2, -ih / 4, 0, 0]} stroke="#475569" strokeWidth={0.8} />
+                  <Line points={[-iw / 4, -ih / 2, 0, 0]} stroke="#475569" strokeWidth={0.8} />
+                </>
+              )}
+              {/* Left run steps (vertical run going up to landing) */}
+              <Line points={[-iw / 2, ih * 0.35, 0, ih * 0.35]} stroke="#475569" strokeWidth={1} />
+              <Line points={[-iw / 2, ih * 0.20, 0, ih * 0.20]} stroke="#475569" strokeWidth={1} />
+              <Line points={[-iw / 2, ih * 0.05, 0, ih * 0.05]} stroke="#475569" strokeWidth={1} />
+              <Line points={[-iw / 2, -ih * 0.10, 0, -ih * 0.10]} stroke="#475569" strokeWidth={1} />
+
+              {/* Top run steps (horizontal run going right from landing) */}
+              <Line points={[iw * 0.15, -ih / 2, iw * 0.15, 0]} stroke="#475569" strokeWidth={1} />
+              <Line points={[iw * 0.30, -ih / 2, iw * 0.30, 0]} stroke="#475569" strokeWidth={1} />
+              <Line points={[iw * 0.45, -ih / 2, iw * 0.45, 0]} stroke="#475569" strokeWidth={1} />
+
+              {/* L-shaped Arrow */}
+              <Line
+                points={[
+                  -iw / 4, ih * 0.4,
+                  -iw / 4, -ih / 4,
+                  iw * 0.4, -ih / 4
+                ]}
+                stroke="#0f172a"
+                strokeWidth={1.2}
+              />
+              <Line points={[iw * 0.4 - 4, -ih / 4 - 4, iw * 0.4, -ih / 4, iw * 0.4 - 4, -ih / 4 + 4]} stroke="#0f172a" strokeWidth={1.2} />
+            </Group>
+          );
+        } else if (stairStyle === "u_shaped") {
+          return (
+            <Group>
+              {/* Outer boundary */}
+              <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={1} />
+              {/* Center divider */}
+              <Line points={[0, ih / 2, 0, -ih / 4]} stroke="#0f172a" strokeWidth={1.5} />
+              {/* Top landing */}
+              <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih / 4} fill="#cbd5e1" stroke="#475569" strokeWidth={0.8} />
+
+              {/* Left run steps */}
+              <Line points={[-iw / 2, -ih * 0.1, 0, -ih * 0.1]} stroke="#475569" strokeWidth={1} />
+              <Line points={[-iw / 2, ih * 0.05, 0, ih * 0.05]} stroke="#475569" strokeWidth={1} />
+              <Line points={[-iw / 2, ih * 0.2, 0, ih * 0.2]} stroke="#475569" strokeWidth={1} />
+              <Line points={[-iw / 2, ih * 0.35, 0, ih * 0.35]} stroke="#475569" strokeWidth={1} />
+
+              {/* Right run steps */}
+              <Line points={[0, -ih * 0.1, iw / 2, -ih * 0.1]} stroke="#475569" strokeWidth={1} />
+              <Line points={[0, ih * 0.05, iw / 2, ih * 0.05]} stroke="#475569" strokeWidth={1} />
+              <Line points={[0, ih * 0.2, iw / 2, ih * 0.2]} stroke="#475569" strokeWidth={1} />
+              <Line points={[0, ih * 0.35, iw / 2, ih * 0.35]} stroke="#475569" strokeWidth={1} />
+
+              {/* U-shaped Arrow */}
+              <Line
+                points={[
+                  -iw / 4, ih * 0.4,
+                  -iw / 4, -ih * 0.35,
+                  iw / 4, -ih * 0.35,
+                  iw / 4, ih * 0.4
+                ]}
+                stroke="#0f172a"
+                strokeWidth={1.2}
+              />
+              <Line points={[iw / 4 - 4, ih * 0.4 - 4, iw / 4, ih * 0.4, iw / 4 + 4, ih * 0.4 - 4]} stroke="#0f172a" strokeWidth={1.2} />
+            </Group>
+          );
+        } else {
+          return (
+            <Group>
+              {/* Stair boundaries */}
+              <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={1} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.08} shadowOffset={{ x: 1, y: 1 }} />
+              {/* Stair steps lines */}
+              <Line points={[-iw / 2, -ih * 0.3, iw / 2, -ih * 0.3]} stroke="#475569" strokeWidth={1} />
+              <Line points={[-iw / 2, -ih * 0.1, iw / 2, -ih * 0.1]} stroke="#475569" strokeWidth={1} />
+              <Line points={[-iw / 2, ih * 0.1, iw / 2, ih * 0.1]} stroke="#475569" strokeWidth={1} />
+              <Line points={[-iw / 2, ih * 0.3, iw / 2, ih * 0.3]} stroke="#475569" strokeWidth={1} />
+              {/* Direction Arrow */}
+              <Line points={[0, ih * 0.4, 0, -ih * 0.4]} stroke="#0f172a" strokeWidth={1.2} />
+              <Line points={[-4, -ih * 0.4 + 4, 0, -ih * 0.4, 4, -ih * 0.4 + 4]} stroke="#0f172a" strokeWidth={1.2} />
+            </Group>
+          );
+        }
+      }
       case "plant_pots":
         return (
           <Group>
@@ -3206,6 +3370,7 @@ Requirements:
 
   // ── Manual Furniture & Room Actions ────────────────────────────────────
   const [activeBottomPopup, setActiveBottomPopup] = useState<"furniture" | "structure" | null>(null);
+  const [activeStructureCategory, setActiveStructureCategory] = useState<"door" | "stairs" | "window" | null>("door");
   const [selectedCategoryIndex, setSelectedCategoryIndex] = useState<number | null>(null);
   const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
   const [furnitureSearch, setFurnitureSearch] = useState("");
@@ -3286,7 +3451,15 @@ Requirements:
       else if (type.includes("car")) { w = 1.8; h = 4.2; }
       else if (type.includes("desk")) { w = 1.2; h = 0.6; }
       else if (type.includes("chair")) { w = 0.6; h = 0.6; }
-      else if (type === "stairs") { w = 1.0; h = 2.0; }
+      else if (type === "stairs") {
+        if (customStyle?.startsWith("l_shaped")) {
+          w = 1.6; h = 1.6;
+        } else if (customStyle === "u_shaped") {
+          w = 1.6; h = 2.0;
+        } else {
+          w = 1.0; h = 2.0;
+        }
+      }
       else if (type === "plant_pots") { w = 0.5; h = 0.5; }
       else if (type === "gym_treadmill") { w = 0.9; h = 1.8; }
       else if (type === "recreation_pool_table") { w = 1.6; h = 2.8; }
@@ -3337,19 +3510,21 @@ Requirements:
     toast.success(`Đã thêm ${FURNITURE_METADATA[type]?.name || type}! Bạn có thể kéo thả để di chuyển.`);
   };
 
-  const handleAddDoor = () => {
+  const handleAddDoor = (style: string = "hinged") => {
     if (!floorPlan) {
       toast.error("Vui lòng tạo mặt bằng trước!");
       return;
     }
     pushHistory(floorPlan);
+    const width = style === "garage" ? 2.4 : style === "sliding" ? 1.6 : 0.9;
     const newOpening: Opening = {
       id: `open_${activeFloorIndex}_${Date.now()}`,
       type: "door",
       x: 3.0,
       y: 3.0,
-      w: 0.9,
+      w: width,
       rotation: 0,
+      style
     };
     const updatedOpenings = [...(floorPlan.openings || []), newOpening];
     const updatedPlan = { ...floorPlan, openings: updatedOpenings };
@@ -3358,22 +3533,25 @@ Requirements:
     nextPlans[activeFloorIndex] = updatedPlan;
     setFloorPlans(nextPlans);
     setSelectedOpeningId(newOpening.id);
-    toast.success("Đã thêm một cửa đi mới! Hãy kéo thả cửa đến vị trí mong muốn.");
+    const label = style === "garage" ? "cửa garage" : style === "sliding" ? "cửa lùa" : "cửa đi bản lề";
+    toast.success(`Đã thêm một ${label} mới! Hãy kéo thả cửa đến vị trí mong muốn.`);
   };
 
-  const handleAddWindow = () => {
+  const handleAddWindow = (style: string = "hinged") => {
     if (!floorPlan) {
       toast.error("Vui lòng tạo mặt bằng trước!");
       return;
     }
     pushHistory(floorPlan);
+    const width = style === "sliding" ? 1.5 : 1.2;
     const newOpening: Opening = {
       id: `open_${activeFloorIndex}_${Date.now()}`,
       type: "window",
       x: 3.0,
       y: 3.0,
-      w: 1.2,
+      w: width,
       rotation: 0,
+      style
     };
     const updatedOpenings = [...(floorPlan.openings || []), newOpening];
     const updatedPlan = { ...floorPlan, openings: updatedOpenings };
@@ -3382,7 +3560,8 @@ Requirements:
     nextPlans[activeFloorIndex] = updatedPlan;
     setFloorPlans(nextPlans);
     setSelectedOpeningId(newOpening.id);
-    toast.success("Đã thêm một cửa sổ mới! Hãy kéo thả cửa sổ đến vị trí mong muốn.");
+    const label = style === "blinds" ? "cửa sổ màn sáo" : style === "sliding" ? "cửa sổ lùa" : "cửa sổ bản lề";
+    toast.success(`Đã thêm một ${label} mới! Hãy kéo thả cửa sổ đến vị trí mong muốn.`);
   };
 
   // ── Render Openings ────────────────────────────────────────────────────
@@ -3400,6 +3579,8 @@ Requirements:
       const strokeWidth = isSelected ? 3 : 2;
 
       if (open.type === "door") {
+        const isSliding = open.style === "sliding";
+        const isGarage = open.style === "garage";
         const arcPoints = [];
         const segments = 12;
         for (let i = 0; i <= segments; i++) {
@@ -3477,25 +3658,36 @@ Requirements:
               }
             }}
           >
-            {/* Invisible large hit area to make dragging easy */}
-            <Rect
-              x={0}
-              y={-ow}
-              width={ow}
-              height={ow}
-              fill="transparent"
-            />
-            <Line
-              points={arcPoints}
-              stroke={strokeColor}
-              strokeWidth={isSelected ? 1.5 : 1}
-              dash={[3, 3]}
-            />
-            <Line
-              points={[0, 0, 0, -ow]}
-              stroke={strokeColor}
-              strokeWidth={strokeWidth}
-            />
+            {isSliding ? (
+              <>
+                {/* Invisible hit area */}
+                <Rect x={-ow / 2} y={-thickness / 2} width={ow} height={thickness} fill="transparent" />
+                {/* Sliding door track frame */}
+                <Rect x={-ow / 2} y={-thickness / 2} width={ow} height={thickness} stroke={strokeColor} strokeWidth={1} />
+                {/* Panel 1 */}
+                <Rect x={-ow / 2 + 2} y={-thickness / 4} width={ow / 2 - 1} height={thickness / 2} fill="#e2e8f0" stroke={strokeColor} strokeWidth={strokeWidth} />
+                {/* Panel 2 */}
+                <Rect x={0} y={0} width={ow / 2 - 2} height={thickness / 2} fill="#e2e8f0" stroke={strokeColor} strokeWidth={strokeWidth} />
+              </>
+            ) : isGarage ? (
+              <>
+                {/* Invisible hit area */}
+                <Rect x={-ow / 2} y={-thickness / 2} width={ow} height={thickness} fill="transparent" />
+                {/* Garage door boundary */}
+                <Rect x={-ow / 2} y={-thickness / 2} width={ow} height={thickness} fill="#f1f5f9" stroke={strokeColor} strokeWidth={strokeWidth} />
+                {/* Grooves for garage door */}
+                <Line points={[-ow / 2, -thickness * 0.2, ow / 2, -thickness * 0.2]} stroke="#475569" strokeWidth={1} />
+                <Line points={[-ow / 2, 0, ow / 2, 0]} stroke="#475569" strokeWidth={1} />
+                <Line points={[-ow / 2, thickness * 0.2, ow / 2, thickness * 0.2]} stroke="#475569" strokeWidth={1} />
+              </>
+            ) : (
+              <>
+                {/* Invisible large hit area to make dragging easy */}
+                <Rect x={0} y={-ow} width={ow} height={ow} fill="transparent" />
+                <Line points={arcPoints} stroke={strokeColor} strokeWidth={isSelected ? 1.5 : 1} dash={[3, 3]} />
+                <Line points={[0, 0, 0, -ow]} stroke={strokeColor} strokeWidth={strokeWidth} />
+              </>
+            )}
             {/* Indication circle at pivot point when selected */}
             {isSelected && (
               <Circle
@@ -3598,11 +3790,29 @@ Requirements:
               strokeWidth={strokeWidth}
               cornerRadius={1}
             />
-            <Line
-              points={[-ow / 2, 0, ow / 2, 0]}
-              stroke={isSelected ? "#00b5cd" : "#94a3b8"}
-              strokeWidth={isSelected ? 1.5 : 1}
-            />
+            {open.style === "sliding" ? (
+              <>
+                {/* Two sliding panes */}
+                <Line points={[-ow / 2 + 2, -thickness / 4, 2, -thickness / 4]} stroke={strokeColor} strokeWidth={1} />
+                <Line points={[-2, thickness / 4, ow / 2 - 2, thickness / 4]} stroke={strokeColor} strokeWidth={1} />
+              </>
+            ) : open.style === "blinds" ? (
+              <>
+                {/* Blinds slats */}
+                <Line points={[-ow / 2 + 4, -thickness / 4, -ow / 2 + 6, thickness / 4]} stroke="#64748b" strokeWidth={1} />
+                <Line points={[-ow / 4, -thickness / 4, -ow / 4 + 2, thickness / 4]} stroke="#64748b" strokeWidth={1} />
+                <Line points={[0, -thickness / 4, 2, thickness / 4]} stroke="#64748b" strokeWidth={1} />
+                <Line points={[ow / 4, -thickness / 4, ow / 4 + 2, thickness / 4]} stroke="#64748b" strokeWidth={1} />
+                <Line points={[ow / 2 - 6, -thickness / 4, ow / 2 - 4, thickness / 4]} stroke="#64748b" strokeWidth={1} />
+              </>
+            ) : (
+              // Hinged / default window
+              <Line
+                points={[-ow / 2, 0, ow / 2, 0]}
+                stroke={isSelected ? "#00b5cd" : "#94a3b8"}
+                strokeWidth={isSelected ? 1.5 : 1}
+              />
+            )}
             {/* Indication circle at pivot point when selected */}
             {isSelected && (
               <Circle
@@ -4037,7 +4247,7 @@ Requirements:
               const fMinY = roundedAbsY - currentH / 2;
               const fMaxY = roundedAbsY + currentH / 2;
 
-               const tol = 0.05; // 5cm padding to prevent overlapping walls
+               const tol = (wallThickness / 1000) / 2 + 0.01; // Dynamic padding based on wall thickness plus 1cm gap
               let isCrossingWall = false;
               let targetRoom = null;
 
@@ -5037,37 +5247,176 @@ Requirements:
 
               {/* Structure Popover */}
               {activeBottomPopup === "structure" && (
-                <div className="mb-3 w-48 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-150">
-                  <button
-                    onClick={() => {
-                      handleAddDoor();
-                      setActiveBottomPopup(null);
-                    }}
-                    className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all flex items-center justify-between cursor-pointer"
-                  >
-                    <span>Cửa đi</span>
-                    <Plus className="w-3.5 h-3.5 text-[#00b5cd]" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleAddWindow();
-                      setActiveBottomPopup(null);
-                    }}
-                    className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all flex items-center justify-between cursor-pointer"
-                  >
-                    <span>Cửa sổ</span>
-                    <Plus className="w-3.5 h-3.5 text-[#00b5cd]" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleAddFurniture("stairs");
-                      setActiveBottomPopup(null);
-                    }}
-                    className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all flex items-center justify-between cursor-pointer"
-                  >
-                    <span>Cầu thang</span>
-                    <Plus className="w-3.5 h-3.5 text-[#00b5cd]" />
-                  </button>
+                <div className="mb-3 flex gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                  {/* Left panel: main options */}
+                  <div className="w-48 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1">
+                    <button
+                      onMouseEnter={() => setActiveStructureCategory("door")}
+                      onClick={() => setActiveStructureCategory("door")}
+                      className={`w-full text-left px-3 py-2 text-xs font-bold rounded-xl border border-transparent transition-all flex items-center justify-between cursor-pointer ${
+                        activeStructureCategory === "door"
+                          ? "bg-slate-50 border-slate-100 text-[#00b5cd]"
+                          : "text-slate-700 hover:bg-slate-50 hover:border-slate-100"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
+                          <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M13.5 12H3"/>
+                        </svg>
+                        <span>Door</span>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                    </button>
+
+                    <button
+                      onMouseEnter={() => setActiveStructureCategory("stairs")}
+                      onClick={() => setActiveStructureCategory("stairs")}
+                      className={`w-full text-left px-3 py-2 text-xs font-bold rounded-xl border border-transparent transition-all flex items-center justify-between cursor-pointer ${
+                        activeStructureCategory === "stairs"
+                          ? "bg-slate-50 border-slate-100 text-[#00b5cd]"
+                          : "text-slate-700 hover:bg-slate-50 hover:border-slate-100"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
+                          <path d="M3 21h18M3 21v-4h4v-4h4v-4h4v-4h4V3" />
+                        </svg>
+                        <span>Stairs</span>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                    </button>
+
+                    <button
+                      onMouseEnter={() => setActiveStructureCategory("window")}
+                      onClick={() => setActiveStructureCategory("window")}
+                      className={`w-full text-left px-3 py-2 text-xs font-bold rounded-xl border border-transparent transition-all flex items-center justify-between cursor-pointer ${
+                        activeStructureCategory === "window"
+                          ? "bg-slate-50 border-slate-100 text-[#00b5cd]"
+                          : "text-slate-700 hover:bg-slate-50 hover:border-slate-100"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" className="text-slate-500">
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" stroke="currentColor" strokeWidth="2"/>
+                          <line x1="9" y1="3" x2="9" y2="21" stroke="currentColor" strokeWidth="2"/>
+                          <line x1="15" y1="3" x2="15" y2="21" stroke="currentColor" strokeWidth="2"/>
+                          <line x1="3" y1="12" x2="21" y2="12" stroke="currentColor" strokeWidth="2"/>
+                        </svg>
+                        <span>Window</span>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                    </button>
+                  </div>
+
+                  {/* Right panel: submenu */}
+                  {activeStructureCategory && (
+                    <div className="w-56 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-100 justify-center">
+                      {activeStructureCategory === "door" && (
+                        <>
+                          <button
+                            onClick={() => {
+                              handleAddDoor("garage");
+                              setActiveBottomPopup(null);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
+                          >
+                            Garage Door
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleAddDoor("hinged");
+                              setActiveBottomPopup(null);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
+                          >
+                            Hinged Door
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleAddDoor("sliding");
+                              setActiveBottomPopup(null);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
+                          >
+                            Sliding Door
+                          </button>
+                        </>
+                      )}
+
+                      {activeStructureCategory === "stairs" && (
+                        <>
+                          <button
+                            onClick={() => {
+                              handleAddFurniture("stairs", undefined, undefined, "l_shaped_landing");
+                              setActiveBottomPopup(null);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
+                          >
+                            L-shaped staircase (landing)
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleAddFurniture("stairs", undefined, undefined, "l_shaped_winder");
+                              setActiveBottomPopup(null);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
+                          >
+                            L-shaped staircase (winder)
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleAddFurniture("stairs", undefined, undefined, "straight");
+                              setActiveBottomPopup(null);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
+                          >
+                            Straight staircase
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleAddFurniture("stairs", undefined, undefined, "u_shaped");
+                              setActiveBottomPopup(null);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
+                          >
+                            U-shaped staircase
+                          </button>
+                        </>
+                      )}
+
+                      {activeStructureCategory === "window" && (
+                        <>
+                          <button
+                            onClick={() => {
+                              handleAddWindow("blinds");
+                              setActiveBottomPopup(null);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
+                          >
+                            Blinds Window
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleAddWindow("hinged");
+                              setActiveBottomPopup(null);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
+                          >
+                            Hinged Window
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleAddWindow("sliding");
+                              setActiveBottomPopup(null);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
+                          >
+                            Sliding Window
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -5385,6 +5734,24 @@ Requirements:
                           <option value="Landscape (4:3)">Landscape (4:3)</option>
                           <option value="Widescreen (16:9)">Widescreen (16:9)</option>
                           <option value="Square (1:1)">Square (1:1)</option>
+                        </select>
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                          <ChevronDown className="w-4 h-4" />
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Render Mode */}
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-bold text-slate-700 block">Chế độ render</span>
+                      <div className="relative">
+                        <select
+                          value={renderMode}
+                          onChange={(e) => setRenderMode(e.target.value as "Floorplan to 3D" | "Floorplan to 3D Floorplan")}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-[#00b5cd]/50 cursor-pointer appearance-none pr-8"
+                        >
+                          <option value="Floorplan to 3D">Floorplan to 3D</option>
+                          <option value="Floorplan to 3D Floorplan">Floorplan to 3D Floorplan</option>
                         </select>
                         <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
                           <ChevronDown className="w-4 h-4" />
@@ -6045,7 +6412,26 @@ Requirements:
 
                     {/* DESIGN REFERENCES */}
                     <div className="space-y-3">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Tham chiếu thiết kế</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Design References</span>
+                        <button
+                          onClick={() => {
+                            setFinishes({
+                              flooring: { type: "material", value: "natural_oak", name: "Natural Oak" },
+                              walls: { type: "color", value: "#ffffff", name: "White" },
+                              ceiling: { type: "color", value: "#ffffff", name: "White" },
+                              doors: { type: "material", value: "natural_oak", name: "Natural Oak" },
+                              windows: { type: "color", value: "#1c1c1e", name: "Dark" },
+                            });
+                            setSelectedStyle("");
+                          }}
+                          className="text-[10px] text-[#00b5cd] hover:underline font-semibold cursor-pointer"
+                        >
+                          Reset all
+                        </button>
+                      </div>
+
+                      {/* Style */}
                       <button
                         onClick={() => setShowStyleModal(true)}
                         className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
@@ -6054,122 +6440,118 @@ Requirements:
                           <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
                             <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
                           </div>
-                          <span>Phong cách (Style)</span>
+                          <span>Style</span>
                         </div>
-                        <span className="text-slate-500 font-medium">
-                          {selectedStyle ? selectedStyle : <Plus className="w-4 h-4 text-[#00b5cd]" />}
+                        <span className="text-[#00b5cd] font-medium">
+                          {selectedStyle || "None"}
                         </span>
+                      </button>
+
+                      {/* Flooring */}
+                      <button
+                        onClick={() => setShowFinishModal("flooring")}
+                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
+                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M4 19h16v2H4v-2zm0-4h16v2H4v-2zm0-4h16v2H4v-2zm0-4h16v2H4V7zm0-4h16v2H4V3z"/></svg>
+                          </div>
+                          <span>Flooring</span>
+                        </div>
+                        <span className="text-[#00b5cd] font-medium">{finishes.flooring.name}</span>
+                      </button>
+
+                      {/* Walls */}
+                      <button
+                        onClick={() => setShowFinishModal("walls")}
+                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
+                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M12 2a10 10 0 0 0-10 10c0 5.52 4.48 10 10 10s10-4.48 10-10a10 10 0 0 0-10-10zm1 14.5h-2v-2h2v2zm0-4h-2v-6h2v6z"/></svg>
+                          </div>
+                          <span>Walls</span>
+                        </div>
+                        {finishes.walls.type === "color" ? (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-3.5 h-3.5 rounded border border-slate-200" style={{ backgroundColor: finishes.walls.value }} />
+                            <span className="text-slate-500 text-[11px] font-mono">{finishes.walls.name || finishes.walls.value}</span>
+                          </div>
+                        ) : (
+                          <span className="text-[#00b5cd] font-medium">{finishes.walls.name}</span>
+                        )}
+                      </button>
+
+                      {/* Ceiling */}
+                      <button
+                        onClick={() => setShowFinishModal("ceiling")}
+                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
+                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M12 2L2 22h20L12 2zm0 4l7.5 13h-15L12 6z"/></svg>
+                          </div>
+                          <span>Ceiling</span>
+                        </div>
+                        {finishes.ceiling.type === "color" ? (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-3.5 h-3.5 rounded border border-slate-200" style={{ backgroundColor: finishes.ceiling.value }} />
+                            <span className="text-slate-500 text-[11px] font-mono">{finishes.ceiling.name || finishes.ceiling.value}</span>
+                          </div>
+                        ) : (
+                          <span className="text-[#00b5cd] font-medium">{finishes.ceiling.name}</span>
+                        )}
+                      </button>
+
+                      {/* Doors */}
+                      <button
+                        onClick={() => setShowFinishModal("doors")}
+                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
+                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M13.5 12H3"/></svg>
+                          </div>
+                          <span>Doors</span>
+                        </div>
+                        <span className="text-[#00b5cd] font-medium">{finishes.doors.name}</span>
+                      </button>
+
+                      {/* Windows */}
+                      <button
+                        onClick={() => setShowFinishModal("windows")}
+                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
+                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-9 14H4v-5h7v5zm0-7H4V6h7v5zm9 7h-7v-5h7v5zm0-7h-7V6h7v5z"/></svg>
+                          </div>
+                          <span>Windows</span>
+                        </div>
+                        {finishes.windows.type === "color" ? (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-3.5 h-3.5 rounded border border-slate-200" style={{ backgroundColor: finishes.windows.value }} />
+                            <span className="text-slate-500 text-[11px] font-mono">{finishes.windows.name || finishes.windows.value}</span>
+                          </div>
+                        ) : (
+                          <span className="text-[#00b5cd] font-medium">{finishes.windows.name}</span>
+                        )}
                       </button>
                     </div>
 
-                    {/* Finishes */}
-                    <div className="space-y-3">
-                    <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Vật liệu hoàn thiện</span>
-                    
-                    {/* Flooring */}
-                    <button
-                      onClick={() => setShowFinishModal("flooring")}
-                      className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
-                          <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M4 19h16v2H4v-2zm0-4h16v2H4v-2zm0-4h16v2H4v-2zm0-4h16v2H4V7zm0-4h16v2H4V3z"/></svg>
-                        </div>
-                        <span>Lát sàn (Flooring)</span>
-                      </div>
-                      <span className="text-[#00b5cd] font-medium">{finishes.flooring.name}</span>
-                    </button>
-
-                  {/* Walls */}
-                  <button
-                    onClick={() => setShowFinishModal("walls")}
-                    className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
-                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M12 2a10 10 0 0 0-10 10c0 5.52 4.48 10 10 10s10-4.48 10-10a10 10 0 0 0-10-10zm1 14.5h-2v-2h2v2zm0-4h-2v-6h2v6z"/></svg>
-                      </div>
-                      <span>Sơn tường (Walls)</span>
-                    </div>
-                    {finishes.walls.type === "color" ? (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-3.5 h-3.5 rounded border border-slate-200" style={{ backgroundColor: finishes.walls.value }} />
-                        <span className="text-slate-500 text-[11px] font-mono">{finishes.walls.value}</span>
-                      </div>
-                    ) : (
-                      <span className="text-[#00b5cd] font-medium">{finishes.walls.name}</span>
-                    )}
-                  </button>
-
-                  {/* Ceiling */}
-                  <button
-                    onClick={() => setShowFinishModal("ceiling")}
-                    className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
-                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M12 2L2 22h20L12 2zm0 4l7.5 13h-15L12 6z"/></svg>
-                      </div>
-                      <span>Trần nhà (Ceiling)</span>
-                    </div>
-                    {finishes.ceiling.type === "color" ? (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-3.5 h-3.5 rounded border border-slate-200" style={{ backgroundColor: finishes.ceiling.value }} />
-                        <span className="text-slate-500 text-[11px] font-mono">{finishes.ceiling.value}</span>
-                      </div>
-                    ) : (
-                      <span className="text-[#00b5cd] font-medium">{finishes.ceiling.name}</span>
-                    )}
-                  </button>
-
-                  {/* Doors */}
-                  <button
-                    onClick={() => setShowFinishModal("doors")}
-                    className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
-                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M13.5 12H3"/></svg>
-                      </div>
-                      <span>Cửa đi (Doors)</span>
-                    </div>
-                    <span className="text-[#00b5cd] font-medium">{finishes.doors.name}</span>
-                  </button>
-
-                  {/* Windows */}
-                  <button
-                    onClick={() => setShowFinishModal("windows")}
-                    className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
-                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-9 14H4v-5h7v5zm0-7H4V6h7v5zm9 7h-7v-5h7v5zm0-7h-7V6h7v5z"/></svg>
-                      </div>
-                      <span>Cửa sổ (Windows)</span>
-                    </div>
-                    {finishes.windows.type === "color" ? (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-3.5 h-3.5 rounded border border-slate-200" style={{ backgroundColor: finishes.windows.value }} />
-                        <span className="text-slate-500 text-[11px] font-mono">{finishes.windows.value}</span>
-                      </div>
-                    ) : (
-                      <span className="text-[#00b5cd] font-medium">{finishes.windows.name}</span>
-                    )}
-                  </button>
-
-                  {/* Add Doors / Windows manually */}
-                  <div className="space-y-3 pt-4 border-t border-slate-200">
+                    {/* Add Doors / Windows manually */}
+                    <div className="space-y-3 pt-4 border-t border-slate-200">
                     <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Thêm Cửa / Cửa Sổ</span>
                     <div className="grid grid-cols-2 gap-2">
                       <button
-                        onClick={handleAddDoor}
+                        onClick={() => handleAddDoor()}
                         className="flex items-center justify-center gap-1.5 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl transition-all cursor-pointer text-xs"
                       >
                         <Plus className="w-3.5 h-3.5 text-[#00b5cd]" />
                         Thêm Cửa Đi
                       </button>
                       <button
-                        onClick={handleAddWindow}
+                        onClick={() => handleAddWindow()}
                         className="flex items-center justify-center gap-1.5 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl transition-all cursor-pointer text-xs"
                       >
                         <Plus className="w-3.5 h-3.5 text-[#00b5cd]" />
@@ -6177,7 +6559,6 @@ Requirements:
                       </button>
                     </div>
                   </div>
-                </div>
               </>
             )}
           </div>
@@ -6583,87 +6964,109 @@ Requirements:
 
               {/* Modal Body */}
               <div className="p-6">
-                {finishes[showFinishModal]?.type === "material" ? (
-                  <div className="space-y-4">
-                    {/* Category Dropdown */}
-                    <div className="relative">
-                      <select className="w-full bg-[#1c1c1e] border border-[#2d2d30] rounded-xl px-4 py-2 text-xs text-slate-200 outline-none appearance-none focus:border-[#00b5cd]/50 cursor-pointer">
-                        <option>All categories</option>
-                        <option>Wood</option>
-                        <option>Stone</option>
-                        <option>Tile</option>
-                        <option>Concrete</option>
-                      </select>
-                      <span className="absolute inset-y-0 right-4 flex items-center text-slate-500 pointer-events-none">
-                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="m6 9 6 6 6-6"/></svg>
-                      </span>
-                    </div>
+                {finishes[showFinishModal]?.type === "material" ? (() => {
+                  // Map finish type to correct material list + images
+                  const FINISH_MATERIALS: Record<string, { name: string; value: string; color: string; img: string }[]> = {
+                    flooring: [
+                      { name: "Terrazzo", value: "Terrazzo", color: "#cbd5e1", img: "https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=150&q=80" },
+                      { name: "Natural Oak", value: "natural_oak", color: "#e3c29b", img: "https://images.unsplash.com/photo-1533090161767-e6ffed986c88?auto=format&fit=crop&w=150&q=80" },
+                      { name: "Oak Wood", value: "Oak Wood", color: "#e3c29b", img: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=150&q=80" },
+                      { name: "Concrete - Light", value: "Concrete - Light", color: "#e2e8f0", img: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=150&q=80" },
+                      { name: "Concrete - Dark", value: "Concrete - Dark", color: "#94a3b8", img: "https://images.unsplash.com/photo-1558979158-65a1eaa08691?auto=format&fit=crop&w=150&q=80" },
+                      { name: "White Wood Panelling", value: "White Wood Panelling", color: "#f8fafc", img: "https://images.unsplash.com/photo-1519710164239-da123dc03ef4?auto=format&fit=crop&w=150&q=80" },
+                    ],
+                    walls: [
+                      { name: "White Plaster", value: "White Plaster", color: "#ffffff", img: "https://images.unsplash.com/photo-1615873968403-89e068629265?auto=format&fit=crop&w=150&q=80" },
+                      { name: "Terracotta Fan Tile", value: "Terracotta Fan Tile", color: "#c2410c", img: "https://images.unsplash.com/photo-1501183007986-d0d080b147f9?auto=format&fit=crop&w=150&q=80" },
+                      { name: "Exposed Brick", value: "Exposed Brick", color: "#b91c1c", img: "https://images.unsplash.com/photo-1565891741441-64926e441838?auto=format&fit=crop&w=150&q=80" },
+                      { name: "Concrete Render", value: "Concrete Render", color: "#cbd5e1", img: "https://images.unsplash.com/photo-1558979158-65a1eaa08691?auto=format&fit=crop&w=150&q=80" },
+                    ],
+                    ceiling: [
+                      { name: "Soft White", value: "#ffffff", color: "#ffffff", img: "https://images.unsplash.com/photo-1615873968403-89e068629265?auto=format&fit=crop&w=150&q=80" },
+                      { name: "Raw Concrete", value: "#cbd5e1", color: "#cbd5e1", img: "https://images.unsplash.com/photo-1558979158-65a1eaa08691?auto=format&fit=crop&w=150&q=80" },
+                      { name: "Wood Beams", value: "#ca8a04", color: "#ca8a04", img: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=150&q=80" },
+                    ],
+                    doors: [
+                      { name: "Natural Oak", value: "natural_oak", color: "#ca8a04", img: "https://images.unsplash.com/photo-1533090161767-e6ffed986c88?auto=format&fit=crop&w=150&q=80" },
+                      { name: "Soft White", value: "#ffffff", color: "#ffffff", img: "https://images.unsplash.com/photo-1615873968403-89e068629265?auto=format&fit=crop&w=150&q=80" },
+                      { name: "Matte Black", value: "#1e293b", color: "#1e293b", img: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=150&q=80" },
+                    ],
+                    windows: [
+                      { name: "Soft White", value: "#ffffff", color: "#ffffff", img: "https://images.unsplash.com/photo-1615873968403-89e068629265?auto=format&fit=crop&w=150&q=80" },
+                      { name: "Matte Black", value: "#1e293b", color: "#1e293b", img: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=150&q=80" },
+                      { name: "Anodized Silver", value: "#cbd5e1", color: "#cbd5e1", img: "https://images.unsplash.com/photo-1558979158-65a1eaa08691?auto=format&fit=crop&w=150&q=80" },
+                    ],
+                  };
+                  const materialList = FINISH_MATERIALS[showFinishModal] || [];
+                  return (
+                    <div className="space-y-4">
+                      {/* Category Dropdown */}
+                      <div className="relative">
+                        <select className="w-full bg-[#1c1c1e] border border-[#2d2d30] rounded-xl px-4 py-2 text-xs text-slate-200 outline-none appearance-none focus:border-[#00b5cd]/50 cursor-pointer">
+                          <option>All categories</option>
+                          <option>Wood</option>
+                          <option>Stone</option>
+                          <option>Tile</option>
+                          <option>Concrete</option>
+                        </select>
+                        <span className="absolute inset-y-0 right-4 flex items-center text-slate-500 pointer-events-none">
+                          <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="m6 9 6 6 6-6"/></svg>
+                        </span>
+                      </div>
 
-                    {/* Search Bar */}
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-3 flex items-center text-slate-500">
-                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.5" fill="none"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                      </span>
-                      <input
-                        type="text"
-                        placeholder="Search for materials"
-                        className="w-full bg-[#1c1c1e] border border-[#2d2d30] rounded-xl pl-9 pr-4 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-[#00b5cd]/50 transition-colors"
-                      />
-                    </div>
+                      {/* Search Bar */}
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-3 flex items-center text-slate-500">
+                          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.5" fill="none"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="Search for materials"
+                          className="w-full bg-[#1c1c1e] border border-[#2d2d30] rounded-xl pl-9 pr-4 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-[#00b5cd]/50 transition-colors"
+                        />
+                      </div>
 
-                    {/* Materials Grid */}
-                    <div className="grid grid-cols-2 gap-3 max-h-[220px] overflow-y-auto pr-1">
-                      {[
-                        {
-                          id: "terrazzo",
-                          name: "Terrazzo",
-                          img: "https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=150&q=80"
-                        },
-                        {
-                          id: "natural_oak",
-                          name: "Natural Oak",
-                          img: "https://images.unsplash.com/photo-1533090161767-e6ffed986c88?auto=format&fit=crop&w=150&q=80"
-                        },
-                        {
-                          id: "terracotta_fan",
-                          name: "Terracotta Fan Tile",
-                          img: "https://images.unsplash.com/photo-1501183007986-d0d080b147f9?auto=format&fit=crop&w=150&q=80"
-                        },
-                        {
-                          id: "concrete_light",
-                          name: "Concrete - Light",
-                          img: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=150&q=80"
-                        }
-                      ].map((mat) => (
-                        <div
-                          key={mat.id}
-                          onClick={() => {
-                            setFinishes(prev => ({
-                              ...prev,
-                              [showFinishModal]: { type: "material", value: mat.id, name: mat.name }
-                            }));
-                            setShowFinishModal(null);
-                            toast.success(`Đã chọn vật liệu: ${mat.name}`);
-                          }}
-                          className={`group bg-[#18181a] border rounded-xl overflow-hidden cursor-pointer hover:border-[#00b5cd]/50 transition-colors ${
-                            finishes[showFinishModal]?.value === mat.id ? "border-[#00b5cd]" : "border-[#2d2d30]"
-                          }`}
-                        >
-                          <div className="aspect-video overflow-hidden bg-[#111112]">
-                            <img
-                              src={mat.img}
-                              alt={mat.name}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            />
-                          </div>
-                          <div className="p-2 text-center text-[10px] font-semibold text-slate-200 truncate">
-                            {mat.name}
-                          </div>
-                        </div>
-                      ))}
+                      {/* Materials Grid */}
+                      <div className="grid grid-cols-2 gap-4 max-h-[280px] overflow-y-auto pr-1">
+                        {materialList.map((mat) => {
+                          const isSelected = finishes[showFinishModal]?.value === mat.value;
+                          return (
+                            <div
+                              key={mat.value}
+                              onClick={() => {
+                                setFinishes(prev => ({
+                                  ...prev,
+                                  [showFinishModal]: { type: "material", value: mat.value, name: mat.name }
+                                }));
+                                setShowFinishModal(null);
+                                toast.success(`Đã chọn vật liệu: ${mat.name}`);
+                              }}
+                              className={`group bg-[#1c1c1e] border rounded-xl overflow-hidden cursor-pointer hover:border-[#00b5cd]/50 transition-all p-1.5 ${
+                                isSelected ? "border-[#00b5cd] ring-2 ring-[#00b5cd]/25" : "border-[#2d2d30]"
+                              }`}
+                            >
+                              <div
+                                className="w-full aspect-[4/3] rounded-lg mb-2 border border-[#2d2d30] relative overflow-hidden flex items-center justify-center"
+                                style={{ backgroundColor: mat.color }}
+                              >
+                                {isSelected && (
+                                  <div className="absolute inset-0 bg-[#00b5cd]/15 flex items-center justify-center">
+                                    <div className="w-6 h-6 rounded-full bg-[#00b5cd] flex items-center justify-center text-white shadow-lg">
+                                      <svg viewBox="0 0 24 24" width="12" height="12" stroke="white" strokeWidth="3" fill="none"><path d="M20 6 9 17l-5-5"/></svg>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="px-1.5 pb-1.5 text-center text-xs font-semibold text-slate-200 truncate">
+                                {mat.name}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ) : (
+                  );
+                })() : (
                   <div className="space-y-4">
                     {/* Color picker canvas gradient demo */}
                     <div

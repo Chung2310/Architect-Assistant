@@ -112,6 +112,87 @@ function createCarpetTexture(): THREE.Texture {
   return texture;
 }
 
+function createSkyTexture(): THREE.Texture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 512;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    // Sky gradient
+    const grad = ctx.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0, "#0284c7");
+    grad.addColorStop(0.3, "#0ea5e9");
+    grad.addColorStop(0.6, "#38bdf8");
+    grad.addColorStop(0.85, "#7dd3fc");
+    grad.addColorStop(0.98, "#bae6fd");
+    grad.addColorStop(1.0, "#e0f2fe");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 1024, 512);
+
+    // Draw nice fluffy clouds
+    ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+    const drawCloud = (x: number, y: number, size: number) => {
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.arc(x + size * 0.7, y - size * 0.2, size * 0.8, 0, Math.PI * 2);
+      ctx.arc(x + size * 1.4, y, size * 0.7, 0, Math.PI * 2);
+      ctx.arc(x + size * 0.4, y + size * 0.3, size * 0.7, 0, Math.PI * 2);
+      ctx.arc(x + size * 1.0, y + size * 0.3, size * 0.7, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.fill();
+    };
+
+    // Draw some clouds spread across the panorama
+    drawCloud(150, 180, 25);
+    drawCloud(350, 120, 35);
+    drawCloud(550, 220, 20);
+    drawCloud(750, 140, 30);
+    drawCloud(900, 200, 24);
+    
+    // Draw some higher thinner clouds
+    ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+    drawCloud(250, 80, 15);
+    drawCloud(650, 70, 20);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  return texture;
+}
+
+function createGrassTexture(): THREE.Texture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    // Base grass green
+    ctx.fillStyle = "#22c55e";
+    ctx.fillRect(0, 0, 256, 256);
+
+    // Draw dark green grass spots
+    ctx.fillStyle = "#16a34a";
+    for (let i = 0; i < 3000; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      ctx.fillRect(x, y, 1.8, 1.8);
+    }
+
+    // Draw some light yellow/green spots
+    ctx.fillStyle = "#84cc16";
+    for (let i = 0; i < 1500; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      ctx.fillRect(x, y, 1.5, 1.5);
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(80, 80);
+  return texture;
+}
+
 export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
   floorPlan,
   wallThickness = 100,
@@ -138,8 +219,19 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     const height = container.clientHeight || 500;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color("#f1f5f9"); // Slate-100 background
+    scene.background = new THREE.Color("#bae6fd"); // Sky blue background
     sceneRef.current = scene;
+
+    // Add Sky Dome
+    const skyTex = createSkyTexture();
+    const skyGeo = new THREE.SphereGeometry(200, 32, 15);
+    const skyMat = new THREE.MeshBasicMaterial({
+      map: skyTex,
+      side: THREE.BackSide,
+    });
+    const sky = new THREE.Mesh(skyGeo, skyMat);
+    sky.rotation.y = Math.PI / 4; // align clouds to camera angle
+    scene.add(sky);
 
     const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
     camera.position.set(9, 9, 9);
@@ -379,18 +471,32 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     const centerX = (minX + maxX) / 2;
     const centerY = (minY + maxY) / 2;
 
-    // Create a solid base ground under the building
-    const groundW = (maxX - minX) + 6;
-    const groundH = (maxY - minY) + 6;
-    const groundGeo = new THREE.BoxGeometry(groundW, 0.2, groundH);
-    const groundMat = new THREE.MeshStandardMaterial({
-      color: "#cbd5e1", // Light grey
-      roughness: 0.9,
+    // 1. Create a concrete base foundation slab under the building
+    const foundationW = (maxX - minX) + 0.8;
+    const foundationH = (maxY - minY) + 0.8;
+    const foundationGeo = new THREE.BoxGeometry(foundationW, 0.15, foundationH);
+    const foundationMat = new THREE.MeshStandardMaterial({
+      color: "#cbd5e1", // Light grey concrete base
+      roughness: 0.8,
     });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.position.set(0, -0.1, 0); // slightly below 0
-    ground.receiveShadow = true;
-    scene.add(ground);
+    const foundation = new THREE.Mesh(foundationGeo, foundationMat);
+    foundation.position.set(0, -0.075, 0); // top face sits exactly at y = 0
+    foundation.receiveShadow = true;
+    scene.add(foundation);
+
+    // 2. Large grass plane around the building extending to the horizon
+    const grassTex = createGrassTexture();
+    const grassGeo = new THREE.PlaneGeometry(350, 350);
+    const grassMat = new THREE.MeshStandardMaterial({
+      map: grassTex,
+      roughness: 0.9,
+      metalness: 0.1,
+    });
+    const grass = new THREE.Mesh(grassGeo, grassMat);
+    grass.rotation.x = -Math.PI / 2; // lay horizontal
+    grass.position.set(0, -0.01, 0); // slightly below concrete slab top face
+    grass.receiveShadow = true;
+    scene.add(grass);
 
     // Materials setup from Finishes
     let flooringMat: THREE.Material;
@@ -524,6 +630,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
           const isKitchen = ftype.includes("kitchen") || ftype.includes("cabinet") || ftype.includes("fridge") || ftype.includes("dining") || ftype.includes("table") || ftype.includes("cooktop") || ftype.includes("sink") || ftype.includes("desk") || ftype.includes("tv");
           const isBath = ftype.includes("bath") || ftype.includes("wc") || ftype.includes("toilet") || ftype.includes("lavabo") || ftype.includes("mirror") || ftype.includes("tub");
           const isCar = ftype.includes("car") || ftype.includes("vehicle") || ftype.includes("garage");
+          const isStairs = ftype.includes("stairs");
 
           const getFurnitureColor = () => {
             if (f.color) return f.color;
@@ -1354,6 +1461,153 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
                 water.position.set(0, 0.58, 0);
                 furnGroup.add(water);
               }
+            } else if (isStairs) {
+              const stairGroup = new THREE.Group();
+              const stairStyle = f.style || "straight";
+              const woodColor = resolvedColor || "#a16207"; // warm wood brown
+              const stepMat = new THREE.MeshStandardMaterial({
+                color: woodColor,
+                roughness: 0.6,
+                metalness: 0.1
+              });
+              const metalRailMat = new THREE.MeshStandardMaterial({
+                color: "#1e293b", // dark metal
+                metalness: 0.8,
+                roughness: 0.2
+              });
+
+              const sw = f.w || 1.0;
+              const sh = f.h || 2.0;
+              const totalHeight = 2.7;
+
+              if (stairStyle === "l_shaped_landing" || stairStyle === "l_shaped_winder") {
+                // L-shaped staircase (landing / winder)
+                const landingZHeight = totalHeight * 0.5;
+                
+                // 1. Landing Platform
+                const landingGeo = new THREE.BoxGeometry(sw, 0.1, sw);
+                const landingMesh = new THREE.Mesh(landingGeo, stepMat);
+                landingMesh.position.set(-sw / 4, landingZHeight - 0.05, -sh / 2 + sw / 2);
+                landingMesh.castShadow = true;
+                landingMesh.receiveShadow = true;
+                stairGroup.add(landingMesh);
+
+                // Supporting landing post
+                const postGeo = new THREE.BoxGeometry(0.1, landingZHeight, 0.1);
+                const post = new THREE.Mesh(postGeo, metalRailMat);
+                post.position.set(-sw / 2 + 0.05, landingZHeight / 2, -sh / 2 + 0.05);
+                stairGroup.add(post);
+
+                // 2. Left run steps (vertical run going up to landing)
+                const run1Length = sh - sw;
+                const numSteps1 = 8;
+                const step1Depth = run1Length / numSteps1;
+                const step1Rise = landingZHeight / numSteps1;
+
+                for (let i = 0; i < numSteps1; i++) {
+                  const sz = sh / 2 - (i + 0.5) * step1Depth;
+                  const sy = (i + 1) * step1Rise;
+                  const stepGeo = new THREE.BoxGeometry(sw / 2, sy, step1Depth);
+                  const stepMesh = new THREE.Mesh(stepGeo, stepMat);
+                  stepMesh.position.set(-sw / 4, sy / 2, sz);
+                  stepMesh.castShadow = true;
+                  stepMesh.receiveShadow = true;
+                  stairGroup.add(stepMesh);
+                }
+
+                // 3. Top run steps (horizontal run going right from landing)
+                const run2Width = sw / 2;
+                const numSteps2 = 8;
+                const step2Width = run2Width / numSteps2;
+                const step2Rise = (totalHeight - landingZHeight) / numSteps2;
+
+                for (let i = 0; i < numSteps2; i++) {
+                  const sx = (i + 0.5) * step2Width;
+                  const sy = landingZHeight + (i + 1) * step2Rise;
+                  const stepGeo = new THREE.BoxGeometry(step2Width, sy, sw);
+                  const stepMesh = new THREE.Mesh(stepGeo, stepMat);
+                  stepMesh.position.set(sx, sy / 2, -sh / 2 + sw / 2);
+                  stepMesh.castShadow = true;
+                  stepMesh.receiveShadow = true;
+                  stairGroup.add(stepMesh);
+                }
+
+              } else if (stairStyle === "u_shaped") {
+                // U-shaped staircase
+                const landingZHeight = totalHeight * 0.5;
+                const landingDepth = sw / 2;
+
+                // 1. Landing Platform
+                const landingGeo = new THREE.BoxGeometry(sw, 0.1, landingDepth);
+                const landingMesh = new THREE.Mesh(landingGeo, stepMat);
+                landingMesh.position.set(0, landingZHeight - 0.05, -sh / 2 + landingDepth / 2);
+                landingMesh.castShadow = true;
+                landingMesh.receiveShadow = true;
+                stairGroup.add(landingMesh);
+
+                // Supporting landing posts
+                const postGeo = new THREE.BoxGeometry(0.08, landingZHeight, 0.08);
+                const postL = new THREE.Mesh(postGeo, metalRailMat);
+                postL.position.set(-sw / 2 + 0.04, landingZHeight / 2, -sh / 2 + 0.04);
+                stairGroup.add(postL);
+                const postR = postL.clone();
+                postR.position.x = sw / 2 - 0.04;
+                stairGroup.add(postR);
+
+                // 2. Left run steps (going up to landing)
+                const runLength = sh - landingDepth;
+                const numSteps1 = 8;
+                const stepDepth = runLength / numSteps1;
+                const stepRise = landingZHeight / numSteps1;
+
+                for (let i = 0; i < numSteps1; i++) {
+                  const sz = sh / 2 - (i + 0.5) * stepDepth;
+                  const sy = (i + 1) * stepRise;
+                  const stepGeo = new THREE.BoxGeometry(sw / 2 - 0.02, sy, stepDepth);
+                  const stepMesh = new THREE.Mesh(stepGeo, stepMat);
+                  stepMesh.position.set(-sw / 4, sy / 2, sz);
+                  stepMesh.castShadow = true;
+                  stepMesh.receiveShadow = true;
+                  stairGroup.add(stepMesh);
+                }
+
+                // 3. Right run steps (going up from landing to top floor)
+                const numSteps2 = 8;
+                const stepRise2 = (totalHeight - landingZHeight) / numSteps2;
+
+                for (let i = 0; i < numSteps2; i++) {
+                  const sz = -sh / 2 + landingDepth + (i + 0.5) * stepDepth;
+                  const sy = landingZHeight + (i + 1) * stepRise2;
+                  const stepGeo = new THREE.BoxGeometry(sw / 2 - 0.02, sy, stepDepth);
+                  const stepMesh = new THREE.Mesh(stepGeo, stepMat);
+                  stepMesh.position.set(sw / 4, sy / 2, sz);
+                  stepMesh.castShadow = true;
+                  stepMesh.receiveShadow = true;
+                  stairGroup.add(stepMesh);
+                }
+
+              } else {
+                // Straight staircase
+                const numSteps = 15;
+                const stepDepth = sh / numSteps;
+                const stepRise = totalHeight / numSteps;
+
+                for (let i = 0; i < numSteps; i++) {
+                  const sz = sh / 2 - (i + 0.5) * stepDepth;
+                  const sy = (i + 1) * stepRise;
+
+                  const stepGeo = new THREE.BoxGeometry(sw, sy, stepDepth);
+                  const stepMesh = new THREE.Mesh(stepGeo, stepMat);
+                  stepMesh.position.set(0, sy / 2, sz);
+                  stepMesh.castShadow = true;
+                  stepMesh.receiveShadow = true;
+                  stairGroup.add(stepMesh);
+                }
+              }
+
+              stairGroup.castShadow = true;
+              stairGroup.receiveShadow = true;
+              furnGroup.add(stairGroup);
             } else {
               // Generic Fallback Object (Box)
               const boxW = f.w || 0.8;
@@ -1389,6 +1643,9 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
         openGroup.rotation.y = -rad;
 
         if (open.type === "door") {
+          const isSliding = open.style === "sliding";
+          const isGarage = open.style === "garage";
+
           // Door frames
           const frameHeight = 2.1;
           const frameLGeo = new THREE.BoxGeometry(0.04, frameHeight, thick * 1.2);
@@ -1405,33 +1662,150 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
           frameTop.position.set(0, frameHeight, 0);
           openGroup.add(frameTop);
 
-          // Panel (semi-open at 45 degrees)
-          const panelGeo = new THREE.BoxGeometry(open.w * 0.95, frameHeight * 0.95, 0.03);
-          const panel = new THREE.Mesh(panelGeo, doorMat);
-          panel.position.set(open.w * 0.95 / 2, frameHeight * 0.95 / 2, 0);
-          
-          const pivot = new THREE.Group();
-          pivot.position.set(-open.w / 2, 0, 0);
-          pivot.rotation.y = Math.PI / 4; // open 45deg
-          pivot.add(panel);
-          
-          openGroup.add(pivot);
+          if (isSliding) {
+            // Draw sliding glass door: 2 panes overlapping
+            const paneW = open.w * 0.52;
+            const paneH = frameHeight * 0.95;
+
+            // Left pane group
+            const leftPaneGroup = new THREE.Group();
+            leftPaneGroup.position.set(-open.w / 4, paneH / 2, -0.015);
+
+            const frameLeftGeo = new THREE.BoxGeometry(paneW, paneH, 0.02);
+            const paneLeft = new THREE.Mesh(frameLeftGeo, frameMat);
+            leftPaneGroup.add(paneLeft);
+
+            const glassLeftGeo = new THREE.BoxGeometry(paneW - 0.08, paneH - 0.08, 0.01);
+            const glassLeft = new THREE.Mesh(glassLeftGeo, glassMat);
+            leftPaneGroup.add(glassLeft);
+
+            openGroup.add(leftPaneGroup);
+
+            // Right pane group
+            const rightPaneGroup = new THREE.Group();
+            rightPaneGroup.position.set(open.w / 4, paneH / 2, 0.015);
+
+            const frameRightGeo = new THREE.BoxGeometry(paneW, paneH, 0.02);
+            const paneRight = new THREE.Mesh(frameRightGeo, frameMat);
+            rightPaneGroup.add(paneRight);
+
+            const glassRightGeo = new THREE.BoxGeometry(paneW - 0.08, paneH - 0.08, 0.01);
+            const glassRight = new THREE.Mesh(glassRightGeo, glassMat);
+            rightPaneGroup.add(glassRight);
+
+            openGroup.add(rightPaneGroup);
+
+          } else if (isGarage) {
+            // Draw modern segmented garage door
+            const panelW = open.w * 0.96;
+            const panelH = frameHeight * 0.96;
+            const garageMat = new THREE.MeshStandardMaterial({
+              color: "#cbd5e1",
+              roughness: 0.5,
+              metalness: 0.1
+            });
+            const garagePanel = new THREE.Mesh(
+              new THREE.BoxGeometry(panelW, panelH, 0.04),
+              garageMat
+            );
+            garagePanel.position.set(0, panelH / 2, 0);
+            garagePanel.castShadow = true;
+            openGroup.add(garagePanel);
+
+            // Grooves for roll-up panels
+            const slatCount = 4;
+            const slatH = panelH / slatCount;
+            for (let i = 1; i < slatCount; i++) {
+              const lineGeo = new THREE.BoxGeometry(panelW, 0.01, 0.045);
+              const lineMesh = new THREE.Mesh(lineGeo, frameMat);
+              lineMesh.position.set(0, i * slatH, 0);
+              openGroup.add(lineMesh);
+            }
+          } else {
+            // Panel (semi-open at 45 degrees) - Hinged door
+            const panelGeo = new THREE.BoxGeometry(open.w * 0.95, frameHeight * 0.95, 0.03);
+            const panel = new THREE.Mesh(panelGeo, doorMat);
+            panel.position.set(open.w * 0.95 / 2, frameHeight * 0.95 / 2, 0);
+
+            const pivot = new THREE.Group();
+            pivot.position.set(-open.w / 2, 0, 0);
+            pivot.rotation.y = Math.PI / 4; // open 45deg
+            pivot.add(panel);
+
+            openGroup.add(pivot);
+          }
 
         } else if (open.type === "window") {
-          // Window frames and glass
+          const isSliding = open.style === "sliding";
+          const isBlinds = open.style === "blinds";
+
           const winHeight = 1.2;
           const bottomHeight = 1.0; // 1m off the ground
+          const centerY = bottomHeight + winHeight / 2;
 
+          // Outer frame
           const frameGeo = new THREE.BoxGeometry(open.w, winHeight, thick * 1.2);
           const outerFrame = new THREE.Mesh(frameGeo, frameMat);
-          outerFrame.position.set(0, bottomHeight + winHeight / 2, 0);
+          outerFrame.position.set(0, centerY, 0);
           openGroup.add(outerFrame);
 
-          // Glass pane inside frame
-          const paneGeo = new THREE.BoxGeometry(open.w * 0.9, winHeight * 0.8, thick * 0.4);
-          const glassPane = new THREE.Mesh(paneGeo, glassMat);
-          glassPane.position.set(0, bottomHeight + winHeight / 2, 0);
-          openGroup.add(glassPane);
+          if (isSliding) {
+            // Draw overlapping sliding window panes
+            const paneW = open.w * 0.52;
+            const paneH = winHeight * 0.85;
+
+            // Left pane
+            const lpGroup = new THREE.Group();
+            lpGroup.position.set(-open.w / 4, centerY, -0.01);
+
+            const lpFrame = new THREE.Mesh(new THREE.BoxGeometry(paneW, paneH, thick * 0.3), frameMat);
+            lpGroup.add(lpFrame);
+            const lpGlass = new THREE.Mesh(new THREE.BoxGeometry(paneW - 0.04, paneH - 0.04, thick * 0.15), glassMat);
+            lpGroup.add(lpGlass);
+            openGroup.add(lpGroup);
+
+            // Right pane
+            const rpGroup = new THREE.Group();
+            rpGroup.position.set(open.w / 4, centerY, 0.01);
+
+            const rpFrame = new THREE.Mesh(new THREE.BoxGeometry(paneW, paneH, thick * 0.3), frameMat);
+            rpGroup.add(rpFrame);
+            const rpGlass = new THREE.Mesh(new THREE.BoxGeometry(paneW - 0.04, paneH - 0.04, thick * 0.15), glassMat);
+            rpGroup.add(rpGlass);
+            openGroup.add(rpGroup);
+
+          } else if (isBlinds) {
+            // Draw window with horizontal blinds slats inside
+            const paneGeo = new THREE.BoxGeometry(open.w * 0.9, winHeight * 0.8, thick * 0.4);
+            const glassPane = new THREE.Mesh(paneGeo, glassMat);
+            glassPane.position.set(0, centerY, 0);
+            openGroup.add(glassPane);
+
+            // Slats count
+            const slatCount = 6;
+            const slatH = (winHeight * 0.8) / slatCount;
+            const blindsMat = new THREE.MeshStandardMaterial({ color: "#f8fafc", roughness: 0.9 });
+            for (let i = 0; i < slatCount; i++) {
+              const slatGeo = new THREE.BoxGeometry(open.w * 0.88, 0.015, thick * 0.3);
+              const slatMesh = new THREE.Mesh(slatGeo, blindsMat);
+              slatMesh.rotation.x = Math.PI / 6;
+              slatMesh.position.set(0, bottomHeight + winHeight * 0.1 + i * slatH, 0);
+              openGroup.add(slatMesh);
+            }
+
+          } else {
+            // Hinged window / Default: Glass pane inside frame
+            const paneGeo = new THREE.BoxGeometry(open.w * 0.9, winHeight * 0.8, thick * 0.4);
+            const glassPane = new THREE.Mesh(paneGeo, glassMat);
+            glassPane.position.set(0, centerY, 0);
+            openGroup.add(glassPane);
+
+            // Middle vertical splitter
+            const splitGeo = new THREE.BoxGeometry(0.04, winHeight * 0.8, thick * 0.5);
+            const splitter = new THREE.Mesh(splitGeo, frameMat);
+            splitter.position.set(0, centerY, 0);
+            openGroup.add(splitter);
+          }
         }
 
         scene.add(openGroup);
@@ -1439,11 +1813,91 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     }
   };
 
+  const handleZoomIn = () => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    const direction = new THREE.Vector3();
+    camera.getWorldDirection(direction);
+    camera.position.addScaledVector(direction, 1.5);
+    controls.update();
+  };
+
+  const handleZoomOut = () => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    const direction = new THREE.Vector3();
+    camera.getWorldDirection(direction);
+    camera.position.addScaledVector(direction, -1.5);
+    controls.update();
+  };
+
+  const handleResetCamera = () => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    if (activeCamera) {
+      // Re-sync to activeCamera
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      floorPlan.rooms.forEach((r) => {
+        minX = Math.min(minX, r.x);
+        maxX = Math.max(maxX, r.x + r.w);
+        minY = Math.min(minY, r.y);
+        maxY = Math.max(maxY, r.y + r.h);
+      });
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      const rx = activeCamera.x - centerX;
+      const rz = activeCamera.y - centerY;
+      const height = 1.25;
+      camera.position.set(rx, height, rz);
+      const rad = ((activeCamera.rotation - 90) * Math.PI) / 180;
+      const targetX = rx + Math.cos(rad) * 10;
+      const targetZ = rz + Math.sin(rad) * 10;
+      camera.lookAt(new THREE.Vector3(targetX, height, targetZ));
+      controls.target.set(targetX, height, targetZ);
+    } else {
+      camera.position.set(9, 9, 9);
+      controls.target.set(0, 0, 0);
+    }
+    controls.update();
+  };
+
   return (
     <div
-      ref={mountRef}
       className="w-full h-full relative overflow-hidden"
       style={{ minHeight: "350px", height: "100%" }}
-    />
+    >
+      <div ref={mountRef} className="w-full h-full" />
+
+      {/* Camera Control Buttons */}
+      <div className="absolute right-3 bottom-3 flex flex-col gap-1.5 z-10">
+        <button
+          onClick={handleZoomIn}
+          title="Zoom In"
+          className="w-9 h-9 rounded-full bg-white/90 backdrop-blur-sm border border-slate-200 shadow-lg flex items-center justify-center text-slate-700 hover:bg-white hover:shadow-xl transition-all active:scale-95 text-lg font-bold leading-none"
+        >
+          +
+        </button>
+        <button
+          onClick={handleZoomOut}
+          title="Zoom Out"
+          className="w-9 h-9 rounded-full bg-white/90 backdrop-blur-sm border border-slate-200 shadow-lg flex items-center justify-center text-slate-700 hover:bg-white hover:shadow-xl transition-all active:scale-95 text-lg font-bold leading-none"
+        >
+          −
+        </button>
+        <button
+          onClick={handleResetCamera}
+          title="Reset Camera"
+          className="w-9 h-9 rounded-full bg-white/90 backdrop-blur-sm border border-slate-200 shadow-lg flex items-center justify-center text-slate-600 hover:bg-white hover:shadow-xl transition-all active:scale-95"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </button>
+      </div>
+    </div>
   );
 };
