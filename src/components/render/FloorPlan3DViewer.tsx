@@ -448,13 +448,13 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
   }, [activeCamera, floorPlan]);
 
   // ── Draw helper to compile floorplan meshes ──────────────────────────────
-  const draw3DScene = (
+  function draw3DScene(
     scene: THREE.Scene,
     plan: FloorPlanData,
     thicknessMM: number,
     finishes: FloorPlan3DViewerProps["finishes"],
     cubeTexture: THREE.Texture | null
-  ) => {
+  ) {
     if (!plan || !plan.rooms || plan.rooms.length === 0) return;
 
     const loader = new GLTFLoader();
@@ -500,11 +500,11 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
 
     // Materials setup from Finishes
     let flooringMat: THREE.Material;
-    const flooringVal = finishes?.flooring?.value || "natural_oak";
-    if (flooringVal.includes("oak") || flooringVal.includes("wood")) {
+    const flooringVal = (finishes?.flooring?.value || "natural_oak").toLowerCase();
+    if (flooringVal.includes("oak") || flooringVal.includes("wood") || flooringVal.includes("birch") || flooringVal.includes("ash") || flooringVal.includes("beech")) {
       const woodTex = createWoodTexture();
       flooringMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.6 });
-    } else if (flooringVal.includes("tile") || flooringVal.includes("marble")) {
+    } else if (flooringVal.includes("tile") || flooringVal.includes("marble") || flooringVal.includes("terrazzo") || flooringVal.includes("herringbone")) {
       const tileTex = createTileTexture();
       flooringMat = new THREE.MeshStandardMaterial({ map: tileTex, roughness: 0.3 });
     } else if (flooringVal.includes("carpet")) {
@@ -551,11 +551,12 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
 
       // Room-specific materials setup
       let roomFlooringMat: THREE.Material;
-      const roomFlooringVal = (typeof room.finishes?.flooring === "object" ? (room.finishes?.flooring as any)?.value : room.finishes?.flooring) || finishes?.flooring?.value || "natural_oak";
-      if (roomFlooringVal.includes("oak") || roomFlooringVal.includes("wood")) {
+      const rawRoomFlooringVal = (typeof room.finishes?.flooring === "object" ? (room.finishes?.flooring as { value?: string })?.value : room.finishes?.flooring) || finishes?.flooring?.value || "natural_oak";
+      const roomFlooringVal = rawRoomFlooringVal.toLowerCase();
+      if (roomFlooringVal.includes("oak") || roomFlooringVal.includes("wood") || roomFlooringVal.includes("birch") || roomFlooringVal.includes("ash") || roomFlooringVal.includes("beech")) {
         const woodTex = createWoodTexture();
         roomFlooringMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.6 });
-      } else if (roomFlooringVal.includes("tile") || roomFlooringVal.includes("marble")) {
+      } else if (roomFlooringVal.includes("tile") || roomFlooringVal.includes("marble") || roomFlooringVal.includes("terrazzo") || roomFlooringVal.includes("herringbone")) {
         const tileTex = createTileTexture();
         roomFlooringMat = new THREE.MeshStandardMaterial({ map: tileTex, roughness: 0.3 });
       } else if (roomFlooringVal.includes("carpet")) {
@@ -565,7 +566,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
         roomFlooringMat = new THREE.MeshStandardMaterial({ color: roomFlooringVal.startsWith("#") ? roomFlooringVal : "#e2e8f0", roughness: 0.7 });
       }
 
-      const roomWallColor = (typeof room.finishes?.walls === "object" ? (room.finishes?.walls as any)?.value : room.finishes?.walls) || finishes?.walls?.value || "#ffffff";
+      const roomWallColor = (typeof room.finishes?.walls === "object" ? (room.finishes?.walls as { value?: string })?.value : room.finishes?.walls) || finishes?.walls?.value || "#ffffff";
       const roomWallMat = new THREE.MeshStandardMaterial({
         color: roomWallColor,
         roughness: 0.8,
@@ -777,7 +778,12 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
 
                 // Hide fabric pedestal / cloth drape first so it's not visible
                 model.traverse((child) => {
-                  if (child.name.toLowerCase().includes("fabric") || (child as any).material?.name === "Fabric") {
+                  const mesh = child as THREE.Mesh;
+                  const mat = mesh.material;
+                  const hasFabricMat = mat 
+                    ? (Array.isArray(mat) ? mat.some(m => m.name === "Fabric") : mat.name === "Fabric")
+                    : false;
+                  if (child.name.toLowerCase().includes("fabric") || hasFabricMat) {
                     child.visible = false;
                   }
                 });
@@ -810,9 +816,10 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
                           });
                           child.material = shinyBlackMat;
                         } else if ("envMap" in mat) {
-                          (mat as any).envMap = cubeTexture;
-                          (mat as any).envMapIntensity = isCar ? 1.5 : 1.0;
-                          (mat as any).needsUpdate = true;
+                          const m = mat as THREE.MeshStandardMaterial;
+                          m.envMap = cubeTexture;
+                          m.envMapIntensity = isCar ? 1.5 : 1.0;
+                          m.needsUpdate = true;
                         }
                       });
                     }
@@ -1811,7 +1818,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
         scene.add(openGroup);
       });
     }
-  };
+  }
 
   const handleZoomIn = () => {
     const camera = cameraRef.current;

@@ -40,11 +40,6 @@ const LOCKED_TABS = new Set(["Cải thiện Render", "Tiện ích khác"]);
 
 const MODELS = [
   {
-    id: "nano-banana-pro",
-    name: "Nano Banana Pro (PiAPI)",
-    isPro: true,
-  },
-  {
     id: "nano-banana-2",
     name: "Nano Banana 2 (Gemini 3.1 Flash Image)",
     isPro: true,
@@ -52,11 +47,6 @@ const MODELS = [
 ];
 
 const GEMINI_MODELS = [
-  {
-    id: "nano-banana-pro",
-    name: "Nano Banana Pro (PiAPI)",
-    isPro: true,
-  },
   {
     id: "nano-banana-2",
     name: "Nano Banana 2 (Gemini 3.1 Flash Image)",
@@ -228,7 +218,7 @@ const EditTabContent: React.FC = () => {
   // States for "Sửa Tổng Thể"
   const [prompt, setPrompt] = useState("");
   const [selectedModel, setSelectedModel] = useState(
-    "nano-banana-pro",
+    "nano-banana-2",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
   const [numImages, setNumImages] = useState(1);
@@ -4793,7 +4783,7 @@ const UtilitiesTabContent: React.FC = () => {
   const [inputImage, setInputImage] = useState<string | null>(null);
   const [inputImage2, setInputImage2] = useState<string | null>(null);
   const [utilityModel, setUtilityModel] = useState(
-    "nano-banana-pro",
+    "nano-banana-2",
   );
   const [utilityResolution, setUtilityResolution] = useState("1K");
   const [isProcessing, setIsProcessing] = useState(false);

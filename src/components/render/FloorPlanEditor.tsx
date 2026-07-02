@@ -598,36 +598,198 @@ const ROOM_STYLES = [
 ];
 
 const ROOM_FLOORINGS = [
-  { name: "Terrazzo", value: "Terrazzo", color: "#cbd5e1" }, // Speckled light blue-grey
-  { name: "Concrete - Light", value: "Concrete - Light", color: "#e2e8f0" },
-  { name: "Concrete - Dark", value: "Concrete - Dark", color: "#94a3b8" },
-  { name: "White Wood Panelling", value: "White Wood Panelling", color: "#f8fafc" },
-  { name: "Oak Wood", value: "Oak Wood", color: "#e3c29b" }
+  {
+    name: "White Wood Panelling",
+    value: "White Wood Panelling",
+    color: "#f8fafc",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23f8fafc'/><line x1='0' y1='25' x2='100' y2='25' stroke='%23e2e8f0' stroke-width='1'/><line x1='0' y1='50' x2='100' y2='50' stroke='%23e2e8f0' stroke-width='1'/><line x1='0' y1='75' x2='100' y2='75' stroke='%23e2e8f0' stroke-width='1'/></svg>"
+  },
+  { 
+    name: "Terrazzo", 
+    value: "Terrazzo", 
+    color: "#cbd5e1",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23e2e8f0'/><circle cx='15' cy='20' r='4' fill='%2394a3b8'/><circle cx='45' cy='15' r='3' fill='%23cbd5e1'/><circle cx='75' cy='30' r='5' fill='%2364748b'/><circle cx='30' cy='50' r='4' fill='%23b45309'/><circle cx='60' cy='70' r='5' fill='%23475569'/><circle cx='85' cy='80' r='3' fill='%23d97706'/><circle cx='20' cy='85' r='4' fill='%2364748b'/><circle cx='50' cy='35' r='3' fill='%23475569'/></svg>"
+  },
+  { 
+    name: "Natural Oak", 
+    value: "natural_oak", 
+    color: "#e3c29b",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23e3c29b'/><line x1='0' y1='25' x2='100' y2='25' stroke='%23b45309' stroke-width='1'/><line x1='0' y1='50' x2='100' y2='50' stroke='%23b45309' stroke-width='1'/><line x1='0' y1='75' x2='100' y2='75' stroke='%23b45309' stroke-width='1'/><path d='M 10 10 Q 50 15 90 10' fill='none' stroke='%23ca8a04' stroke-width='0.5'/><path d='M 20 35 Q 60 40 80 35' fill='none' stroke='%23ca8a04' stroke-width='0.5'/><path d='M 5 60 Q 45 65 95 60' fill='none' stroke='%23ca8a04' stroke-width='0.5'/></svg>"
+  },
+  { 
+    name: "Terracotta Fan Tile", 
+    value: "Terracotta Fan Tile", 
+    color: "#c2410c",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23c2410c'/><path d='M0,50 C25,50 25,0 50,0 C75,0 75,50 100,50 M0,100 C25,100 25,50 50,50 C75,50 75,100 100,100 M-50,50 C-25,50 -25,0 0,0 M50,100 C75,100 75,50 100,50' fill='none' stroke='%23fca5a5' stroke-width='1.5'/></svg>"
+  },
+  { 
+    name: "Concrete - Light", 
+    value: "Concrete - Light", 
+    color: "#e2e8f0",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23e2e8f0'/><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' result='noise'/><feColorMatrix type='matrix' values='1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.07 0'/></filter><rect width='100' height='100' filter='url(%23n)'/></svg>"
+  },
+  {
+    name: "Beige Square Tile",
+    value: "Beige Square Tile",
+    color: "#f5f5dc",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23f5f5dc'/><line x1='0' y1='25' x2='100' y2='25' stroke='%23d3d3d3' stroke-width='1'/><line x1='0' y1='50' x2='100' y2='50' stroke='%23d3d3d3' stroke-width='1'/><line x1='0' y1='75' x2='100' y2='75' stroke='%23d3d3d3' stroke-width='1'/><line x1='25' y1='0' x2='25' y2='100' stroke='%23d3d3d3' stroke-width='1'/><line x1='50' y1='0' x2='50' y2='100' stroke='%23d3d3d3' stroke-width='1'/><line x1='75' y1='0' x2='75' y2='100' stroke='%23d3d3d3' stroke-width='1'/></svg>"
+  },
+  {
+    name: "Birch",
+    value: "Birch",
+    color: "#fef08a",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23fef08a'/><line x1='0' y1='33' x2='100' y2='33' stroke='%23eab308' stroke-width='0.8'/><line x1='0' y1='66' x2='100' y2='66' stroke='%23eab308' stroke-width='0.8'/></svg>"
+  },
+  {
+    name: "Seafoam Square Tile",
+    value: "Seafoam Square Tile",
+    color: "#a7f3d0",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23a7f3d0'/><line x1='0' y1='25' x2='100' y2='25' stroke='%2334d399' stroke-width='1'/><line x1='0' y1='50' x2='100' y2='50' stroke='%2334d399' stroke-width='1'/><line x1='0' y1='75' x2='100' y2='75' stroke='%2334d399' stroke-width='1'/><line x1='25' y1='0' x2='25' y2='100' stroke='%2334d399' stroke-width='1'/><line x1='50' y1='0' x2='50' y2='100' stroke='%2334d399' stroke-width='1'/><line x1='75' y1='0' x2='75' y2='100' stroke='%2334d399' stroke-width='1'/></svg>"
+  },
+  {
+    name: "Mint Hexagonal Tile",
+    value: "Mint Hexagonal Tile",
+    color: "#f0fdf4",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='104' viewBox='0 0 60 104'><rect width='60' height='104' fill='%23f0fdf4'/><path d='M30,0 L60,17.3 L60,52 L30,69.3 L0,52 L0,17.3 Z M30,104 L60,86.7 L60,52 L30,69.3 L0,52 L0,86.7 Z' fill='none' stroke='%2386efac' stroke-width='1.5'/></svg>"
+  },
+  {
+    name: "Blue Square Tile",
+    value: "Blue Square Tile",
+    color: "#bfdbfe",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23bfdbfe'/><line x1='0' y1='25' x2='100' y2='25' stroke='%2360a5fa' stroke-width='1'/><line x1='0' y1='50' x2='100' y2='50' stroke='%2360a5fa' stroke-width='1'/><line x1='0' y1='75' x2='100' y2='75' stroke='%2360a5fa' stroke-width='1'/><line x1='25' y1='0' x2='25' y2='100' stroke='%2360a5fa' stroke-width='1'/><line x1='50' y1='0' x2='50' y2='100' stroke='%2360a5fa' stroke-width='1'/><line x1='75' y1='0' x2='75' y2='100' stroke='%2360a5fa' stroke-width='1'/></svg>"
+  },
+  {
+    name: "White Square Tile",
+    value: "White Square Tile",
+    color: "#ffffff",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23ffffff'/><line x1='0' y1='25' x2='100' y2='25' stroke='%23e2e8f0' stroke-width='1'/><line x1='0' y1='50' x2='100' y2='50' stroke='%23e2e8f0' stroke-width='1'/><line x1='0' y1='75' x2='100' y2='75' stroke='%23e2e8f0' stroke-width='1'/><line x1='25' y1='0' x2='25' y2='100' stroke='%23e2e8f0' stroke-width='1'/><line x1='50' y1='0' x2='50' y2='100' stroke='%23e2e8f0' stroke-width='1'/><line x1='75' y1='0' x2='75' y2='100' stroke='%23e2e8f0' stroke-width='1'/></svg>"
+  },
+  {
+    name: "Red Oak",
+    value: "Red Oak",
+    color: "#b45309",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23b45309'/><line x1='0' y1='25' x2='100' y2='25' stroke='%2378350f' stroke-width='1'/><line x1='0' y1='50' x2='100' y2='50' stroke='%2378350f' stroke-width='1'/><line x1='0' y1='75' x2='100' y2='75' stroke='%2378350f' stroke-width='1'/></svg>"
+  },
+  {
+    name: "White Herringbone",
+    value: "White Herringbone",
+    color: "#fafafa",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23fafafa'/><path d='M0,0 L50,50 L100,0 M0,50 L50,100 L100,50 M50,0 L50,100 M0,25 L25,50 M100,25 L75,50 M0,75 L25,100 M100,75 L75,100' fill='none' stroke='%23e2e8f0' stroke-width='1.5'/></svg>"
+  },
+  {
+    name: "White Oak",
+    value: "White Oak",
+    color: "#fafaf9",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23fafaf9'/><line x1='0' y1='25' x2='100' y2='25' stroke='%23d6d3d1' stroke-width='1'/><line x1='0' y1='50' x2='100' y2='50' stroke='%23d6d3d1' stroke-width='1'/><line x1='0' y1='75' x2='100' y2='75' stroke='%23d6d3d1' stroke-width='1'/></svg>"
+  },
+  {
+    name: "Ash",
+    value: "Ash",
+    color: "#f5f5f4",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23f5f5f4'/><line x1='0' y1='25' x2='100' y2='25' stroke='%23e7e5e4' stroke-width='1'/><line x1='0' y1='50' x2='100' y2='50' stroke='%23e7e5e4' stroke-width='1'/><line x1='0' y1='75' x2='100' y2='75' stroke='%23e7e5e4' stroke-width='1'/></svg>"
+  },
+  {
+    name: "Concrete - Dark",
+    value: "Concrete - Dark",
+    color: "#475569",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23475569'/><filter id='n2'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' result='noise'/><feColorMatrix type='matrix' values='1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.15 0'/></filter><rect width='100' height='100' filter='url(%23n2)'/></svg>"
+  },
+  {
+    name: "Beech",
+    value: "Beech",
+    color: "#fef08a",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23fef08a'/><line x1='0' y1='25' x2='100' y2='25' stroke='%23eab308' stroke-width='1'/><line x1='0' y1='50' x2='100' y2='50' stroke='%23eab308' stroke-width='1'/><line x1='0' y1='75' x2='100' y2='75' stroke='%23eab308' stroke-width='1'/></svg>"
+  }
 ];
 
 const ROOM_WALLS = [
-  { name: "Terracotta Fan Tile", value: "Terracotta Fan Tile", color: "#c2410c" },
-  { name: "White Plaster", value: "White Plaster", color: "#ffffff" },
-  { name: "Exposed Brick", value: "Exposed Brick", color: "#b91c1c" },
-  { name: "Concrete Render", value: "Concrete Render", color: "#cbd5e1" }
+  { 
+    name: "White Plaster", 
+    value: "White Plaster", 
+    color: "#ffffff",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23ffffff'/></svg>"
+  },
+  { 
+    name: "Terracotta Fan Tile", 
+    value: "Terracotta Fan Tile", 
+    color: "#c2410c",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23c2410c'/><path d='M0,50 C25,50 25,0 50,0 C75,0 75,50 100,50 M0,100 C25,100 25,50 50,50 C75,50 75,100 100,100 M-50,50 C-25,50 -25,0 0,0 M50,100 C75,100 75,50 100,50' fill='none' stroke='%23fca5a5' stroke-width='1.5'/></svg>"
+  },
+  { 
+    name: "Exposed Brick", 
+    value: "Exposed Brick", 
+    color: "#b91c1c",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='50' viewBox='0 0 80 50'><rect width='80' height='50' fill='%23b91c1c'/><line x1='0' y1='25' x2='80' y2='25' stroke='%23fca5a5' stroke-width='1.5'/><line x1='0' y1='50' x2='80' y2='50' stroke='%23fca5a5' stroke-width='1.5'/><line x1='40' y1='0' x2='40' y2='25' stroke='%23fca5a5' stroke-width='1.5'/><line x1='0' y1='25' x2='0' y2='50' stroke='%23fca5a5' stroke-width='1.5'/><line x1='80' y1='25' x2='80' y2='50' stroke='%23fca5a5' stroke-width='1.5'/></svg>"
+  },
+  { 
+    name: "Concrete Render", 
+    value: "Concrete Render", 
+    color: "#cbd5e1",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23cbd5e1'/><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' result='noise'/><feColorMatrix type='matrix' values='1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.07 0'/></filter><rect width='100' height='100' filter='url(%23n)'/></svg>"
+  }
 ];
 
 const ROOM_CEILINGS = [
-  { name: "Soft White", value: "#ffffff", color: "#ffffff" },
-  { name: "Raw Concrete", value: "#cbd5e1", color: "#cbd5e1" },
-  { name: "Wood Beams", value: "#ca8a04", color: "#ca8a04" }
+  { 
+    name: "Soft White", 
+    value: "#ffffff", 
+    color: "#ffffff",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23ffffff'/></svg>"
+  },
+  { 
+    name: "Raw Concrete", 
+    value: "#cbd5e1", 
+    color: "#cbd5e1",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23cbd5e1'/></svg>"
+  },
+  { 
+    name: "Wood Beams", 
+    value: "#ca8a04", 
+    color: "#ca8a04",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23fef3c7'/><line x1='20' y1='0' x2='20' y2='100' stroke='%23ca8a04' stroke-width='6'/><line x1='50' y1='0' x2='50' y2='100' stroke='%23ca8a04' stroke-width='6'/><line x1='80' y1='0' x2='80' y2='100' stroke='%23ca8a04' stroke-width='6'/></svg>"
+  }
 ];
 
 const ROOM_DOORS = [
-  { name: "Soft White", value: "#ffffff", color: "#ffffff" },
-  { name: "Natural Oak", value: "#ca8a04", color: "#ca8a04" },
-  { name: "Matte Black", value: "#1e293b", color: "#1e293b" }
+  { 
+    name: "Natural Oak", 
+    value: "natural_oak", 
+    color: "#ca8a04",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23e3c29b'/></svg>"
+  },
+  { 
+    name: "Soft White", 
+    value: "#ffffff", 
+    color: "#ffffff",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23ffffff'/></svg>"
+  },
+  { 
+    name: "Matte Black", 
+    value: "#1e293b", 
+    color: "#1e293b",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231e293b'/></svg>"
+  }
 ];
 
 const ROOM_WINDOWS = [
-  { name: "Soft White", value: "#ffffff", color: "#ffffff" },
-  { name: "Matte Black", value: "#1e293b", color: "#1e293b" },
-  { name: "Anodized Silver", value: "#cbd5e1", color: "#cbd5e1" }
+  { 
+    name: "Soft White", 
+    value: "#ffffff", 
+    color: "#ffffff",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23ffffff'/></svg>"
+  },
+  { 
+    name: "Matte Black", 
+    value: "#1e293b", 
+    color: "#1e293b",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231e293b'/></svg>"
+  },
+  { 
+    name: "Anodized Silver", 
+    value: "#cbd5e1", 
+    color: "#cbd5e1",
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23cbd5e1'/></svg>"
+  }
 ];
 
 function getRoomFlooringColor(room: Room): string {
@@ -931,29 +1093,57 @@ export const FloorPlanEditor: React.FC = () => {
     return () => obs.disconnect();
   }, []);
 
-  // ── Initialize cameras for rooms ─────────────────────────────────────────
+  // ── Sync cameras for rooms ─────────────────────────────────────────
   useEffect(() => {
     if (floorPlan) {
       const updatedCameras = { ...cameras };
       let changed = false;
+
+      // 1. Dọn dẹp camera của phòng đã bị xóa
+      const currentRoomIds = new Set(floorPlan.rooms.map(r => r.id));
+      Object.keys(updatedCameras).forEach((roomId) => {
+        if (!currentRoomIds.has(roomId)) {
+          delete updatedCameras[roomId];
+          changed = true;
+        }
+      });
+
+      // 2. Khởi tạo hoặc cập nhật vị trí camera theo tâm phòng mới khi ở tab layout
       floorPlan.rooms.forEach((room) => {
-        if (!updatedCameras[room.id]) {
+        const centerX = room.x + room.w / 2;
+        const centerY = room.y + room.h / 2;
+        const cam = updatedCameras[room.id];
+
+        if (!cam) {
           updatedCameras[room.id] = {
-            x: room.x + room.w / 2,
-            y: room.y + room.h / 2,
+            x: centerX,
+            y: centerY,
             rotation: 90,
             fov: 85,
             aspectRatio: "Landscape (4:3)",
             prompt: "",
           };
           changed = true;
+        } else if (activeTab === "layout") {
+          // Khi ở tab layout, camera luôn bám theo tâm phòng
+          if (Math.abs(cam.x - centerX) > 0.01 || Math.abs(cam.y - centerY) > 0.01) {
+            updatedCameras[room.id] = {
+              ...cam,
+              x: centerX,
+              y: centerY
+            };
+            changed = true;
+          }
         }
       });
+
       if (changed) {
-        setCameras(updatedCameras);
+        setTimeout(() => {
+          setCameras(updatedCameras);
+        }, 0);
       }
     }
-  }, [floorPlan]);
+  }, [floorPlan, activeTab]);
 
   // ── Auto-scroll chat ────────────────────────────────────────────────────
   useEffect(() => {
@@ -1860,10 +2050,12 @@ Requirements:
         return plan;
       });
       if (modified) {
-        setFloorPlans(nextPlans);
-        if (floorPlan) {
-          setFloorPlan(nextPlans[activeFloorIndex]);
-        }
+        setTimeout(() => {
+          setFloorPlans(nextPlans);
+          if (floorPlan) {
+            setFloorPlan(nextPlans[activeFloorIndex]);
+          }
+        }, 0);
       }
     }
   }, [floorPlans, floorPlan]);
@@ -6248,15 +6440,26 @@ Requirements:
                       onClick={() => {
                         setActiveFinishTarget({ type: "style", roomId: selectedRoom.id });
                       }}
-                      className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                      className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
                     >
                       <div className="flex items-center gap-2.5">
-                        <div className="w-5 h-5 rounded-full border border-slate-200" style={{ backgroundColor: ROOM_STYLES.find(s => s.value === (selectedRoom.style || "Traditional"))?.color || "#e2e8f0" }} />
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><circle cx="12" cy="12" r="10"/><path d="M12 2a7 7 0 1 0 10 10"/></svg>
                         <span>Style</span>
                       </div>
-                      <span className="text-slate-500 font-medium">
-                        {selectedRoom.style || "Traditional"}
-                      </span>
+                      {selectedRoom.style ? (
+                        <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1.5 pr-3 py-1 text-slate-700">
+                          <div className="w-4 h-4 rounded-full border border-slate-100 overflow-hidden bg-slate-200">
+                            {ROOM_STYLES.find(s => s.value === selectedRoom.style)?.image ? (
+                              <img src={ROOM_STYLES.find(s => s.value === selectedRoom.style)?.image} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full" style={{ backgroundColor: ROOM_STYLES.find(s => s.value === selectedRoom.style)?.color || "#e2e8f0" }} />
+                            )}
+                          </div>
+                          <span className="text-[11px] font-bold">{selectedRoom.style}</span>
+                        </div>
+                      ) : (
+                        <span className="w-6 h-6 rounded-full bg-slate-50 border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-xs">+</span>
+                      )}
                     </button>
 
                     {/* Flooring */}
@@ -6264,15 +6467,29 @@ Requirements:
                       onClick={() => {
                         setActiveFinishTarget({ type: "flooring", roomId: selectedRoom.id });
                       }}
-                      className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                      className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
                     >
                       <div className="flex items-center gap-2.5">
-                        <div className="w-5 h-5 rounded-full border border-slate-200" style={{ backgroundColor: ROOM_FLOORINGS.find(f => f.value === selectedRoom.finishes?.flooring)?.color || "#e2e8f0" }} />
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
                         <span>Flooring</span>
                       </div>
-                      <span className="text-slate-500 font-medium">
-                        {selectedRoom.finishes?.flooring || "Terrazzo"}
-                      </span>
+                      {selectedRoom.finishes?.flooring ? (() => {
+                        const matched = ROOM_FLOORINGS.find(f => f.value === selectedRoom.finishes?.flooring);
+                        return (
+                          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1.5 pr-3 py-1 text-slate-700">
+                            <div className="w-4 h-4 rounded-full border border-slate-100 overflow-hidden bg-slate-100">
+                              {matched?.image ? (
+                                <img src={matched.image} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full" style={{ backgroundColor: matched?.color || "#e2e8f0" }} />
+                              )}
+                            </div>
+                            <span className="text-[11px] font-bold">{matched?.name || selectedRoom.finishes.flooring}</span>
+                          </div>
+                        );
+                      })() : (
+                        <span className="w-6 h-6 rounded-full bg-slate-50 border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-xs">+</span>
+                      )}
                     </button>
 
                     {/* Walls */}
@@ -6280,15 +6497,29 @@ Requirements:
                       onClick={() => {
                         setActiveFinishTarget({ type: "walls", roomId: selectedRoom.id });
                       }}
-                      className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                      className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
                     >
                       <div className="flex items-center gap-2.5">
-                        <div className="w-5 h-5 rounded-full border border-slate-200" style={{ backgroundColor: ROOM_WALLS.find(w => w.value === selectedRoom.finishes?.walls)?.color || "#ffffff" }} />
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M12 6v6h6"/></svg>
                         <span>Walls</span>
                       </div>
-                      <span className="text-slate-500 font-medium">
-                        {selectedRoom.finishes?.walls || "White Plaster"}
-                      </span>
+                      {selectedRoom.finishes?.walls ? (() => {
+                        const matched = ROOM_WALLS.find(w => w.value === selectedRoom.finishes?.walls);
+                        return (
+                          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1.5 pr-3 py-1 text-slate-700">
+                            <div className="w-4 h-4 rounded-full border border-slate-100 overflow-hidden bg-slate-100">
+                              {matched?.image ? (
+                                <img src={matched.image} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full" style={{ backgroundColor: matched?.color || "#ffffff" }} />
+                              )}
+                            </div>
+                            <span className="text-[11px] font-bold">{matched?.name || selectedRoom.finishes.walls}</span>
+                          </div>
+                        );
+                      })() : (
+                        <span className="w-6 h-6 rounded-full bg-slate-50 border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-xs">+</span>
+                      )}
                     </button>
 
                     {/* Ceiling */}
@@ -6296,15 +6527,29 @@ Requirements:
                       onClick={() => {
                         setActiveFinishTarget({ type: "ceiling", roomId: selectedRoom.id });
                       }}
-                      className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                      className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
                     >
                       <div className="flex items-center gap-2.5">
-                        <div className="w-5 h-5 rounded-full border border-slate-200" style={{ backgroundColor: ROOM_CEILINGS.find(c => c.value === selectedRoom.finishes?.ceiling)?.color || "#ffffff" }} />
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><path d="M3 21h18M3 21v-4h4v-4h4v-4h4v-4h4V3"/></svg>
                         <span>Ceiling</span>
                       </div>
-                      <span className="text-slate-500 font-medium">
-                        {selectedRoom.finishes?.ceiling ? ROOM_CEILINGS.find(c => c.value === selectedRoom.finishes?.ceiling)?.name : "Soft White"}
-                      </span>
+                      {selectedRoom.finishes?.ceiling ? (() => {
+                        const matched = ROOM_CEILINGS.find(c => c.value === selectedRoom.finishes?.ceiling);
+                        return (
+                          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1.5 pr-3 py-1 text-slate-700">
+                            <div className="w-4 h-4 rounded-full border border-slate-100 overflow-hidden bg-slate-100">
+                              {matched?.image ? (
+                                <img src={matched.image} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full" style={{ backgroundColor: matched?.color || "#ffffff" }} />
+                              )}
+                            </div>
+                            <span className="text-[11px] font-bold">{matched?.name || selectedRoom.finishes.ceiling}</span>
+                          </div>
+                        );
+                      })() : (
+                        <span className="w-6 h-6 rounded-full bg-slate-50 border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-xs">+</span>
+                      )}
                     </button>
 
                     {/* Doors */}
@@ -6312,15 +6557,29 @@ Requirements:
                       onClick={() => {
                         setActiveFinishTarget({ type: "doors", roomId: selectedRoom.id });
                       }}
-                      className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                      className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
                     >
                       <div className="flex items-center gap-2.5">
-                        <div className="w-5 h-5 rounded-full border border-slate-200" style={{ backgroundColor: ROOM_DOORS.find(d => d.value === selectedRoom.finishes?.doors)?.color || "#ffffff" }} />
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5 M13.5 12H3"/></svg>
                         <span>Doors</span>
                       </div>
-                      <span className="text-slate-500 font-medium">
-                        {selectedRoom.finishes?.doors ? ROOM_DOORS.find(d => d.value === selectedRoom.finishes?.doors)?.name : "Soft White"}
-                      </span>
+                      {selectedRoom.finishes?.doors ? (() => {
+                        const matched = ROOM_DOORS.find(d => d.value === selectedRoom.finishes?.doors);
+                        return (
+                          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1.5 pr-3 py-1 text-slate-700">
+                            <div className="w-4 h-4 rounded-full border border-slate-100 overflow-hidden bg-slate-100">
+                              {matched?.image ? (
+                                <img src={matched.image} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full" style={{ backgroundColor: matched?.color || "#ffffff" }} />
+                              )}
+                            </div>
+                            <span className="text-[11px] font-bold">{matched?.name || selectedRoom.finishes.doors}</span>
+                          </div>
+                        );
+                      })() : (
+                        <span className="w-6 h-6 rounded-full bg-slate-50 border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-xs">+</span>
+                      )}
                     </button>
 
                     {/* Windows */}
@@ -6328,15 +6587,29 @@ Requirements:
                       onClick={() => {
                         setActiveFinishTarget({ type: "windows", roomId: selectedRoom.id });
                       }}
-                      className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                      className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
                     >
                       <div className="flex items-center gap-2.5">
-                        <div className="w-5 h-5 rounded-full border border-slate-200" style={{ backgroundColor: ROOM_WINDOWS.find(w => w.value === selectedRoom.finishes?.windows)?.color || "#ffffff" }} />
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
                         <span>Windows</span>
                       </div>
-                      <span className="text-slate-500 font-medium">
-                        {selectedRoom.finishes?.windows ? ROOM_WINDOWS.find(w => w.value === selectedRoom.finishes?.windows)?.name : "Soft White"}
-                      </span>
+                      {selectedRoom.finishes?.windows ? (() => {
+                        const matched = ROOM_WINDOWS.find(w => w.value === selectedRoom.finishes?.windows);
+                        return (
+                          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1.5 pr-3 py-1 text-slate-700">
+                            <div className="w-4 h-4 rounded-full border border-slate-100 overflow-hidden bg-slate-100">
+                              {matched?.image ? (
+                                <img src={matched.image} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full" style={{ backgroundColor: matched?.color || "#ffffff" }} />
+                              )}
+                            </div>
+                            <span className="text-[11px] font-bold">{matched?.name || selectedRoom.finishes.windows}</span>
+                          </div>
+                        );
+                      })() : (
+                        <span className="w-6 h-6 rounded-full bg-slate-50 border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-xs">+</span>
+                      )}
                     </button>
                   </div>
 
@@ -6434,107 +6707,165 @@ Requirements:
                       {/* Style */}
                       <button
                         onClick={() => setShowStyleModal(true)}
-                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
                       >
                         <div className="flex items-center gap-2.5">
-                          <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
-                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                          </div>
+                          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><circle cx="12" cy="12" r="10"/><path d="M12 2a7 7 0 1 0 10 10"/></svg>
                           <span>Style</span>
                         </div>
-                        <span className="text-[#00b5cd] font-medium">
-                          {selectedStyle || "None"}
-                        </span>
+                        {selectedStyle ? (
+                          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1.5 pr-3 py-1 text-slate-700">
+                            <div className="w-4 h-4 rounded-full border border-slate-100 overflow-hidden bg-slate-200">
+                              {ROOM_STYLES.find(s => s.value === selectedStyle)?.image ? (
+                                <img src={ROOM_STYLES.find(s => s.value === selectedStyle)?.image} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full" style={{ backgroundColor: ROOM_STYLES.find(s => s.value === selectedStyle)?.color || "#e2e8f0" }} />
+                              )}
+                            </div>
+                            <span className="text-[11px] font-bold">{selectedStyle}</span>
+                          </div>
+                        ) : (
+                          <span className="w-6 h-6 rounded-full bg-slate-50 border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-xs">+</span>
+                        )}
                       </button>
 
                       {/* Flooring */}
                       <button
                         onClick={() => setShowFinishModal("flooring")}
-                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
                       >
                         <div className="flex items-center gap-2.5">
-                          <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
-                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M4 19h16v2H4v-2zm0-4h16v2H4v-2zm0-4h16v2H4v-2zm0-4h16v2H4V7zm0-4h16v2H4V3z"/></svg>
-                          </div>
+                          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
                           <span>Flooring</span>
                         </div>
-                        <span className="text-[#00b5cd] font-medium">{finishes.flooring.name}</span>
+                        {finishes.flooring.value ? (() => {
+                          const matched = ROOM_FLOORINGS.find(f => f.value === finishes.flooring.value);
+                          return (
+                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1.5 pr-3 py-1 text-slate-700">
+                              <div className="w-4 h-4 rounded-full border border-slate-100 overflow-hidden bg-slate-100">
+                                {matched?.image ? (
+                                  <img src={matched.image} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full" style={{ backgroundColor: matched?.color || finishes.flooring.value }} />
+                                )}
+                              </div>
+                              <span className="text-[11px] font-bold">{matched?.name || finishes.flooring.name}</span>
+                            </div>
+                          );
+                        })() : (
+                          <span className="w-6 h-6 rounded-full bg-slate-50 border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-xs">+</span>
+                        )}
                       </button>
 
                       {/* Walls */}
                       <button
                         onClick={() => setShowFinishModal("walls")}
-                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
                       >
                         <div className="flex items-center gap-2.5">
-                          <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
-                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M12 2a10 10 0 0 0-10 10c0 5.52 4.48 10 10 10s10-4.48 10-10a10 10 0 0 0-10-10zm1 14.5h-2v-2h2v2zm0-4h-2v-6h2v6z"/></svg>
-                          </div>
+                          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M12 6v6h6"/></svg>
                           <span>Walls</span>
                         </div>
-                        {finishes.walls.type === "color" ? (
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-3.5 h-3.5 rounded border border-slate-200" style={{ backgroundColor: finishes.walls.value }} />
-                            <span className="text-slate-500 text-[11px] font-mono">{finishes.walls.name || finishes.walls.value}</span>
-                          </div>
-                        ) : (
-                          <span className="text-[#00b5cd] font-medium">{finishes.walls.name}</span>
+                        {finishes.walls.value ? (() => {
+                          const matched = ROOM_WALLS.find(w => w.value === finishes.walls.value);
+                          return (
+                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1.5 pr-3 py-1 text-slate-700">
+                              <div className="w-4 h-4 rounded-full border border-slate-100 overflow-hidden bg-slate-100">
+                                {matched?.image ? (
+                                  <img src={matched.image} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full" style={{ backgroundColor: matched?.color || finishes.walls.value }} />
+                                )}
+                              </div>
+                              <span className="text-[11px] font-bold">{matched?.name || finishes.walls.name}</span>
+                            </div>
+                          );
+                        })() : (
+                          <span className="w-6 h-6 rounded-full bg-slate-50 border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-xs">+</span>
                         )}
                       </button>
 
                       {/* Ceiling */}
                       <button
                         onClick={() => setShowFinishModal("ceiling")}
-                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
                       >
                         <div className="flex items-center gap-2.5">
-                          <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
-                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M12 2L2 22h20L12 2zm0 4l7.5 13h-15L12 6z"/></svg>
-                          </div>
+                          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><path d="M3 21h18M3 21v-4h4v-4h4v-4h4v-4h4V3"/></svg>
                           <span>Ceiling</span>
                         </div>
-                        {finishes.ceiling.type === "color" ? (
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-3.5 h-3.5 rounded border border-slate-200" style={{ backgroundColor: finishes.ceiling.value }} />
-                            <span className="text-slate-500 text-[11px] font-mono">{finishes.ceiling.name || finishes.ceiling.value}</span>
-                          </div>
-                        ) : (
-                          <span className="text-[#00b5cd] font-medium">{finishes.ceiling.name}</span>
+                        {finishes.ceiling.value ? (() => {
+                          const matched = ROOM_CEILINGS.find(c => c.value === finishes.ceiling.value);
+                          return (
+                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1.5 pr-3 py-1 text-slate-700">
+                              <div className="w-4 h-4 rounded-full border border-slate-100 overflow-hidden bg-slate-100">
+                                {matched?.image ? (
+                                  <img src={matched.image} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full" style={{ backgroundColor: matched?.color || finishes.ceiling.value }} />
+                                )}
+                              </div>
+                              <span className="text-[11px] font-bold">{matched?.name || finishes.ceiling.name}</span>
+                            </div>
+                          );
+                        })() : (
+                          <span className="w-6 h-6 rounded-full bg-slate-50 border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-xs">+</span>
                         )}
                       </button>
 
                       {/* Doors */}
                       <button
                         onClick={() => setShowFinishModal("doors")}
-                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
                       >
                         <div className="flex items-center gap-2.5">
-                          <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
-                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M13.5 12H3"/></svg>
-                          </div>
+                          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5 M13.5 12H3"/></svg>
                           <span>Doors</span>
                         </div>
-                        <span className="text-[#00b5cd] font-medium">{finishes.doors.name}</span>
+                        {finishes.doors.value ? (() => {
+                          const matched = ROOM_DOORS.find(d => d.value === finishes.doors.value);
+                          return (
+                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1.5 pr-3 py-1 text-slate-700">
+                              <div className="w-4 h-4 rounded-full border border-slate-100 overflow-hidden bg-slate-100">
+                                {matched?.image ? (
+                                  <img src={matched.image} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full" style={{ backgroundColor: matched?.color || finishes.doors.value }} />
+                                )}
+                              </div>
+                              <span className="text-[11px] font-bold">{matched?.name || finishes.doors.name}</span>
+                            </div>
+                          );
+                        })() : (
+                          <span className="w-6 h-6 rounded-full bg-slate-50 border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-xs">+</span>
+                        )}
                       </button>
 
                       {/* Windows */}
                       <button
                         onClick={() => setShowFinishModal("windows")}
-                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
+                        className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs transition-colors"
                       >
                         <div className="flex items-center gap-2.5">
-                          <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
-                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-9 14H4v-5h7v5zm0-7H4V6h7v5zm9 7h-7v-5h7v5zm0-7h-7V6h7v5z"/></svg>
-                          </div>
+                          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
                           <span>Windows</span>
                         </div>
-                        {finishes.windows.type === "color" ? (
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-3.5 h-3.5 rounded border border-slate-200" style={{ backgroundColor: finishes.windows.value }} />
-                            <span className="text-slate-500 text-[11px] font-mono">{finishes.windows.name || finishes.windows.value}</span>
-                          </div>
-                        ) : (
-                          <span className="text-[#00b5cd] font-medium">{finishes.windows.name}</span>
+                        {finishes.windows.value ? (() => {
+                          const matched = ROOM_WINDOWS.find(w => w.value === finishes.windows.value);
+                          return (
+                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1.5 pr-3 py-1 text-slate-700">
+                              <div className="w-4 h-4 rounded-full border border-slate-100 overflow-hidden bg-slate-100">
+                                {matched?.image ? (
+                                  <img src={matched.image} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full" style={{ backgroundColor: matched?.color || finishes.windows.value }} />
+                                )}
+                              </div>
+                              <span className="text-[11px] font-bold">{matched?.name || finishes.windows.name}</span>
+                            </div>
+                          );
+                        })() : (
+                          <span className="w-6 h-6 rounded-full bg-slate-50 border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-xs">+</span>
                         )}
                       </button>
                     </div>
