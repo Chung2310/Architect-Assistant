@@ -214,7 +214,6 @@ async function callOpenRouterImage(
 }
 
 export const geminiService = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async generate(params: Record<string, any>, _userApiKey?: string): Promise<any> {
     const modelName = (params.model as string) || "";
     const systemInstruction = params.systemInstruction || params.config?.systemInstruction || params.generationConfig?.systemInstruction;
@@ -503,7 +502,6 @@ export const geminiService = {
           contents: finalContents,
           config: imageConfigForSdk,
         });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         const errStr = err?.message || JSON.stringify(err) || "";
         const statusCode = err?.status || err?.statusCode || 0;
@@ -552,7 +550,7 @@ export const geminiService = {
             // Tải hình ảnh trả về sang base64
             const imgFetchRes = await fetch(imageUrl);
             if (!imgFetchRes.ok) {
-              throw new Error(`Failed to download generated Flux image: ${imgFetchRes.status}`);
+              throw new Error(`Failed to download generated Flux image: ${imgFetchRes.status}`, { cause: err });
             }
             const arrayBuffer = await imgFetchRes.arrayBuffer();
             const base64 = Buffer.from(arrayBuffer).toString("base64");
@@ -658,7 +656,7 @@ export const geminiService = {
         logger.warn(`[Gemini Service] Fallback: calling Qwen model (${fallbackQwenModel}) via OpenRouter API due to primary error: ${primaryError.message || primaryError}`);
         try {
           if (messages.length === 0) {
-            throw new Error("Không có nội dung để gửi đến OpenRouter.");
+            throw new Error("Không có nội dung để gửi đến OpenRouter.", { cause: primaryError });
           }
           const { textResult } = await callOpenRouterChat(messages, fallbackQwenModel, openRouterKey, isJsonRequested);
           logger.info(`[Gemini Service] Fallback OpenRouter Qwen response received (${textResult.length} chars): ${textResult.slice(0, 100)}...`);

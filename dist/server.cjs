@@ -1664,7 +1664,7 @@ async function callOpenRouterImage(prompt, model, openRouterKey, aspectRatio, in
   const body = {
     model,
     messages: [{ role: "user", content }],
-    modalities: ["image", "text"],
+    modalities: ["image"],
     image_config: {
       aspect_ratio: aspect
     }
@@ -1709,7 +1709,6 @@ async function callOpenRouterImage(prompt, model, openRouterKey, aspectRatio, in
   return imgUrl;
 }
 var geminiService = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async generate(params, _userApiKey) {
     const modelName = params.model || "";
     const systemInstruction = params.systemInstruction || params.config?.systemInstruction || params.generationConfig?.systemInstruction;
@@ -1955,7 +1954,7 @@ ${promptText}`.trim();
             );
             const imgFetchRes = await fetch(imageUrl);
             if (!imgFetchRes.ok) {
-              throw new Error(`Failed to download generated Flux image: ${imgFetchRes.status}`);
+              throw new Error(`Failed to download generated Flux image: ${imgFetchRes.status}`, { cause: err });
             }
             const arrayBuffer = await imgFetchRes.arrayBuffer();
             const base64 = Buffer.from(arrayBuffer).toString("base64");
@@ -2037,7 +2036,7 @@ ${promptText}`.trim();
         logger.warn(`[Gemini Service] Fallback: calling Qwen model (${fallbackQwenModel}) via OpenRouter API due to primary error: ${primaryError.message || primaryError}`);
         try {
           if (messages.length === 0) {
-            throw new Error("Kh\xF4ng c\xF3 n\u1ED9i dung \u0111\u1EC3 g\u1EEDi \u0111\u1EBFn OpenRouter.");
+            throw new Error("Kh\xF4ng c\xF3 n\u1ED9i dung \u0111\u1EC3 g\u1EEDi \u0111\u1EBFn OpenRouter.", { cause: primaryError });
           }
           const { textResult } = await callOpenRouterChat(messages, fallbackQwenModel, openRouterKey, isJsonRequested);
           logger.info(`[Gemini Service] Fallback OpenRouter Qwen response received (${textResult.length} chars): ${textResult.slice(0, 100)}...`);
