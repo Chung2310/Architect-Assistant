@@ -228,7 +228,7 @@ const EditTabContent: React.FC = () => {
   // States for "Sửa Tổng Thể"
   const [prompt, setPrompt] = useState("");
   const [selectedModel, setSelectedModel] = useState(
-    "nano-banana-2",
+    "nano-banana-pro",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
   const [numImages, setNumImages] = useState(1);
