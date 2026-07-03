@@ -55,11 +55,168 @@ function summarizeContents(contents: unknown): string {
     .join(" | ");
 }
 
+function mapToOpenRouterModel(modelName: string): string {
+  if (!modelName) {
+    return "google/gemini-2.5-flash";
+  }
+  
+  if (modelName.includes("/")) {
+    return modelName;
+  }
+
+  const name = modelName.toLowerCase().trim();
+
+  const mapping: Record<string, string> = {
+    "gemini-2.5-flash": "google/gemini-2.5-flash",
+    "gemini-2.0-flash": "google/gemini-2.0-flash",
+    "gemini-1.5-flash": "google/gemini-flash-1.5",
+    "gemini-1.5-pro": "google/gemini-pro-1.5",
+    "gemini-1.5-flash-8b": "google/gemini-flash-1.5-8b",
+    "gemini-2.0-flash-exp": "google/gemini-2.0-flash-exp",
+    "gemini-2.0-flash-thinking-exp": "google/gemini-2.0-flash-thinking-exp",
+    "gemini-2.0-pro-exp": "google/gemini-2.0-pro-exp",
+    "gemini-2.5-pro": "google/gemini-2.5-pro",
+  };
+
+  if (mapping[name]) {
+    return mapping[name];
+  }
+
+  return `google/${modelName}`;
+}
+
+async function callOpenRouterChat(
+  messages: Array<{ role: string; content: string }>,
+  model: string,
+  openRouterKey: string,
+  isJsonRequested: boolean
+): Promise<{ textResult: string; data: any }> {
+  const requestBody: Record<string, any> = {
+    model,
+    messages
+  };
+
+  if (isJsonRequested) {
+    requestBody.response_format = { type: "json_object" };
+  }
+
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${openRouterKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://staging-architect.igentechsolutions.com",
+      "X-Title": "iGen Architect Assistant",
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`OpenRouter API error ${response.status}: ${errText}`);
+  }
+
+  const data = (await response.json()) as any;
+  const textResult = data.choices?.[0]?.message?.content || "";
+  return { textResult, data };
+}
+
+async function callOpenRouterImage(
+  prompt: string,
+  model: string,
+  openRouterKey: string,
+  aspectRatio: string,
+  inputImageBase64?: string,
+  inputImageMimeType?: string
+): Promise<string> {
+  const headers: Record<string, string> = {
+    "Authorization": `Bearer ${openRouterKey}`,
+    "Content-Type": "application/json",
+    "HTTP-Referer": "https://staging-architect.igentechsolutions.com",
+    "X-Title": "iGen Architect Assistant",
+  };
+
+  const content: any[] = [{ type: "text", text: prompt }];
+
+  if (inputImageBase64) {
+    const mime = inputImageMimeType || "image/jpeg";
+    const dataUri = `data:${mime};base64,${inputImageBase64}`;
+    content.push({
+      type: "image_url",
+      image_url: {
+        url: dataUri
+      }
+    });
+  }
+
+  const allowedAspects = [
+    "1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"
+  ];
+  let aspect = aspectRatio || "1:1";
+  if (aspect === "Tự động" || aspect === "auto" || !allowedAspects.includes(aspect)) {
+    aspect = "1:1";
+  }
+
+  const body: Record<string, any> = {
+    model,
+    messages: [{ role: "user", content }],
+    modalities: ["image"],
+    image_config: {
+      aspect_ratio: aspect
+    }
+  };
+
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenRouter image generation failed: ${response.status} - ${errorText}`);
+  }
+
+  const json = (await response.json()) as any;
+  
+  // Lấy URL ảnh từ response của OpenRouter
+  const images = json.choices?.[0]?.message?.images;
+  let imgUrl = "";
+  if (Array.isArray(images) && images.length > 0) {
+    imgUrl = images[0]?.image_url?.url;
+  }
+
+  if (!imgUrl) {
+    const messageContent = json.choices?.[0]?.message?.content;
+    if (typeof messageContent === "string") {
+      if (messageContent.startsWith("http") || messageContent.startsWith("data:")) {
+        imgUrl = messageContent;
+      }
+    } else if (Array.isArray(messageContent)) {
+      for (const part of messageContent) {
+        if (part?.type === "image_url" && part?.image_url?.url) {
+          imgUrl = part.image_url.url;
+          break;
+        }
+        if (part?.type === "image" && part?.source?.data) {
+          imgUrl = `data:${part.source.media_type || "image/png"};base64,${part.source.data}`;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!imgUrl) {
+    throw new Error("Không nhận được dữ liệu hình ảnh từ OpenRouter Image API");
+  }
+
+  return imgUrl;
+}
+
 export const geminiService = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async generate(params: Record<string, any>, _userApiKey?: string): Promise<any> {
     const modelName = (params.model as string) || "";
-    const systemInstruction = params.systemInstruction;
+    const systemInstruction = params.systemInstruction || params.config?.systemInstruction || params.generationConfig?.systemInstruction;
     const isImageModel =
       modelName.includes("image-preview") ||
       modelName.includes("imagen") ||
@@ -68,10 +225,9 @@ export const geminiService = {
     const isVideoModel = modelName.includes("veo");
 
     const isGeminiNativeImageModel =
-      modelName === "nano-banana-2" ||
-      modelName === "igen-image-flash" ||
       modelName === "gemini-3-pro-image" ||
       modelName === "gemini-3.1-flash-image" ||
+      modelName === "gemini-3.1-flash-image-preview" ||
       modelName.startsWith("imagen-");
 
     // Luôn luôn sử dụng API Key từ biến môi trường .env (không dùng key cá nhân/key từ DB của user nữa)
@@ -89,9 +245,11 @@ export const geminiService = {
     }
     logger.info(`[Gemini Service] Using API key prefix: ${apiKey ? apiKey.substring(0, 10) + '...' : 'None'} (Length: ${apiKey.length}, Valid: ${apiKey ? isValidGeminiKey(apiKey) : false})`);
     const piapiKey = process.env.PIAPI_API_KEY;
+    const openRouterKey = process.env.OPENROUTER_API_KEY || "";
     logger.info(
       `[Gemini Service] Request summary - model: ${modelName}, hasSystemInstruction: ${!!systemInstruction}, contents: ${summarizeContents(params.contents)}`
     );
+
 
     // ─── XỬ LÝ MODEL HÌNH ẢNH / VIDEO QUA PIAPI ─────────────────────────────────
     if (piapiKey && (isImageModel || isVideoModel) && !isGeminiNativeImageModel) {
@@ -286,9 +444,8 @@ export const geminiService = {
       // - nano-banana-2 / igen-image-flash / gemini-3.1-flash-image → Flash (nhanh hơn, rẻ hơn)
       // - Các model khác → Pro (chất lượng cao hơn)
       const isFlashVariant =
-        modelName === "nano-banana-2" ||
-        modelName === "igen-image-flash" ||
-        modelName === "gemini-3.1-flash-image";
+        modelName === "gemini-3.1-flash-image" ||
+        modelName === "gemini-3.1-flash-image-preview";
 
       const IMAGE_GEN_MODEL = isFlashVariant ? "gemini-3.1-flash-image" : "gemini-3-pro-image";
       logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL} (variant: ${isFlashVariant ? 'flash' : 'pro'}), aspect: ${aspectRatio}`);
@@ -345,12 +502,95 @@ export const geminiService = {
           contents: finalContents,
           config: imageConfigForSdk,
         });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         const errStr = err?.message || JSON.stringify(err) || "";
         const statusCode = err?.status || err?.statusCode || 0;
         logger.error(`[Gemini Service] Native Image generation failed (Status: ${statusCode}, Msg: ${errStr}).`);
-        throw err;
+
+        const fallbackOpenRouterKey = process.env.OPENROUTER_API_KEY || "";
+        if (fallbackOpenRouterKey) {
+          const fallbackFluxModel = process.env.OPENROUTER_FALLBACK_IMAGE_MODEL || "black-forest-labs/flux.2-klein-4b";
+          logger.info(`[Gemini Service] Fallback: calling Flux model (${fallbackFluxModel}) via OpenRouter due to Gemini Native Image failure...`);
+          try {
+            let promptText = "";
+            let inputImageBase64 = "";
+            let inputImageMimeType = "";
+
+            const contentsArray = Array.isArray(params.contents)
+              ? params.contents
+              : (params.contents && params.contents.parts ? [{ parts: params.contents.parts }] : []);
+
+            for (const content of contentsArray) {
+              if (content.parts && Array.isArray(content.parts)) {
+                for (const part of content.parts) {
+                  if (part.text) {
+                    promptText += part.text + "\n";
+                  } else if (part.inlineData && part.inlineData.data) {
+                    inputImageBase64 = part.inlineData.data;
+                    inputImageMimeType = part.inlineData.mimeType || "image/jpeg";
+                  }
+                }
+              }
+            }
+            promptText = promptText.trim();
+            if (systemInstruction) {
+              promptText = `${String(systemInstruction).trim()}\n\n${promptText}`.trim();
+            }
+
+            // Gọi sinh ảnh Flux qua OpenRouter
+            const imageUrl = await callOpenRouterImage(
+              promptText,
+              fallbackFluxModel,
+              fallbackOpenRouterKey,
+              aspectRatio,
+              inputImageBase64,
+              inputImageMimeType
+            );
+
+            // Tải hình ảnh trả về sang base64
+            const imgFetchRes = await fetch(imageUrl);
+            if (!imgFetchRes.ok) {
+              throw new Error(`Failed to download generated Flux image: ${imgFetchRes.status}`, { cause: err });
+            }
+            const arrayBuffer = await imgFetchRes.arrayBuffer();
+            const base64 = Buffer.from(arrayBuffer).toString("base64");
+            const mimeType = imgFetchRes.headers.get("content-type") || "image/png";
+
+            logger.info(`[Gemini Service] Fallback Flux image generated and downloaded successfully.`);
+
+            return {
+              generatedImages: [
+                {
+                  image: {
+                    imageBytes: base64,
+                    mimeType: mimeType,
+                  }
+                }
+              ],
+              candidates: [
+                {
+                  content: {
+                    parts: [
+                      {
+                        inlineData: {
+                          data: base64,
+                          mimeType: mimeType
+                        }
+                      }
+                    ],
+                    role: "model"
+                  },
+                  finishReason: "STOP"
+                }
+              ]
+            };
+          } catch (fallbackErr: any) {
+            logger.error(`[Gemini Service] Fallback to Flux via OpenRouter also failed: ${fallbackErr.message || fallbackErr}`);
+            throw err;
+          }
+        } else {
+          throw err;
+        }
       }
 
       const parts = response.candidates?.[0]?.content?.parts || [];
@@ -372,38 +612,135 @@ export const geminiService = {
       };
     }
 
-    // ─── XỬ LÝ MODEL TEXT QUA GOOGLE GENAI SDK ──────────────────────────────────
-    if (!apiKey) {
-      throw new Error("API Key không hợp lệ hoặc không có quyền truy cập.");
-    }
+    // ── 3. TEXT MODEL ──
+    if (!isImageModel && !isVideoModel) {
+      // Chuyển đổi định dạng contents của Gemini sang messages của OpenAI/OpenRouter
+      type OAIMessage = { role: string; content: string };
+      const messages: OAIMessage[] = [];
 
-    const ai = new GoogleGenAI({ apiKey: apiKey as string });
-    logger.info(`[Gemini Service] Provider: Gemini text. Model: ${modelName}`);
-
-    // Clone and sanitize config to avoid validation errors on models without thinking support
-    const rawConfig = params.config || params.generationConfig || {};
-    const sanitizedConfig = { ...rawConfig };
-
-    const isThinkingModel = modelName.toLowerCase().includes("thinking");
-    if (!isThinkingModel) {
-      if ("thinkingConfig" in sanitizedConfig) {
-        delete sanitizedConfig.thinkingConfig;
+      // System instruction
+      if (systemInstruction) {
+        messages.push({ role: "system", content: String(systemInstruction) });
       }
-      if ("thinking_config" in sanitizedConfig) {
-        delete sanitizedConfig.thinking_config;
+
+      // Contents array
+      const contentsArr = Array.isArray(params.contents)
+        ? params.contents
+        : params.contents ? [params.contents] : [];
+
+      for (const item of contentsArr) {
+        if (!item || typeof item !== "object") continue;
+        const role = (item as { role?: string }).role === "model" ? "assistant" : "user";
+        const parts = (item as { parts?: Array<{ text?: string }> }).parts || [];
+        const text = parts.map(p => p.text || "").join("");
+        if (text.trim()) messages.push({ role, content: text.trim() });
+      }
+
+      if (messages.length === 0) {
+        const rawText = extractTextFromContents(params.contents);
+        if (rawText) messages.push({ role: "user", content: rawText });
+      }
+
+      const isJsonRequested =
+        params.config?.responseMimeType === "application/json" ||
+        params.generationConfig?.responseMimeType === "application/json" ||
+        params.config?.response_mime_type === "application/json";
+
+      const fallbackQwenModel = process.env.OPENROUTER_FALLBACK_MODEL || "qwen/qwen3.6-flash";
+
+      // Trình thực thi OpenRouter Qwen fallback
+      const performQwenFallback = async (primaryError: any): Promise<any> => {
+        if (!openRouterKey) {
+          throw primaryError;
+        }
+        logger.warn(`[Gemini Service] Fallback: calling Qwen model (${fallbackQwenModel}) via OpenRouter API due to primary error: ${primaryError.message || primaryError}`);
+        try {
+          if (messages.length === 0) {
+            throw new Error("Không có nội dung để gửi đến OpenRouter.", { cause: primaryError });
+          }
+          const { textResult } = await callOpenRouterChat(messages, fallbackQwenModel, openRouterKey, isJsonRequested);
+          logger.info(`[Gemini Service] Fallback OpenRouter Qwen response received (${textResult.length} chars): ${textResult.slice(0, 100)}...`);
+          return {
+            candidates: [{
+              content: {
+                parts: [{ text: textResult }],
+                role: "model",
+              },
+              finishReason: "STOP",
+            }],
+            text: textResult,
+          };
+        } catch (fallbackErr: any) {
+          logger.error(`[Gemini Service] Fallback to Qwen via OpenRouter also failed: ${fallbackErr.message || fallbackErr}`);
+          throw primaryError; // Throw the original error so we know the root cause
+        }
+      };
+
+      // Quyết định provider chính:
+      // Nếu có GEMINI_API_KEY hợp lệ -> dùng Gemini Native SDK làm phương án chính.
+      // Nếu không có GEMINI_API_KEY hợp lệ nhưng có OpenRouter Key -> dùng OpenRouter Gemini làm phương án chính.
+      const hasValidNativeKey = apiKey && isValidGeminiKey(apiKey);
+
+      if (hasValidNativeKey) {
+        const ai = new GoogleGenAI({ apiKey: apiKey as string });
+        logger.info(`[Gemini Service] Provider: Gemini Native. Model: ${modelName}`);
+
+        // Clone and sanitize config to avoid validation errors on models without thinking support
+        const rawConfig = params.config || params.generationConfig || {};
+        const sanitizedConfig = { ...rawConfig };
+
+        const isThinkingModel = modelName.toLowerCase().includes("thinking");
+        if (!isThinkingModel) {
+          if ("thinkingConfig" in sanitizedConfig) {
+            delete sanitizedConfig.thinkingConfig;
+          }
+          if ("thinking_config" in sanitizedConfig) {
+            delete sanitizedConfig.thinking_config;
+          }
+        }
+
+        if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
+          sanitizedConfig.systemInstruction = systemInstruction;
+        }
+
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: params.contents,
+            config: sanitizedConfig,
+          });
+          return response;
+        } catch (err: any) {
+          logger.error(`[Gemini Service] Gemini Native API call failed: ${err.message || err}`);
+          return await performQwenFallback(err);
+        }
+      } else if (openRouterKey) {
+        const openRouterModel = mapToOpenRouterModel(modelName);
+        logger.info(`[Gemini Service] Provider: OpenRouter (Primary). Model: ${openRouterModel}`);
+
+        try {
+          if (messages.length === 0) {
+            throw new Error("Không có nội dung để gửi đến OpenRouter.");
+          }
+          const { textResult } = await callOpenRouterChat(messages, openRouterModel, openRouterKey, isJsonRequested);
+          logger.info(`[Gemini Service] OpenRouter Gemini response received (${textResult.length} chars): ${textResult.slice(0, 100)}...`);
+          return {
+            candidates: [{
+              content: {
+                parts: [{ text: textResult }],
+                role: "model",
+              },
+              finishReason: "STOP",
+            }],
+            text: textResult,
+          };
+        } catch (err: any) {
+          logger.error(`[Gemini Service] Gemini via OpenRouter failed: ${err.message || err}`);
+          return await performQwenFallback(err);
+        }
+      } else {
+        throw new Error("Không tìm thấy API Key hợp lệ cho Gemini Native hoặc OpenRouter.");
       }
     }
-
-    if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
-      sanitizedConfig.systemInstruction = systemInstruction;
-    }
-
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: params.contents,
-      config: sanitizedConfig,
-    });
-
-    return response;
   }
 };

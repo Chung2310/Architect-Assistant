@@ -8,6 +8,20 @@ const PIAPI_BASE_URL = process.env.PIAPI_BASE_URL || "https://api.piapi.ai/api/v
 
 console.log(`[PiAPI Service] Loaded API Key status: ${PIAPI_API_KEY ? `Present (Length: ${PIAPI_API_KEY.length}, Prefix: ${PIAPI_API_KEY.substring(0, 8)}...)` : 'Missing'}`);
 
+async function fetchImageAsBase64(url: string): Promise<string> {
+  // If it's already a base64 Data URI, return as-is
+  if (url.startsWith("data:")) return url;
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Hình ảnh đầu vào không tồn tại hoặc đã bị xóa khỏi Cloudinary (mã lỗi: ${response.status}). Vui lòng tải lại ảnh mới lên.`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  const mimeType = response.headers.get("content-type") || "image/png";
+  return `data:${mimeType};base64,${buffer.toString("base64")}`;
+}
+
 export const piapiService = {
   /**
    * Tạo task sinh ảnh bất đồng bộ trên PiAPI
@@ -16,7 +30,138 @@ export const piapiService = {
     prompt: string,
     model: string,
     options?: { aspectRatio?: string; image?: string; numImages?: number; jobType?: string }
-  ): Promise<{ taskId: string; isMock: boolean; mockUrl?: string }> {
+  ): Promise<{ taskId: string; isMock: boolean; mockUrl?: string; outputUrl?: string }> {
+    const openRouterKey = process.env.OPENROUTER_API_KEY || "";
+    const openRouterModels = [
+      "google/gemini-3.1-flash-image",
+      "google/gemini-3-pro-image",
+      "google/gemini-3.1-flash-image-preview",
+      "google/gemini-3-pro-image-preview"
+    ];
+    const isMatchedModel = model === "nano-banana-2" || 
+                           model === "igen-image-flash" || 
+                           model === "nano-banana-pro" || 
+                           openRouterModels.includes(model);
+
+    if (openRouterKey && isMatchedModel) {
+      console.log(`[OpenRouter Image Task] Creating image synchronously for model: ${model}`);
+      let openRouterModel: string;
+      
+      if (openRouterModels.includes(model)) {
+        openRouterModel = model;
+      } else if (model === "nano-banana-pro") {
+        openRouterModel = "google/gemini-3-pro-image";
+      } else {
+        openRouterModel = "google/gemini-3.1-flash-image";
+      }
+
+      // Normalize aspect ratio to OpenRouter-allowed values for Gemini image models
+      const allowedAspects = [
+        "1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"
+      ];
+      let aspect = options?.aspectRatio || "1:1";
+      if (aspect === "Tự động" || aspect === "auto" || !allowedAspects.includes(aspect)) {
+        aspect = "1:1";
+      }
+
+      const headers: Record<string, string> = {
+        "Authorization": `Bearer ${openRouterKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://staging-architect.igentechsolutions.com",
+        "X-Title": "iGen Architect Assistant",
+      };
+
+      const content: any[] = [{ type: "text", text: prompt }];
+
+      if (options?.image) {
+        try {
+          console.log(`[OpenRouter Image Task] Converting image to base64 for OpenRouter: ${options.image}`);
+          const base64Image = await fetchImageAsBase64(options.image);
+          content.push({
+            type: "image_url",
+            image_url: {
+              url: base64Image
+            }
+          });
+        } catch (fetchErr) {
+          console.error(`[OpenRouter Image Task] Failed to convert image to base64:`, fetchErr);
+          throw fetchErr;
+        }
+      }
+
+      const body: Record<string, any> = {
+        model: openRouterModel,
+        messages: [{ role: "user", content }],
+        modalities: ["image", "text"],
+        image_config: {
+          aspect_ratio: aspect
+        }
+      };
+
+      try {
+        console.log(`[OpenRouter Image Task] Requesting OpenRouter chat completions endpoint. Model: ${openRouterModel}`);
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`OpenRouter image generation failed: ${response.status} - ${errorText}`);
+        }
+
+        const json = (await response.json()) as any;
+        console.log("[OpenRouter Image Debug] Raw response:", JSON.stringify(json).slice(0, 1000));
+
+        // Lấy URL ảnh từ response của OpenRouter
+        const images = json.choices?.[0]?.message?.images;
+        let imgUrl = "";
+        if (Array.isArray(images) && images.length > 0) {
+          imgUrl = images[0]?.image_url?.url;
+        }
+
+        // Fallback: check content array (format cũ / model khác)
+        if (!imgUrl) {
+          const messageContent = json.choices?.[0]?.message?.content;
+          if (typeof messageContent === "string") {
+            if (messageContent.startsWith("http") || messageContent.startsWith("data:")) {
+              imgUrl = messageContent;
+            }
+          } else if (Array.isArray(messageContent)) {
+            for (const part of messageContent) {
+              if (part?.type === "image_url" && part?.image_url?.url) {
+                imgUrl = part.image_url.url;
+                break;
+              }
+              if (part?.type === "image" && part?.source?.data) {
+                imgUrl = `data:${part.source.media_type || "image/png"};base64,${part.source.data}`;
+                break;
+              }
+            }
+          }
+        }
+
+        let finalImageUrl = "";
+        if (imgUrl) {
+          finalImageUrl = await cloudinaryService.uploadMedia(imgUrl, "renders");
+        } else {
+          throw new Error("Không nhận được dữ liệu hình ảnh từ OpenRouter Image API");
+        }
+
+        console.log(`[OpenRouter Image Task] Successfully generated and uploaded image: ${finalImageUrl}`);
+        const seed = Math.floor(Math.random() * 1000000);
+        return {
+          taskId: `openrouter-${seed}`,
+          isMock: false,
+          outputUrl: finalImageUrl
+        };
+      } catch (error) {
+        console.error("[OpenRouter Image Task] Error generating image:", error);
+        throw error;
+      }
+    }
+
     if (!PIAPI_API_KEY) {
       console.log(`[PiAPI Image Task] Running in MOCK mode (No PIAPI_API_KEY). Model: ${model}`);
       const seed = Math.floor(Math.random() * 1000000);
@@ -33,8 +178,19 @@ export const piapiService = {
 
     const isFloorplanJob = String(options?.jobType || "").toLowerCase().includes("floorplan") || String(options?.jobType || "").toLowerCase().includes("masterplan");
 
-    if (model === "nano-banana-2" || model === "igen-image-flash" || model === "nano-banana-pro") {
-      const taskType = model === "igen-image-flash" ? "nano-banana-2" : model;
+    const isNanoModel = model === "nano-banana-2" || 
+                        model === "igen-image-flash" || 
+                        model === "nano-banana-pro" ||
+                        model.startsWith("google/gemini-3.1-flash-image") ||
+                        model.startsWith("google/gemini-3-pro-image");
+
+    if (isNanoModel) {
+      let taskType = model === "igen-image-flash" ? "nano-banana-2" : model;
+      if (taskType.includes("pro-image")) {
+        taskType = "nano-banana-pro";
+      } else if (taskType.includes("flash-image")) {
+        taskType = "nano-banana-2";
+      }
       const hasImage = !!options?.image;
       reqBody = {
         model: "gemini",
@@ -193,6 +349,9 @@ export const piapiService = {
     const taskResult = await this.createImageTask(prompt, model, options);
     if (taskResult.isMock) {
       return { url: taskResult.mockUrl || "", isMock: true };
+    }
+    if (taskResult.outputUrl) {
+      return { url: taskResult.outputUrl, isMock: false };
     }
 
     const taskId = taskResult.taskId;

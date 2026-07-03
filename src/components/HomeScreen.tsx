@@ -65,6 +65,14 @@ export const HomeScreen: React.FC<{ onNavigate: (screen: string) => void }> = ({
       icon: 'architecture',
       slug: '/tools/rendering'
     },
+     {
+      id: 'floorplan',
+      title: 'VẼ BẢN VẼ AI',
+      description: 'Tự động phân chia mặt bằng phòng bằng AI, vẽ sơ đồ thiết kế 2D/3D chi tiết và xuất bản vẽ chất lượng cao.',
+      image: 'https://images.unsplash.com/photo-1511818966892-d7d671e672a2?auto=format&fit=crop&w=800&q=80',
+      icon: 'layers',
+      slug: '/tools/floor-plan'
+    },
     {
       id: 'video',
       title: 'VIDEO',
@@ -119,7 +127,7 @@ export const HomeScreen: React.FC<{ onNavigate: (screen: string) => void }> = ({
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
         {tools.map((tool, index) => {
-          const isLocked = tool.id !== 'rendering';
+          const isLocked = tool.id !== 'rendering' && tool.id !== 'floorplan';
           return (
             <ToolCard
               key={tool.id}

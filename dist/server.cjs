@@ -1107,11 +1107,145 @@ import_dotenv.default.config();
 var PIAPI_API_KEY = process.env.PIAPI_API_KEY || "";
 var PIAPI_BASE_URL = process.env.PIAPI_BASE_URL || "https://api.piapi.ai/api/v1";
 console.log(`[PiAPI Service] Loaded API Key status: ${PIAPI_API_KEY ? `Present (Length: ${PIAPI_API_KEY.length}, Prefix: ${PIAPI_API_KEY.substring(0, 8)}...)` : "Missing"}`);
+async function fetchImageAsBase64(url) {
+  if (url.startsWith("data:")) return url;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`H\xECnh \u1EA3nh \u0111\u1EA7u v\xE0o kh\xF4ng t\u1ED3n t\u1EA1i ho\u1EB7c \u0111\xE3 b\u1ECB x\xF3a kh\u1ECFi Cloudinary (m\xE3 l\u1ED7i: ${response.status}). Vui l\xF2ng t\u1EA3i l\u1EA1i \u1EA3nh m\u1EDBi l\xEAn.`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  const mimeType = response.headers.get("content-type") || "image/png";
+  return `data:${mimeType};base64,${buffer.toString("base64")}`;
+}
 var piapiService = {
   /**
    * Tạo task sinh ảnh bất đồng bộ trên PiAPI
    */
   async createImageTask(prompt, model, options) {
+    const openRouterKey = process.env.OPENROUTER_API_KEY || "";
+    const openRouterModels = [
+      "google/gemini-3.1-flash-image",
+      "google/gemini-3-pro-image",
+      "google/gemini-3.1-flash-image-preview",
+      "google/gemini-3-pro-image-preview"
+    ];
+    const isMatchedModel = model === "nano-banana-2" || model === "igen-image-flash" || model === "nano-banana-pro" || openRouterModels.includes(model);
+    if (openRouterKey && isMatchedModel) {
+      console.log(`[OpenRouter Image Task] Creating image synchronously for model: ${model}`);
+      let openRouterModel;
+      if (openRouterModels.includes(model)) {
+        openRouterModel = model;
+      } else if (model === "nano-banana-pro") {
+        openRouterModel = "google/gemini-3-pro-image";
+      } else {
+        openRouterModel = "google/gemini-3.1-flash-image";
+      }
+      const allowedAspects = [
+        "1:1",
+        "1:4",
+        "1:8",
+        "2:3",
+        "3:2",
+        "3:4",
+        "4:1",
+        "4:3",
+        "4:5",
+        "5:4",
+        "8:1",
+        "9:16",
+        "16:9",
+        "21:9"
+      ];
+      let aspect2 = options?.aspectRatio || "1:1";
+      if (aspect2 === "T\u1EF1 \u0111\u1ED9ng" || aspect2 === "auto" || !allowedAspects.includes(aspect2)) {
+        aspect2 = "1:1";
+      }
+      const headers = {
+        "Authorization": `Bearer ${openRouterKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://staging-architect.igentechsolutions.com",
+        "X-Title": "iGen Architect Assistant"
+      };
+      const content = [{ type: "text", text: prompt }];
+      if (options?.image) {
+        try {
+          console.log(`[OpenRouter Image Task] Converting image to base64 for OpenRouter: ${options.image}`);
+          const base64Image = await fetchImageAsBase64(options.image);
+          content.push({
+            type: "image_url",
+            image_url: {
+              url: base64Image
+            }
+          });
+        } catch (fetchErr) {
+          console.error(`[OpenRouter Image Task] Failed to convert image to base64:`, fetchErr);
+          throw fetchErr;
+        }
+      }
+      const body = {
+        model: openRouterModel,
+        messages: [{ role: "user", content }],
+        modalities: ["image", "text"],
+        image_config: {
+          aspect_ratio: aspect2
+        }
+      };
+      try {
+        console.log(`[OpenRouter Image Task] Requesting OpenRouter chat completions endpoint. Model: ${openRouterModel}`);
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body)
+        });
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`OpenRouter image generation failed: ${response.status} - ${errorText}`);
+        }
+        const json = await response.json();
+        console.log("[OpenRouter Image Debug] Raw response:", JSON.stringify(json).slice(0, 1e3));
+        const images = json.choices?.[0]?.message?.images;
+        let imgUrl = "";
+        if (Array.isArray(images) && images.length > 0) {
+          imgUrl = images[0]?.image_url?.url;
+        }
+        if (!imgUrl) {
+          const messageContent = json.choices?.[0]?.message?.content;
+          if (typeof messageContent === "string") {
+            if (messageContent.startsWith("http") || messageContent.startsWith("data:")) {
+              imgUrl = messageContent;
+            }
+          } else if (Array.isArray(messageContent)) {
+            for (const part of messageContent) {
+              if (part?.type === "image_url" && part?.image_url?.url) {
+                imgUrl = part.image_url.url;
+                break;
+              }
+              if (part?.type === "image" && part?.source?.data) {
+                imgUrl = `data:${part.source.media_type || "image/png"};base64,${part.source.data}`;
+                break;
+              }
+            }
+          }
+        }
+        let finalImageUrl = "";
+        if (imgUrl) {
+          finalImageUrl = await cloudinaryService.uploadMedia(imgUrl, "renders");
+        } else {
+          throw new Error("Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c d\u1EEF li\u1EC7u h\xECnh \u1EA3nh t\u1EEB OpenRouter Image API");
+        }
+        console.log(`[OpenRouter Image Task] Successfully generated and uploaded image: ${finalImageUrl}`);
+        const seed = Math.floor(Math.random() * 1e6);
+        return {
+          taskId: `openrouter-${seed}`,
+          isMock: false,
+          outputUrl: finalImageUrl
+        };
+      } catch (error) {
+        console.error("[OpenRouter Image Task] Error generating image:", error);
+        throw error;
+      }
+    }
     if (!PIAPI_API_KEY) {
       console.log(`[PiAPI Image Task] Running in MOCK mode (No PIAPI_API_KEY). Model: ${model}`);
       const seed = Math.floor(Math.random() * 1e6);
@@ -1124,8 +1258,15 @@ var piapiService = {
     const aspect = options?.aspectRatio || "1:1";
     const randomSeed = Math.floor(Math.random() * 2147483647);
     let reqBody;
-    if (model === "nano-banana-2" || model === "igen-image-flash" || model === "nano-banana-pro") {
-      const taskType = model === "igen-image-flash" ? "nano-banana-2" : model;
+    const isFloorplanJob = String(options?.jobType || "").toLowerCase().includes("floorplan") || String(options?.jobType || "").toLowerCase().includes("masterplan");
+    const isNanoModel = model === "nano-banana-2" || model === "igen-image-flash" || model === "nano-banana-pro" || model.startsWith("google/gemini-3.1-flash-image") || model.startsWith("google/gemini-3-pro-image");
+    if (isNanoModel) {
+      let taskType = model === "igen-image-flash" ? "nano-banana-2" : model;
+      if (taskType.includes("pro-image")) {
+        taskType = "nano-banana-pro";
+      } else if (taskType.includes("flash-image")) {
+        taskType = "nano-banana-2";
+      }
       const hasImage = !!options?.image;
       reqBody = {
         model: "gemini",
@@ -1137,7 +1278,7 @@ var piapiService = {
           resolution: "1K",
           number_of_images: options?.numImages || 1,
           seed: randomSeed,
-          ...hasImage ? { image: options.image, strength: 0.35 } : {}
+          ...hasImage ? { image: options.image, strength: isFloorplanJob ? 0.85 : 0.35 } : {}
         }
       };
     } else {
@@ -1150,7 +1291,7 @@ var piapiService = {
         if (!prompt.includes("--seed")) {
           finalPrompt = `${prompt} --seed ${randomSeed}`;
         }
-        if (options?.image && !finalPrompt.includes("--iw")) {
+        if (options?.image && !finalPrompt.includes("--iw") && !isFloorplanJob) {
           finalPrompt = `${finalPrompt} --iw 2.0`;
         }
       }
@@ -1164,7 +1305,7 @@ var piapiService = {
           number_of_images: options?.numImages || 1,
           seed: randomSeed,
           ...options?.image ? { image: options.image } : {},
-          ...hasImage ? { strength: 0.35 } : {}
+          ...hasImage ? { strength: isFloorplanJob ? 0.85 : 0.35 } : {}
         }
       };
     }
@@ -1252,6 +1393,9 @@ var piapiService = {
     const taskResult = await this.createImageTask(prompt, model, options);
     if (taskResult.isMock) {
       return { url: taskResult.mockUrl || "", isMock: true };
+    }
+    if (taskResult.outputUrl) {
+      return { url: taskResult.outputUrl, isMock: false };
     }
     const taskId = taskResult.taskId;
     console.log(`[PiAPI Image Generation] Task created: ${taskId}. Polling for completion...`);
@@ -1391,6 +1535,23 @@ var piapiService = {
 
 // server/service/gemini.service.ts
 var import_genai = require("@google/genai");
+function extractTextFromContents(contents) {
+  const contentsArray = Array.isArray(contents) ? contents : contents && typeof contents === "object" && "parts" in contents ? [contents] : [];
+  let promptText = "";
+  for (const content of contentsArray) {
+    if (content && typeof content === "object" && "parts" in content) {
+      const parts = content.parts;
+      if (Array.isArray(parts)) {
+        for (const part of parts) {
+          if (typeof part?.text === "string") {
+            promptText += part.text + "\n";
+          }
+        }
+      }
+    }
+  }
+  return promptText.trim();
+}
 function summarizeContents(contents) {
   if (typeof contents === "string") {
     return `string:${contents.slice(0, 120)}`;
@@ -1412,14 +1573,148 @@ function summarizeContents(contents) {
     return `item${index}:${partSummary.join(",")}`;
   }).join(" | ");
 }
+function mapToOpenRouterModel(modelName) {
+  if (!modelName) {
+    return "google/gemini-2.5-flash";
+  }
+  if (modelName.includes("/")) {
+    return modelName;
+  }
+  const name = modelName.toLowerCase().trim();
+  const mapping = {
+    "gemini-2.5-flash": "google/gemini-2.5-flash",
+    "gemini-2.0-flash": "google/gemini-2.0-flash",
+    "gemini-1.5-flash": "google/gemini-flash-1.5",
+    "gemini-1.5-pro": "google/gemini-pro-1.5",
+    "gemini-1.5-flash-8b": "google/gemini-flash-1.5-8b",
+    "gemini-2.0-flash-exp": "google/gemini-2.0-flash-exp",
+    "gemini-2.0-flash-thinking-exp": "google/gemini-2.0-flash-thinking-exp",
+    "gemini-2.0-pro-exp": "google/gemini-2.0-pro-exp",
+    "gemini-2.5-pro": "google/gemini-2.5-pro"
+  };
+  if (mapping[name]) {
+    return mapping[name];
+  }
+  return `google/${modelName}`;
+}
+async function callOpenRouterChat(messages, model, openRouterKey, isJsonRequested) {
+  const requestBody = {
+    model,
+    messages
+  };
+  if (isJsonRequested) {
+    requestBody.response_format = { type: "json_object" };
+  }
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${openRouterKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://staging-architect.igentechsolutions.com",
+      "X-Title": "iGen Architect Assistant"
+    },
+    body: JSON.stringify(requestBody)
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`OpenRouter API error ${response.status}: ${errText}`);
+  }
+  const data = await response.json();
+  const textResult = data.choices?.[0]?.message?.content || "";
+  return { textResult, data };
+}
+async function callOpenRouterImage(prompt, model, openRouterKey, aspectRatio, inputImageBase64, inputImageMimeType) {
+  const headers = {
+    "Authorization": `Bearer ${openRouterKey}`,
+    "Content-Type": "application/json",
+    "HTTP-Referer": "https://staging-architect.igentechsolutions.com",
+    "X-Title": "iGen Architect Assistant"
+  };
+  const content = [{ type: "text", text: prompt }];
+  if (inputImageBase64) {
+    const mime = inputImageMimeType || "image/jpeg";
+    const dataUri = `data:${mime};base64,${inputImageBase64}`;
+    content.push({
+      type: "image_url",
+      image_url: {
+        url: dataUri
+      }
+    });
+  }
+  const allowedAspects = [
+    "1:1",
+    "1:4",
+    "1:8",
+    "2:3",
+    "3:2",
+    "3:4",
+    "4:1",
+    "4:3",
+    "4:5",
+    "5:4",
+    "8:1",
+    "9:16",
+    "16:9",
+    "21:9"
+  ];
+  let aspect = aspectRatio || "1:1";
+  if (aspect === "T\u1EF1 \u0111\u1ED9ng" || aspect === "auto" || !allowedAspects.includes(aspect)) {
+    aspect = "1:1";
+  }
+  const body = {
+    model,
+    messages: [{ role: "user", content }],
+    modalities: ["image"],
+    image_config: {
+      aspect_ratio: aspect
+    }
+  };
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenRouter image generation failed: ${response.status} - ${errorText}`);
+  }
+  const json = await response.json();
+  const images = json.choices?.[0]?.message?.images;
+  let imgUrl = "";
+  if (Array.isArray(images) && images.length > 0) {
+    imgUrl = images[0]?.image_url?.url;
+  }
+  if (!imgUrl) {
+    const messageContent = json.choices?.[0]?.message?.content;
+    if (typeof messageContent === "string") {
+      if (messageContent.startsWith("http") || messageContent.startsWith("data:")) {
+        imgUrl = messageContent;
+      }
+    } else if (Array.isArray(messageContent)) {
+      for (const part of messageContent) {
+        if (part?.type === "image_url" && part?.image_url?.url) {
+          imgUrl = part.image_url.url;
+          break;
+        }
+        if (part?.type === "image" && part?.source?.data) {
+          imgUrl = `data:${part.source.media_type || "image/png"};base64,${part.source.data}`;
+          break;
+        }
+      }
+    }
+  }
+  if (!imgUrl) {
+    throw new Error("Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c d\u1EEF li\u1EC7u h\xECnh \u1EA3nh t\u1EEB OpenRouter Image API");
+  }
+  return imgUrl;
+}
 var geminiService = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async generate(params, _userApiKey) {
     const modelName = params.model || "";
-    const systemInstruction = params.systemInstruction;
+    const systemInstruction = params.systemInstruction || params.config?.systemInstruction || params.generationConfig?.systemInstruction;
     const isImageModel = modelName.includes("image-preview") || modelName.includes("imagen") || modelName.includes("generateImages") || modelName.includes("banana");
     const isVideoModel = modelName.includes("veo");
-    const isGeminiNativeImageModel = modelName === "nano-banana-2" || modelName === "igen-image-flash" || modelName === "gemini-3-pro-image" || modelName === "gemini-3.1-flash-image" || modelName.startsWith("imagen-");
+    const isGeminiNativeImageModel = modelName === "gemini-3-pro-image" || modelName === "gemini-3.1-flash-image" || modelName === "gemini-3.1-flash-image-preview" || modelName.startsWith("imagen-");
     let apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
     const isValidGeminiKey = (key) => key.startsWith("AIza") || key.startsWith("AQ.");
     if (apiKey && !isValidGeminiKey(apiKey)) {
@@ -1433,6 +1728,7 @@ var geminiService = {
     }
     logger.info(`[Gemini Service] Using API key prefix: ${apiKey ? apiKey.substring(0, 10) + "..." : "None"} (Length: ${apiKey.length}, Valid: ${apiKey ? isValidGeminiKey(apiKey) : false})`);
     const piapiKey = process.env.PIAPI_API_KEY;
+    const openRouterKey = process.env.OPENROUTER_API_KEY || "";
     logger.info(
       `[Gemini Service] Request summary - model: ${modelName}, hasSystemInstruction: ${!!systemInstruction}, contents: ${summarizeContents(params.contents)}`
     );
@@ -1584,51 +1880,35 @@ ${promptText}`.trim();
       if (!apiKey) {
         throw new Error("API Key kh\xF4ng h\u1EE3p l\u1EC7 ho\u1EB7c kh\xF4ng c\xF3 quy\u1EC1n truy c\u1EADp.");
       }
-      const ai2 = new import_genai.GoogleGenAI({ apiKey });
+      const ai = new import_genai.GoogleGenAI({ apiKey });
       logger.info(`[Gemini Service] Provider: Gemini native image. Requested model: ${modelName}`);
       const imageConfig = params.config?.imageConfig || params.generationConfig?.imageConfig || {};
       const aspectRatio = imageConfig.aspectRatio || "1:1";
-      const isFlashVariant = modelName === "nano-banana-2" || modelName === "igen-image-flash" || modelName === "gemini-3.1-flash-image";
+      const isFlashVariant = modelName === "gemini-3.1-flash-image" || modelName === "gemini-3.1-flash-image-preview";
       const IMAGE_GEN_MODEL = isFlashVariant ? "gemini-3.1-flash-image" : "gemini-3-pro-image";
       logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL} (variant: ${isFlashVariant ? "flash" : "pro"}), aspect: ${aspectRatio}`);
-      let finalContents = params.contents;
-      if (aspectRatio && aspectRatio !== "1:1") {
-        if (Array.isArray(params.contents)) {
-          finalContents = params.contents.map((content) => {
-            if (content && typeof content === "object" && "parts" in content) {
-              const parts2 = content.parts;
-              if (Array.isArray(parts2)) {
-                return {
-                  ...content,
-                  parts: parts2.map((part) => {
-                    if (typeof part?.text === "string" && part.text.trim()) {
-                      return {
-                        ...part,
-                        text: `${part.text}
-[Aspect ratio: ${aspectRatio}]`
-                      };
-                    }
-                    return part;
-                  })
-                };
-              }
-            }
-            return content;
-          });
-        } else if (typeof params.contents === "string") {
-          finalContents = `${params.contents}
-[Aspect ratio: ${aspectRatio}]`;
+      const contentsArray = Array.isArray(params.contents) ? params.contents : params.contents ? [params.contents] : [];
+      const aspectRatioPart = aspectRatio && aspectRatio !== "1:1" ? [{ text: `[Aspect ratio: ${aspectRatio}]` }] : [];
+      const finalContents = contentsArray.length > 0 ? contentsArray.map((content, index) => {
+        if (index === contentsArray.length - 1 && content && typeof content === "object" && "parts" in content && Array.isArray(content.parts)) {
+          const typedContent = content;
+          return {
+            role: typedContent.role,
+            parts: [...typedContent.parts, ...aspectRatioPart]
+          };
         }
-      }
+        return content;
+      }) : typeof params.contents === "string" ? `${params.contents}${aspectRatioPart.length > 0 ? `
+[Aspect ratio: ${aspectRatio}]` : ""}` : extractTextFromContents(params.contents);
       const imageConfigForSdk = {
         responseModalities: ["TEXT", "IMAGE"]
       };
       if (systemInstruction) {
         imageConfigForSdk.systemInstruction = systemInstruction;
       }
-      let response2;
+      let response;
       try {
-        response2 = await ai2.models.generateContent({
+        response = await ai.models.generateContent({
           model: IMAGE_GEN_MODEL,
           contents: finalContents,
           config: imageConfigForSdk
@@ -1637,9 +1917,84 @@ ${promptText}`.trim();
         const errStr = err?.message || JSON.stringify(err) || "";
         const statusCode = err?.status || err?.statusCode || 0;
         logger.error(`[Gemini Service] Native Image generation failed (Status: ${statusCode}, Msg: ${errStr}).`);
-        throw err;
+        const fallbackOpenRouterKey = process.env.OPENROUTER_API_KEY || "";
+        if (fallbackOpenRouterKey) {
+          const fallbackFluxModel = process.env.OPENROUTER_FALLBACK_IMAGE_MODEL || "black-forest-labs/flux.2-klein-4b";
+          logger.info(`[Gemini Service] Fallback: calling Flux model (${fallbackFluxModel}) via OpenRouter due to Gemini Native Image failure...`);
+          try {
+            let promptText = "";
+            let inputImageBase64 = "";
+            let inputImageMimeType = "";
+            const contentsArray2 = Array.isArray(params.contents) ? params.contents : params.contents && params.contents.parts ? [{ parts: params.contents.parts }] : [];
+            for (const content of contentsArray2) {
+              if (content.parts && Array.isArray(content.parts)) {
+                for (const part of content.parts) {
+                  if (part.text) {
+                    promptText += part.text + "\n";
+                  } else if (part.inlineData && part.inlineData.data) {
+                    inputImageBase64 = part.inlineData.data;
+                    inputImageMimeType = part.inlineData.mimeType || "image/jpeg";
+                  }
+                }
+              }
+            }
+            promptText = promptText.trim();
+            if (systemInstruction) {
+              promptText = `${String(systemInstruction).trim()}
+
+${promptText}`.trim();
+            }
+            const imageUrl = await callOpenRouterImage(
+              promptText,
+              fallbackFluxModel,
+              fallbackOpenRouterKey,
+              aspectRatio,
+              inputImageBase64,
+              inputImageMimeType
+            );
+            const imgFetchRes = await fetch(imageUrl);
+            if (!imgFetchRes.ok) {
+              throw new Error(`Failed to download generated Flux image: ${imgFetchRes.status}`, { cause: err });
+            }
+            const arrayBuffer = await imgFetchRes.arrayBuffer();
+            const base64 = Buffer.from(arrayBuffer).toString("base64");
+            const mimeType = imgFetchRes.headers.get("content-type") || "image/png";
+            logger.info(`[Gemini Service] Fallback Flux image generated and downloaded successfully.`);
+            return {
+              generatedImages: [
+                {
+                  image: {
+                    imageBytes: base64,
+                    mimeType
+                  }
+                }
+              ],
+              candidates: [
+                {
+                  content: {
+                    parts: [
+                      {
+                        inlineData: {
+                          data: base64,
+                          mimeType
+                        }
+                      }
+                    ],
+                    role: "model"
+                  },
+                  finishReason: "STOP"
+                }
+              ]
+            };
+          } catch (fallbackErr) {
+            logger.error(`[Gemini Service] Fallback to Flux via OpenRouter also failed: ${fallbackErr.message || fallbackErr}`);
+            throw err;
+          }
+        } else {
+          throw err;
+        }
       }
-      const parts = response2.candidates?.[0]?.content?.parts || [];
+      const parts = response.candidates?.[0]?.content?.parts || [];
       const imageParts3 = parts.filter((p) => p.inlineData?.data);
       if (imageParts3.length === 0) {
         throw new Error("Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c d\u1EEF li\u1EC7u \u1EA3nh t\u1EEB m\xF4 h\xECnh native c\u1EE7a Gemini.");
@@ -1652,34 +2007,110 @@ ${promptText}`.trim();
           }
         })),
         // Cũng giữ candidates để tương thích ngược
-        candidates: response2.candidates
+        candidates: response.candidates
       };
     }
-    if (!apiKey) {
-      throw new Error("API Key kh\xF4ng h\u1EE3p l\u1EC7 ho\u1EB7c kh\xF4ng c\xF3 quy\u1EC1n truy c\u1EADp.");
-    }
-    const ai = new import_genai.GoogleGenAI({ apiKey });
-    logger.info(`[Gemini Service] Provider: Gemini text. Model: ${modelName}`);
-    const rawConfig = params.config || params.generationConfig || {};
-    const sanitizedConfig = { ...rawConfig };
-    const isThinkingModel = modelName.toLowerCase().includes("thinking");
-    if (!isThinkingModel) {
-      if ("thinkingConfig" in sanitizedConfig) {
-        delete sanitizedConfig.thinkingConfig;
+    if (!isImageModel && !isVideoModel) {
+      const messages = [];
+      if (systemInstruction) {
+        messages.push({ role: "system", content: String(systemInstruction) });
       }
-      if ("thinking_config" in sanitizedConfig) {
-        delete sanitizedConfig.thinking_config;
+      const contentsArr = Array.isArray(params.contents) ? params.contents : params.contents ? [params.contents] : [];
+      for (const item of contentsArr) {
+        if (!item || typeof item !== "object") continue;
+        const role = item.role === "model" ? "assistant" : "user";
+        const parts = item.parts || [];
+        const text = parts.map((p) => p.text || "").join("");
+        if (text.trim()) messages.push({ role, content: text.trim() });
+      }
+      if (messages.length === 0) {
+        const rawText = extractTextFromContents(params.contents);
+        if (rawText) messages.push({ role: "user", content: rawText });
+      }
+      const isJsonRequested = params.config?.responseMimeType === "application/json" || params.generationConfig?.responseMimeType === "application/json" || params.config?.response_mime_type === "application/json";
+      const fallbackQwenModel = process.env.OPENROUTER_FALLBACK_MODEL || "qwen/qwen3.6-flash";
+      const performQwenFallback = async (primaryError) => {
+        if (!openRouterKey) {
+          throw primaryError;
+        }
+        logger.warn(`[Gemini Service] Fallback: calling Qwen model (${fallbackQwenModel}) via OpenRouter API due to primary error: ${primaryError.message || primaryError}`);
+        try {
+          if (messages.length === 0) {
+            throw new Error("Kh\xF4ng c\xF3 n\u1ED9i dung \u0111\u1EC3 g\u1EEDi \u0111\u1EBFn OpenRouter.", { cause: primaryError });
+          }
+          const { textResult } = await callOpenRouterChat(messages, fallbackQwenModel, openRouterKey, isJsonRequested);
+          logger.info(`[Gemini Service] Fallback OpenRouter Qwen response received (${textResult.length} chars): ${textResult.slice(0, 100)}...`);
+          return {
+            candidates: [{
+              content: {
+                parts: [{ text: textResult }],
+                role: "model"
+              },
+              finishReason: "STOP"
+            }],
+            text: textResult
+          };
+        } catch (fallbackErr) {
+          logger.error(`[Gemini Service] Fallback to Qwen via OpenRouter also failed: ${fallbackErr.message || fallbackErr}`);
+          throw primaryError;
+        }
+      };
+      const hasValidNativeKey = apiKey && isValidGeminiKey(apiKey);
+      if (hasValidNativeKey) {
+        const ai = new import_genai.GoogleGenAI({ apiKey });
+        logger.info(`[Gemini Service] Provider: Gemini Native. Model: ${modelName}`);
+        const rawConfig = params.config || params.generationConfig || {};
+        const sanitizedConfig = { ...rawConfig };
+        const isThinkingModel = modelName.toLowerCase().includes("thinking");
+        if (!isThinkingModel) {
+          if ("thinkingConfig" in sanitizedConfig) {
+            delete sanitizedConfig.thinkingConfig;
+          }
+          if ("thinking_config" in sanitizedConfig) {
+            delete sanitizedConfig.thinking_config;
+          }
+        }
+        if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
+          sanitizedConfig.systemInstruction = systemInstruction;
+        }
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: params.contents,
+            config: sanitizedConfig
+          });
+          return response;
+        } catch (err) {
+          logger.error(`[Gemini Service] Gemini Native API call failed: ${err.message || err}`);
+          return await performQwenFallback(err);
+        }
+      } else if (openRouterKey) {
+        const openRouterModel = mapToOpenRouterModel(modelName);
+        logger.info(`[Gemini Service] Provider: OpenRouter (Primary). Model: ${openRouterModel}`);
+        try {
+          if (messages.length === 0) {
+            throw new Error("Kh\xF4ng c\xF3 n\u1ED9i dung \u0111\u1EC3 g\u1EEDi \u0111\u1EBFn OpenRouter.");
+          }
+          const { textResult } = await callOpenRouterChat(messages, openRouterModel, openRouterKey, isJsonRequested);
+          logger.info(`[Gemini Service] OpenRouter Gemini response received (${textResult.length} chars): ${textResult.slice(0, 100)}...`);
+          return {
+            candidates: [{
+              content: {
+                parts: [{ text: textResult }],
+                role: "model"
+              },
+              finishReason: "STOP"
+            }],
+            text: textResult
+          };
+        } catch (err) {
+          logger.error(`[Gemini Service] Gemini via OpenRouter failed: ${err.message || err}`);
+          return await performQwenFallback(err);
+        }
+      } else {
+        throw new Error("Kh\xF4ng t\xECm th\u1EA5y API Key h\u1EE3p l\u1EC7 cho Gemini Native ho\u1EB7c OpenRouter.");
       }
     }
-    if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
-      sanitizedConfig.systemInstruction = systemInstruction;
-    }
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: params.contents,
-      config: sanitizedConfig
-    });
-    return response;
   }
 };
 
@@ -1785,7 +2216,7 @@ function appendFloorplanCleanupDirective(type, prompt) {
   if (normalizedType !== "floorplan to 3d" && normalizedType !== "floorplan to 3d floorplan") {
     return prompt;
   }
-  const cleanupDirective = " IMPORTANT: chi giu bo cuc khong gian, tuong, cua, cua so, cau thang va vi tri noi that theo ban ve. Xoa hoan toan moi chu, nhan phong, so kich thuoc, hatch, net dut, ky hieu CAD, mui ten, khung ten, watermark va moi dau vet do hoa 2D cua ban ve goc. Anh cuoi phai la phoi canh 3D sach, khong con annotation hay text ky thuat.";
+  const cleanupDirective = " IMPORTANT: chi giu bo cuc khong gian, tuong, cua, cua so, cau thang va vi tri noi that theo ban ve. Tuyet doi khong duoc them, bot, doi cho, tach, noi, mo rong, thu hep, xoay hoac tai cau truc bat ky thanh phan kien truc nao so voi ban ve goc. Xoa hoan toan moi chu, nhan phong, so kich thuoc, hatch, net dut, ky hieu CAD, mui ten, khung ten, watermark va moi dau vet do hoa 2D cua ban ve goc. Anh cuoi phai la phoi canh 3D sach, khong con annotation hay text ky thuat.";
   if (prompt.includes(cleanupDirective.trim())) {
     return prompt;
   }
@@ -1796,11 +2227,72 @@ function appendFloorplanNegativePrompt(type, prompt) {
   if (normalizedType !== "floorplan to 3d" && normalizedType !== "floorplan to 3d floorplan") {
     return prompt;
   }
-  const negativePrompt = " Negative prompt: no text, no room labels, no dimensions, no dimension lines, no annotations, no arrows, no hatch patterns, no CAD lines, no dashed lines, no blueprint look, no technical drawing overlay, no title block, no watermark, no 2D graphic remnants.";
+  const negativePrompt = " Negative prompt: no text, no room labels, no dimensions, no dimension lines, no annotations, no arrows, no hatch patterns, no CAD lines, no dashed lines, no blueprint look, no technical drawing overlay, no title block, no watermark, no 2D graphic remnants, no missing walls, no extra walls, no shifted doors, no shifted windows, no altered room boundaries, no changed circulation, no invented architectural elements, no deleted architectural elements.";
   if (prompt.includes(negativePrompt.trim())) {
     return prompt;
   }
   return `${prompt}${negativePrompt}`;
+}
+function appendFloorplanCameraDirective(type, prompt) {
+  const normalizedType = String(type || "").toLowerCase().trim();
+  if (normalizedType !== "floorplan to 3d") {
+    return prompt;
+  }
+  const cameraDirective = " Camera angle: eye-level (ngang tam mat), shot from room entrance, no bird's eye view, no top-down, no panorama from above. All furniture must remain in exact positions from the floorplan.";
+  if (prompt.includes("eye-level") || prompt.includes("ngang tam mat")) {
+    return prompt;
+  }
+  return `${prompt}${cameraDirective}`;
+}
+function extractPromptPayload(rawPrompt) {
+  const fallback = {
+    finalPrompt: rawPrompt || "",
+    negativePrompt: ""
+  };
+  try {
+    const parsed = JSON.parse(rawPrompt);
+    if (!parsed || typeof parsed !== "object") {
+      return fallback;
+    }
+    const promptObject = parsed;
+    return {
+      finalPrompt: String(
+        promptObject.prompt_tieng_viet_toi_uu || promptObject.optimized_english_prompt || rawPrompt || ""
+      ),
+      negativePrompt: String(
+        promptObject.prompt_phu_dinh || promptObject.negative_prompt || ""
+      )
+    };
+  } catch {
+    return fallback;
+  }
+}
+function buildGeminiImageContents(promptText, inputImageUrls, referenceImageUrls) {
+  const parts = [];
+  if (inputImageUrls.length > 0) {
+    parts.push({ text: "Reference floorplan images to preserve exactly:" });
+    for (const url of inputImageUrls) {
+      parts.push({
+        fileData: {
+          mimeType: "image/jpeg",
+          fileUri: url
+        }
+      });
+    }
+  }
+  if (referenceImageUrls.length > 0) {
+    parts.push({ text: "Additional reference images:" });
+    for (const url of referenceImageUrls) {
+      parts.push({
+        fileData: {
+          mimeType: "image/jpeg",
+          fileUri: url
+        }
+      });
+    }
+  }
+  parts.push({ text: promptText });
+  return [{ role: "user", parts }];
 }
 var renderJobController = {
   async getMyJobs(req, res) {
@@ -1817,6 +2309,30 @@ var renderJobController = {
     } catch (error2) {
       logger.error(`[renderJobController.getMyJobs] Error: ${error2}`);
       const errMsg = error2 instanceof Error ? error2.message : "\u0110\xE3 c\xF3 l\u1ED7i x\u1EA3y ra.";
+      res.status(500).json({ success: false, message: errMsg });
+    }
+  },
+  async getJobById(req, res) {
+    const paramValidation = idParamSchema2.validate(req.params);
+    if (paramValidation.error) {
+      res.status(400).json({ success: false, message: paramValidation.error.details[0].message });
+      return;
+    }
+    try {
+      const jobId = req.params.id;
+      const job = await renderJobService.getById(jobId);
+      if (!job) {
+        res.status(404).json({ success: false, message: "Kh\xF4ng t\xECm th\u1EA5y render job." });
+        return;
+      }
+      if (job.userId.toString() !== req.user.userId) {
+        res.status(403).json({ success: false, message: "B\u1EA1n kh\xF4ng c\xF3 quy\u1EC1n truy c\u1EADp render job n\xE0y." });
+        return;
+      }
+      res.json({ success: true, data: job });
+    } catch (error) {
+      logger.error(`[renderJobController.getJobById] Error: ${error}`);
+      const errMsg = error instanceof Error ? error.message : "\u0110\xE3 c\xF3 l\u1ED7i x\u1EA3y ra.";
       res.status(500).json({ success: false, message: errMsg });
     }
   },
@@ -1858,14 +2374,12 @@ var renderJobController = {
       const resolution = req.body.resolution || settings.resolution || "1K";
       const numImages = req.body.numImages || settings.numImages || 1;
       const GEMINI_NATIVE_MODELS = [
-        "nano-banana-2",
-        "igen-image-flash",
         "gemini-3.1-flash-image",
         "gemini-3-pro-image"
       ];
       const isGeminiNativeModel = GEMINI_NATIVE_MODELS.includes(model);
       let piapiModel = model || "piapi-flux";
-      if (!isGeminiNativeModel && !piapiModel.startsWith("piapi-") && piapiModel !== "nano-banana-pro") {
+      if (!isGeminiNativeModel && !piapiModel.startsWith("piapi-") && piapiModel !== "nano-banana-pro" && piapiModel !== "nano-banana-2" && piapiModel !== "igen-image-flash") {
         piapiModel = "piapi-flux";
       }
       logger.info(`[renderJobController.createJob] Model: ${model} | piapiModel: ${piapiModel} | type: ${req.body.type}`);
@@ -1874,18 +2388,20 @@ var renderJobController = {
       let status = "pending";
       let progress = 0;
       let outputImageUrls = [];
-      let parsedPrompt = prompt || "";
-      try {
-        const parsed = JSON.parse(prompt);
-        parsedPrompt = parsed.prompt_tieng_viet_toi_uu || parsed.optimized_english_prompt || prompt;
-      } catch {
-      }
+      const promptPayload = extractPromptPayload(prompt || "");
+      const parsedPrompt = promptPayload.finalPrompt;
+      const parsedNegativePrompt = promptPayload.negativePrompt;
       let finalPrompt = parsedPrompt;
-      if (inputImageUrls && inputImageUrls.length > 0) {
+      if (!isGeminiNativeModel && inputImageUrls && inputImageUrls.length > 0) {
         finalPrompt = inputImageUrls.join(" ") + " " + finalPrompt;
+      }
+      if (parsedNegativePrompt) {
+        finalPrompt = `${finalPrompt}
+Negative prompt: ${parsedNegativePrompt}`;
       }
       finalPrompt = appendFloorplanCleanupDirective(req.body.type, finalPrompt);
       finalPrompt = appendFloorplanNegativePrompt(req.body.type, finalPrompt);
+      finalPrompt = appendFloorplanCameraDirective(req.body.type, finalPrompt);
       const aspect = aspectRatio || "1:1";
       const isGeminiModel = isGeminiNativeModel;
       if (isGeminiModel) {
@@ -1893,58 +2409,15 @@ var renderJobController = {
           const user = await userService.getById(req.user.userId);
           const userApiKey = user?.apiKey || "";
           logger.info(`[renderJobController] Generating image synchronously via Gemini for model: ${piapiModel}`);
-          let inputImageBase64 = "";
-          let inputImageMime = "image/jpeg";
-          if (inputImageUrls && inputImageUrls.length > 0) {
-            try {
-              const fetchRes = await fetch(inputImageUrls[0]);
-              if (fetchRes.ok) {
-                const arrayBuffer = await fetchRes.arrayBuffer();
-                inputImageBase64 = Buffer.from(arrayBuffer).toString("base64");
-                inputImageMime = fetchRes.headers.get("content-type") || "image/jpeg";
-              }
-            } catch (err) {
-              logger.error(`[renderJobController] Failed to download input image for Gemini: ${err}`);
-            }
-          }
-          let refImageBase64 = "";
-          let refImageMime = "image/jpeg";
-          if (referenceImageUrls && referenceImageUrls.length > 0) {
-            try {
-              const fetchRes = await fetch(referenceImageUrls[0]);
-              if (fetchRes.ok) {
-                const arrayBuffer = await fetchRes.arrayBuffer();
-                refImageBase64 = Buffer.from(arrayBuffer).toString("base64");
-                refImageMime = fetchRes.headers.get("content-type") || "image/jpeg";
-              }
-            } catch (err) {
-              logger.error(`[renderJobController] Failed to download reference image for Gemini: ${err}`);
-            }
-          }
           const generatedUrls = [];
           for (let i = 0; i < numImages; i++) {
-            const contentsParts = [];
-            if (inputImageBase64) {
-              contentsParts.push({
-                inlineData: {
-                  data: inputImageBase64,
-                  mimeType: inputImageMime
-                }
-              });
-            }
-            if (refImageBase64) {
-              contentsParts.push({ text: "\u1EA2nh tham kh\u1EA3o phong c\xE1ch:" });
-              contentsParts.push({
-                inlineData: {
-                  data: refImageBase64,
-                  mimeType: refImageMime
-                }
-              });
-            }
-            contentsParts.push({ text: finalPrompt });
             const geminiRes = await geminiService.generate({
               model: model || "gemini-3-pro-image",
-              contents: [{ parts: contentsParts }],
+              contents: buildGeminiImageContents(
+                finalPrompt,
+                inputImageUrls,
+                referenceImageUrls
+              ),
               config: {
                 imageConfig: {
                   aspectRatio: aspect
@@ -1971,21 +2444,34 @@ var renderJobController = {
         try {
           logger.info(`[renderJobController] Creating ${numImages} PiAPI tasks for model: ${piapiModel}`);
           const taskIds = [];
+          const generatedUrls = [];
+          let hasOutputUrl = false;
           for (let i = 0; i < numImages; i++) {
             const taskResult = await piapiService.createImageTask(finalPrompt, piapiModel, {
               aspectRatio: aspect,
               numImages: 1,
               // Generate 1 image per call
-              image: inputImageUrls && inputImageUrls.length > 0 ? inputImageUrls[0] : void 0
+              image: inputImageUrls && inputImageUrls.length > 0 ? inputImageUrls[0] : void 0,
+              jobType: req.body.type
             });
             taskIds.push(taskResult.taskId);
+            if (taskResult.outputUrl) {
+              generatedUrls.push(taskResult.outputUrl);
+              hasOutputUrl = true;
+            }
           }
           piapiTaskId = taskIds.join(",");
-          status = "processing";
-          progress = 10;
+          if (hasOutputUrl) {
+            outputImageUrls = generatedUrls;
+            status = "completed";
+            progress = 100;
+          } else {
+            status = "processing";
+            progress = 10;
+          }
         } catch (apiErr) {
-          logger.error(`[renderJobController] Failed to create PiAPI tasks: ${apiErr}`);
-          res.status(500).json({ success: false, message: "Kh\xF4ng th\u1EC3 kh\u1EDFi t\u1EA1o t\xE1c v\u1EE5 tr\xEAn PiAPI: " + apiErr.message });
+          logger.error(`[renderJobController] Failed to create image generation tasks: ${apiErr}`);
+          res.status(500).json({ success: false, message: "Kh\xF4ng th\u1EC3 kh\u1EDFi t\u1EA1o t\xE1c v\u1EE5 sinh \u1EA3nh: " + apiErr.message });
           return;
         }
       }
@@ -2088,6 +2574,7 @@ var router3 = (0, import_express3.Router)();
 router3.post("/deduct-credits", authMiddleware, renderJobController.deductCredits);
 router3.get("/all", authMiddleware, adminMiddleware, renderJobController.getAllJobs);
 router3.get("/", authMiddleware, renderJobController.getMyJobs);
+router3.get("/:id", authMiddleware, renderJobController.getJobById);
 router3.post("/", authMiddleware, renderJobController.createJob);
 router3.patch("/:id", authMiddleware, renderJobController.updateJob);
 router3.delete("/:id", authMiddleware, renderJobController.deleteJob);
@@ -2415,12 +2902,12 @@ function buildPhotorealismDirective(style, subject) {
   if (!isPhotorealStyle(style)) return "";
   const subjectLabel = subject === "exterior" ? "ngoai that cong trinh" : "noi that cong trinh";
   return [
-    `Uu tien ngon ngu anh chup ${subjectLabel} chan thuc, khong phai CGI hay concept art.`,
-    "Mo ta nhu anh chup bang may anh full-frame chuyen nghiep, phoi canh tu nhien, vat lieu dung scale, do sau anh hop ly.",
-    "Bat buoc the hien be mat co vi sai thuc te: mep vat lieu sac vua phai, phan xa kinh hop ly, bong do mem dung huong sang, texture khong lap gia.",
-    "Anh sang phai giong anh doi thuc da hau ky nhe: dynamic range can bang, white balance tu nhien, khong glow gia, khong vien sang ao.",
-    "Cho phep cac dau hieu realism muc nhe nhu do nham vat lieu, sai so thi cong nho, bui be mat rat nhe, cay coi va nguoi neu co phai dung ty le thuc.",
-    "Tranh tuyet doi cam giac render AI: oversharpen, be mat nhua, vat lieu qua sach, doi xung hoan hao, anh sang san khau, mau qua no, chi tiet bia them."
+    `\u01AFu ti\xEAn ng\xF4n ng\u1EEF \u1EA3nh ch\u1EE5p ${subjectLabel} ch\xE2n th\u1EF1c, kh\xF4ng ph\u1EA3i CGI hay concept art.`,
+    "M\xF4 t\u1EA3 nh\u01B0 \u1EA3nh ch\u1EE5p b\u1EB1ng m\xE1y \u1EA3nh full-frame chuy\xEAn nghi\u1EC7p, ph\u1ED1i c\u1EA3nh t\u1EF1 nhi\xEAn, v\u1EADt li\u1EC7u \u0111\xFAng scale, \u0111\u1ED9 sau \u1EA3nh h\u1EE3p l\xFD.",
+    "B\u1EAFt bu\u1ED9c th\u1EC3 hi\u1EC7n b\u1EC1 m\u1EB7t c\xF3 vi sai th\u1EF1c t\u1EBF: m\xE9p v\u1EADt li\u1EC7u s\u1EAFc v\u1EEBa ph\u1EA3i, ph\u1EA3n x\u1EA1 k\xEDnh h\u1EE3p l\xFD, b\xF3ng \u0111\u1ED5 m\u1EC1m \u0111\xFAng h\u01B0\u1EDBng s\xE1ng, texture kh\xF4ng l\u1EB7p l\u1EA1i.",
+    "\xC1nh s\xE1ng ph\u1EA3i gi\u1ED1ng \u1EA3nh \u0111\u1EDDi th\u1EF1c \u0111\xE3 h\u1EADu k\u1EF3 nh\u1EB9: dynamic range c\xE2n b\u1EB1ng, white balance t\u1EF1 nhi\xEAn, kh\xF4ng glow gi\u1EA3, kh\xF4ng vi\u1EC1n s\xE1ng \u1EA3o.",
+    "Cho ph\xE9p c\xE1c d\u1EA5u hi\u1EC7u realism m\u1EE9c nh\u1EB9 nh\u01B0 \u0111\u1ED9 nh\xF2e v\u1EADt li\u1EC7u, sai s\u1ED1 thi c\xF4ng nh\u1ECF, b\u1EE5i b\u1EC1 m\u1EB7t r\u1EA5t nh\u1EB9, c\xE2y c\u1ED1i v\xE0 ng\u01B0\u1EDDi n\u1EBFu c\xF3 ph\u1EA3i d\xF9ng t\u1EF7 l\u1EC7 th\u1EF1c.",
+    "Tr\xE1nh tuy\u1EC7t \u0111\u1ED1i c\u1EA3m gi\xE1c render AI: oversharpen, b\u1EC1 m\u1EB7t nh\u0169, v\u1EADt li\u1EC7u qu\xE1 s\u1EA1ch, \u0111\u1ED1i x\u1EE9ng ho\xE0n h\u1EA3o, \xE1nh s\xE1ng s\xE0n kh\xE2u, m\xE0u qu\xE1 n\u1ED3ng, chi ti\u1EBFt b\u1ECBa th\xEAm."
   ].join(" ");
 }
 function buildPhotorealNegativePrompt(style) {
@@ -2452,18 +2939,22 @@ function buildPhotorealNegativePrompt(style) {
 function buildFloorplanCleanupDirective(mode) {
   if (mode === "space") {
     return [
-      "Day la anh render duoc dien giai tu ban ve, khong phai anh chup lai ban ve.",
-      "Chi duoc giu logic bo cuc, vi tri tuong, cua, cua so, loi di va noi that theo floorplan.",
-      "Phai xoa hoan toan moi dau vet do hoa cua ban ve goc: chu, nhan phong, kich thuoc, dimension line, mui ten, hatch, net dut, vien CAD, ky hieu vat lieu, ky hieu ky thuat, khung ten, watermark.",
-      "Khong de lai bat ky text, icon ky thuat, vien den day, net phac thao hay hieu ung blueprint nao trong anh cuoi.",
+      "\u0110\xE2y l\xE0 \u1EA3nh render \u0111\u01B0\u1EE3c di\u1EC5n gi\u1EA3i t\u1EEB b\u1EA3n v\u1EBD, kh\xF4ng ph\u1EA3i \u1EA3nh ch\u1EE5p l\u1EA1i b\u1EA3n v\u1EBD.",
+      "Ch\u1EC9 \u0111\u01B0\u1EE3c gi\u1EEF logic b\u1ED1 tr\xED, v\u1ECB tr\xED t\u01B0\u1EDDng, c\u1EEDa, c\u1EEDa s\u1ED5, l\u1ED1i \u0111i v\xE0 n\u1ED9i th\u1EA5t theo floorplan.",
+      "Tuy\u1EC7t \u0111\u1ED1i kh\xF4ng \u0111\u01B0\u1EE3c th\xEAm, b\u1EDBt, \u0111\u1ED5i ch\u1ED7, t\xE1ch, n\u1ED1i, m\u1EDF r\u1ED9ng, thu h\u1EB9p hay xoay b\u1EA5t k\u1EF3 th\xE0nh ph\u1EA7n ki\u1EBFn tr\xFAc n\xE0o so v\u1EDBi b\u1EA3n v\u1EBD g\u1ED1c.",
+      "Ki\u1EBFn tr\xFAc l\xE0 r\xE0ng bu\u1ED9c c\xF9ng: t\u01B0\u1EDDng, v\xE1ch, c\u1ED9t, l\u1ED1i \u0111i, c\u1EEDa \u0111i, c\u1EEDa s\u1ED5, th\xF4ng t\u1EA7ng, thang, s\xE0n trong, l\u1ED7 gia, l\u1ED1i tho\xE1t hi\u1EC3m, WC, h\u1ED9p k\u1EF9 thu\u1EADt, l\xF5i giao th\xF4ng v\xE0 ranh gi\u1EDBi ph\xF2ng ph\u1EA3i gi\u1EEF nguy\xEAn v\u1ECB tr\xED v\xE0 quan h\u1EC7 kh\xF4ng gian.",
+      "Ph\u1EA3i x\xF3a ho\xE0n to\xE0n m\u1ECDi d\u1EA5u v\u1EBFt \u0111\u1ED3 h\u1ECDa c\u1EE7a b\u1EA3n v\u1EBD g\u1ED1c: ch\u1EEF, nh\xE3n ph\xF2ng, k\xEDch th\u01B0\u1EDBc, dimension line, m\u0169i t\xEAn, hatch, n\xE9t \u0111\u1EE9t, vien CAD, k\xFD hi\u1EC7u v\u1EADt li\u1EC7u, k\xFD hi\u1EC7u k\u1EF9 thu\u1EADt, khung t\xEAn, watermark.",
+      "Kh\xF4ng \u0111\u1EC3 l\u1EA1i b\u1EA5t k\u1EF3 text, icon k\u1EF9 thu\u1EADt, vi\u1EC1n \u0111en d\xE0y, n\xE9t ph\xE1c th\u1EA3o hay hi\u1EC7u \u1EE9ng blueprint n\xE0o trong \u1EA3nh cu\u1ED1i.",
       "Anh cuoi phai la khong gian 3D sach, thuc te, khong con dau vet mat bang 2D."
     ].join(" ");
   }
   return [
-    "Day la phoi canh 3D axonometric duoc tai dung tu floorplan 2D.",
-    "Chi duoc giu cau truc mat bang, tuong, cua, vach, thang, nhan dien khong gian o muc logic bo cuc.",
-    "Phai xoa hoan toan chu, nhan phong, so do kich thuoc, hatch, ky hieu CAD, duong tim, net dut, ky hieu mo cua, khung ban ve va moi dau vet do hoa 2D khong thuoc vat the 3D.",
-    "Khong duoc de anh cuoi trong giong ban ve duoc to mau; phai la mo hinh 3D sach, ro, khong con annotation."
+    "\u0110\xE2y l\xE0 ph\xF4i c\u1EA3nh 3D axonometric \u0111\u01B0\u1EE3c t\u1EA3i d\u1EE5ng t\u1EEB floorplan 2D.",
+    "Ch\u1EC9 \u0111\u01B0\u1EE3c gi\u1EEF c\u1EA5u tr\xFAc m\u1EB7t b\u1EB1ng, t\u01B0\u1EDDng, c\u1EEDa, v\xE1ch, thang, nh\u1EADn di\u1EC7n kh\xF4ng gian \u1EDF m\u1EE5c logic b\u1ED1 tr\xED.",
+    "Tuy\u1EC7t \u0111\u1ED1i kh\xF4ng \u0111\u01B0\u1EE3c th\xEAm, b\u1EDBt, \u0111\u1ED5i ch\u1ED7, t\xE1ch, n\u1ED1i, m\u1EDF r\u1ED9ng, thu h\u1EB9p hay xoay b\u1EA5t k\u1EF3 th\xE0nh ph\u1EA7n ki\u1EBFn tr\xFAc n\xE0o so v\u1EDBi b\u1EA3n v\u1EBD g\u1ED1c.",
+    "M\u1ECDi th\xE0nh ph\u1EA7n ki\u1EBFn tr\xFAc ph\u1EA3i kh\xF3a c\xF9ng theo b\u1EA3n v\u1EBD: t\u01B0\u1EDDng, c\u1ED9t, v\xE1ch, c\u1EEDa \u0111i, c\u1EEDa s\u1ED5, l\u1ED1i th\xF4ng t\u1EA7ng, l\u1ED1i \u0111i, tr\u1EE5c giao th\xF4ng, l\u1ED1i tho\xE1t hi\u1EC3m, WC, h\u1ED9p k\u1EF9 thu\u1EADt, s\xE0n trong v\xE0 ranh gi\u1EDBi t\u1EEBng ph\xF2ng.",
+    "Ph\u1EA3i x\xF3a ho\xE0n to\xE0n ch\u1EEF, nh\xE3n ph\xF2ng, s\u1ED1 \u0111o k\xEDch th\u01B0\u1EDBc, hatch, k\xFD hi\u1EC7u CAD, \u0111\u01B0\u1EDDng tim, n\xE9t \u0111\u1EE9t, k\xFD hi\u1EC7u m\u1EDF c\u1EEDa, khung b\u1EA3n v\u1EBD v\xE0 m\u1ECDi d\u1EA5u v\u1EBFt \u0111\u1ED3 h\u1ECDa 2D kh\xF4ng thu\u1ED9c v\u1EADt th\u1EC3 3D.",
+    "Kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 \u1EA3nh cu\u1ED1i trong gi\u1ED1ng b\u1EA3n v\u1EBD 2D \u0111\u01B0\u1EE3c t\xF4 m\xE0u; ph\u1EA3i l\xE0 m\xF4 h\xECnh 3D c\xF3 m\xE0u s\u1EAFc sinh \u0111\u1ED9ng v\xE0 v\u1EADt li\u1EC7u r\xF5 r\xE0ng, s\u1EA1ch, r\xF5, kh\xF4ng c\xF2n annotation."
   ].join(" ");
 }
 function buildFloorplanNegativePrompt(mode) {
@@ -2491,6 +2982,14 @@ function buildFloorplanNegativePrompt(mode) {
     "room labels",
     "dimensions",
     "annotations",
+    "missing walls",
+    "extra walls",
+    "shifted doors",
+    "shifted windows",
+    "altered room boundaries",
+    "changed circulation",
+    "invented architectural elements",
+    "deleted architectural elements",
     "CAD symbols",
     "door swing markers",
     "grid lines",
@@ -2499,7 +2998,13 @@ function buildFloorplanNegativePrompt(mode) {
     "technical plan graphics",
     "2D overlay",
     "title block",
-    "watermark"
+    "watermark",
+    "white clay model",
+    "monochrome",
+    "grayscale",
+    "raw plaster",
+    "all-white rendering",
+    "untextured model"
   ].join(", ");
 }
 function buildRenderTabPrompt(input) {
@@ -2518,13 +3023,22 @@ function buildRenderTabPrompt(input) {
   const cameraAngleStyle = String(input.cameraAngleStyle || "");
   const images = input.images || [];
   const referenceImages = input.referenceImages || [];
+  const isFloorplanTab = activeSubTabKey === "floorplan to 3d" || activeSubTabKey === "floorplan to 3d floorplan";
   const parts = [];
   if (images.length > 0) {
-    parts.push({ text: "\u1EA2nh ph\xE1c th\u1EA3o / concept ki\u1EBFn tr\xFAc g\u1ED1c (C\u1EA7n b\u1EA3o t\u1ED3n tuy\u1EC7t \u0111\u1ED1i g\xF3c ch\u1EE5p, ph\u1ED1i c\u1EA3nh v\xE0 h\xECnh kh\u1ED1i n\xE0y):" });
+    if (isFloorplanTab) {
+      parts.push({ text: "\u1EA2nh b\u1EA3n v\u1EBD m\u1EB7t b\u1EB1ng / Floorplan g\u1ED1c (D\xF9ng \u0111\u1EC3 suy lu\u1EADn b\u1ED1 c\u1EE5c kh\xF4ng gian: t\u01B0\u1EDDng, c\u1EEDa, c\u1EEDa s\u1ED5, l\u1ED1i \u0111i, v\u1ECB tr\xED ph\xF2ng. KH\xD4NG xu\u1EA5t hi\u1EC7n d\u1EA5u v\u1EBFt b\u1EA3n v\u1EBD trong \u1EA3nh k\u1EBFt qu\u1EA3):" });
+    } else {
+      parts.push({ text: "\u1EA2nh ph\xE1c th\u1EA3o / concept ki\u1EBFn tr\xFAc g\u1ED1c (C\u1EA7n b\u1EA3o t\u1ED3n tuy\u1EC7t \u0111\u1ED1i g\xF3c ch\u1EE5p, ph\u1ED1i c\u1EA3nh v\xE0 h\xECnh kh\u1ED1i n\xE0y):" });
+    }
     parts.push(...imageParts2(images));
   }
   if (referenceImages.length > 0) {
-    parts.push({ text: "\u1EA2nh tham kh\u1EA3o phong c\xE1ch / Moodboard (Ch\u1EC9 h\u1ECDc h\u1ECFi phong c\xE1ch, m\xE0u s\u1EAFc, v\u1EADt li\u1EC7u, \xE1nh s\xE1ng; KH\xD4NG l\u1EA5y g\xF3c ch\u1EE5p hay h\xECnh kh\u1ED1i t\u1EEB \u1EA3nh n\xE0y):" });
+    if (isFloorplanTab) {
+      parts.push({ text: "\u1EA2nh tham kh\u1EA3o n\u1ED9i th\u1EA5t m\u1EABu (B\u1EAET BU\u1ED8C: Gi\u1EEF nguy\xEAn ho\xE0n to\xE0n v\u1ECB tr\xED, ch\u1EE7ng lo\u1EA1i v\xE0 s\u1EAFp x\u1EBFp c\u1EE7a t\u1EEBng m\xF3n \u0111\u1ED3 n\u1ED9i th\u1EA5t xu\u1EA5t hi\u1EC7n trong \u1EA3nh n\xE0y. KH\xD4NG \u0111\u01B0\u1EE3c t\u1EF1 \xFD di chuy\u1EC3n, xoay, th\xEAm ho\u1EB7c b\u1ECF b\u1EA5t k\u1EF3 m\xF3n \u0111\u1ED3 n\xE0o. Ch\u1EC9 \xE1p d\u1EE5ng phong c\xE1ch, m\xE0u s\u1EAFc v\xE0 v\u1EADt li\u1EC7u t\u1EEB \u1EA3nh tham kh\u1EA3o; c\u1EA5m thay \u0111\u1ED5i b\u1ED1 tr\xED \u0111\u1ED3 \u0111\u1EA1c):" });
+    } else {
+      parts.push({ text: "\u1EA2nh tham kh\u1EA3o phong c\xE1ch / Moodboard (Ch\u1EC9 h\u1ECDc h\u1ECFi phong c\xE1ch, m\xE0u s\u1EAFc, v\u1EADt li\u1EC7u, \xE1nh s\xE1ng; KH\xD4NG l\u1EA5y g\xF3c ch\u1EE5p hay h\xECnh kh\u1ED1i t\u1EEB \u1EA3nh n\xE0y):" });
+    }
     parts.push(...imageParts2(referenceImages));
   }
   let textPrompt = `M\xF4 t\u1EA3 \xFD t\u01B0\u1EDFng: ${description}
@@ -2569,7 +3083,8 @@ B\u1ED1i c\u1EA3nh: ${context}
         phong_cach_va_tone_kien_truc: stringField("T\u1ED5ng h\u1EE3p phong c\xE1ch ki\u1EBFn tr\xFAc v\xE0 tone m\xE0u."),
         anh_sang_va_moi_truong: stringField("Ph\xE2n t\xEDch \xE1nh s\xE1ng, th\u1EDDi ti\u1EBFt, b\u1ED1i c\u1EA3nh."),
         goc_may_anh_va_bo_cuc: stringField("Quy t\u1EAFc g\xF3c m\xE1y v\xE0 b\u1ED1 c\u1EE5c c\u1EA7n gi\u1EEF."),
-        prompt_tieng_viet_toi_uu: stringField("Prompt render cu\u1ED1i c\xF9ng b\u1EB1ng ti\u1EBFng Vi\u1EC7t."),
+        prompt_tieng_viet_toi_uu: stringField("Prompt render cu\u1ED1i c\xF9ng b\u1EB1ng ti\u1EBFng Vi\u1EC7t \u0111\u1EC3 hi\u1EC3n th\u1ECB."),
+        optimized_english_prompt: stringField("Detailed, professional, photorealistic English rendering prompt for the image generator, strictly avoiding CGI/AI-style artifacts."),
         prompt_phu_dinh: stringField("C\xE1c l\u1ED7i c\u1EA7n tr\xE1nh khi render.")
       },
       [
@@ -2578,6 +3093,7 @@ B\u1ED1i c\u1EA3nh: ${context}
         "anh_sang_va_moi_truong",
         "goc_may_anh_va_bo_cuc",
         "prompt_tieng_viet_toi_uu",
+        "optimized_english_prompt",
         "prompt_phu_dinh"
       ]
     );
@@ -2612,7 +3128,8 @@ Tone m\xE0u: ${colorTone}
         phong_cach_noi_that_va_anh_sang: stringField("T\u1ED5ng h\u1EE3p phong c\xE1ch, v\u1EADt li\u1EC7u, \xE1nh s\xE1ng."),
         danh_sach_noi_that_va_vat_lieu: stringField("Nh\u1EEFng th\xE0nh ph\u1EA7n n\u1ED9i th\u1EA5t c\u1EA7n c\xF3."),
         logic_camera_va_ty_le_khung_hinh: stringField("Quy t\u1EAFc g\xF3c ch\u1EE5p v\xE0 t\u1EF7 l\u1EC7 khung h\xECnh."),
-        prompt_tieng_viet_toi_uu: stringField("Prompt render cu\u1ED1i c\xF9ng b\u1EB1ng ti\u1EBFng Vi\u1EC7t."),
+        prompt_tieng_viet_toi_uu: stringField("Prompt render cu\u1ED1i c\xF9ng b\u1EB1ng ti\u1EBFng Vi\u1EC7t \u0111\u1EC3 hi\u1EC3n th\u1ECB."),
+        optimized_english_prompt: stringField("Detailed, professional, photorealistic English rendering prompt for the image generator, strictly avoiding CGI/AI-style artifacts."),
         prompt_phu_dinh: stringField("C\xE1c l\u1ED7i c\u1EA7n tr\xE1nh.")
       },
       [
@@ -2622,6 +3139,7 @@ Tone m\xE0u: ${colorTone}
         "danh_sach_noi_that_va_vat_lieu",
         "logic_camera_va_ty_le_khung_hinh",
         "prompt_tieng_viet_toi_uu",
+        "optimized_english_prompt",
         "prompt_phu_dinh"
       ]
     );
@@ -2632,6 +3150,10 @@ Phong c\xE1ch: ${interiorStyle}
 Gi\u1EEF \u0111\xFAng b\u1ED1 c\u1EE5c m\u1EB7t b\u1EB1ng, t\u01B0\u1EDDng, c\u1EEDa, n\u1ED9i th\u1EA5t theo floorplan.
 Y\xEAu c\u1EA7u l\xE0m s\u1EA1ch b\u1EA3n v\u1EBD: ${floorplanSpaceCleanupDirective}
 `;
+    if (referenceImages.length > 0) {
+      textPrompt += `Quy t\u1EAFc \u1EA3nh tham kh\u1EA3o n\u1ED9i th\u1EA5t: Gi\u1EEF nguy\xEAn tuy\u1EC7t \u0111\u1ED1i v\u1ECB tr\xED, lo\u1EA1i v\xE0 s\u1EAFp x\u1EBFp c\u1EE7a t\u1EEBng m\xF3n \u0111\u1ED3 n\u1ED9i th\u1EA5t c\xF3 trong \u1EA3nh tham kh\u1EA3o (gi\u01B0\u1EDDng, t\u1EE7, b\xE0n, gh\u1EBF, \u0111\xE8n, v.v.). TUY\u1EC6T \u0110\u1ED0I kh\xF4ng di chuy\u1EC3n, xoay, th\xEAm ho\u1EB7c b\u1ECF b\u1EA5t k\u1EF3 m\xF3n \u0111\u1ED3 n\xE0o so v\u1EDBi \u1EA3nh tham kh\u1EA3o. Ch\u1EC9 \u0111\u01B0\u1EE3c ph\xE9p \xE1p d\u1EE5ng phong c\xE1ch ho\xE0n thi\u1EC7n b\u1EC1 m\u1EB7t (m\xE0u s\u1EAFc, v\u1EADt li\u1EC7u, \xE1nh s\xE1ng) t\u1EEB \u1EA3nh tham kh\u1EA3o l\xEAn v\u1ECB tr\xED \u0111\u1ED3 v\u1EADt \u0111\xE3 c\u1ED1 \u0111\u1ECBnh.
+`;
+    }
     if (cameraAngleStyle) {
       textPrompt += `Style g\xF3c ch\u1EE5p: ${cameraAngleStyle}
 `;
@@ -2642,16 +3164,19 @@ Y\xEAu c\u1EA7u l\xE0m s\u1EA1ch b\u1EA3n v\u1EBD: ${floorplanSpaceCleanupDirect
       "B\u1EA1n l\xE0 chuy\xEAn gia chuy\u1EC3n m\u1EB7t b\u1EB1ng th\xE0nh kh\xF4ng gian 3D.",
       "M\u1EE5c ti\xEAu l\xE0 d\u1EF1ng l\u1EA1i kh\xF4ng gian t\u1EEB floorplan th\u1EADt ch\xEDnh x\xE1c, kh\xF4ng \u0111\u01B0\u1EE3c ph\xE1 v\u1EE1 b\u1ED1 c\u1EE5c.",
       "Ph\u1EA3i ph\xE2n bi\u1EC7t ro rang giua du lieu bo cuc can giu va dau vet do hoa ban ve can xoa bo.",
+      "Kh\xF4ng \u0111\u01B0\u1EE3c ph\xE9p suy lu\u1EADn sang t\u1EA1o v\xE0o ki\u1EBFn tr\xFAc n\u1EBFu b\u1EA3n v\u1EBD kh\xF4ng th\u1EC3 hi\u1EC7n; \u01B0u ti\xEAn b\u1EA3o t\u1ED3n \xFD nguy\xEAn b\u1EA3n v\u1EBD h\u01A1n th\u1EA9m m\u1EF9 h\xECnh \u1EA3nh.",
+      "N\u1EBFu c\xF3 th\u1EC3 nh\u1EADn di\u1EC7n \u0111\u1ED3 n\u1ED9i th\u1EA5t t\u1EEB b\u1EA3n v\u1EBD ho\u1EB7c \u1EA3nh tham kh\u1EA3o, t\u1EEBng m\xF3n ph\u1EA3i gi\u1EEF \u0111\xFAng lo\u1EA1i, v\u1ECB tr\xED, h\u01B0\u1EDBng v\xE0 quan h\u1EC7 kh\xF4ng gian; kh\xF4ng \u0111\u01B0\u1EE3c t\u1EF1 \xFD di chuy\u1EC3n, xoay, th\xEAm ho\u1EB7c b\u1ECF.",
+      referenceImages.length > 0 ? "Khi c\xF3 \u1EA3nh tham kh\u1EA3o n\u1ED9i th\u1EA5t: ch\u1EC9 \u0111\u01B0\u1EE3c h\u1ECDc phong c\xE1ch ho\xE0n thi\u1EC7n b\u1EC1 m\u1EB7t t\u1EEB \u1EA3nh tham kh\u1EA3o, c\xF2n layout \u0111\u1ED3 v\u1EADt v\xE0 ki\u1EBFn tr\xFAc ph\u1EA3i b\u1EA5t bi\u1EBFn theo b\u1EA3n v\u1EBD v\xE0 v\u1ECB tr\xED nh\u1EADn di\u1EC7n \u0111\u01B0\u1EE3c t\u1EEB \u0111\u1EA7u v\xE0o." : "N\u1EBFu kh\xF4ng c\xF3 \u1EA3nh tham kh\u1EA3o n\u1ED9i th\u1EA5t, ch\u1EC9 d\u1EF1ng nh\u1EEFng g\xEC suy ra \u0111\u01B0\u1EE3c ch\u1EAFc ch\u1EAFn t\u1EEB b\u1EA3n v\u1EBD v\xE0 th\xF4ng s\u1ED1 ng\u01B0\u1EDDi d\xF9ng cung c\u1EA5p.",
       "T\u1EA5t c\u1EA3 \u0111\u1EA7u ra ph\u1EA3i b\u1EB1ng ti\u1EBFng Vi\u1EC7t v\xE0 t\u1EADp trung v\xE0o prompt cu\u1ED1i kh\u1EA3 thi cho image model."
     ].join(" ");
     responseSchema = objectSchema(
       {
         phan_tich_mat_bang: stringField("T\xF3m t\u1EAFt nh\u1EADn di\u1EC7n m\u1EB7t b\u1EB1ng."),
-        logic_phong_cach_va_tham_khao: stringField("T\u1ED5ng h\u1EE3p phong c\xE1ch c\u1EA7n \xE1p d\u1EE5ng."),
+        logic_phong_cach_va_tham_khao: stringField("T\u1ED5ng h\u1EE3p phong c\xE1ch \xE1p d\u1EE5ng. N\u1EBFu c\xF3 \u1EA3nh tham kh\u1EA3o n\u1ED9i th\u1EA5t, li\u1EC7t k\xEA r\xF5 t\u1EEBng m\xF3n \u0111\u1ED3 v\xE0 v\u1ECB tr\xED c\u1EA7n gi\u1EEF."),
         logic_che_do_render_va_camera: stringField("L\u1EF1a ch\u1ECDn g\xF3c ch\u1EE5p v\xE0 ch\u1EBF \u0111\u1ED9 render."),
-        so_do_bo_tri_noi_that: stringField("Nguy\xEAn t\u1EAFc b\u1ED1 tr\xED n\u1ED9i th\u1EA5t c\u1EA7n gi\u1EEF."),
-        prompt_tieng_viet_toi_uu: stringField("Prompt render cu\u1ED1i c\xF9ng."),
-        prompt_phu_dinh: stringField("C\xE1c l\u1ED7i c\u1EA7n tr\xE1nh.")
+        so_do_bo_tri_noi_that: stringField("S\u01A1 \u0111\u1ED3 b\u1ED1 tr\xED n\u1ED9i th\u1EA5t b\u1EA5t bi\u1EBFn: li\u1EC7t k\xEA t\u1EEBng m\xF3n \u0111\u1ED3 v\xE0 v\u1ECB tr\xED c\u1EE5 th\u1EC3 theo b\u1EA3n v\u1EBD v\xE0 \u1EA3nh tham kh\u1EA3o (n\u1EBFu c\xF3). Kh\xF4ng \u0111\u01B0\u1EE3c thay \u0111\u1ED5i."),
+        prompt_tieng_viet_toi_uu: stringField("Prompt render cu\u1ED1i c\xF9ng. Ph\u1EA3i n\xEAu r\xF5 v\u1ECB tr\xED t\u1EEBng m\xF3n \u0111\u1ED3 n\u1ED9i th\u1EA5t kh\xF4ng \u0111\u01B0\u1EE3c thay \u0111\u1ED5i."),
+        prompt_phu_dinh: stringField("C\xE1c l\u1ED7i c\u1EA7n tr\xE1nh, bao g\u1ED3m: moved furniture, repositioned objects, rearranged interior.")
       },
       [
         "phan_tich_mat_bang",
@@ -2668,7 +3193,13 @@ Style c\xF4ng tr\xECnh: ${buildingStyle}
 Phong c\xE1ch: ${interiorStyle}
 Kh\xF4ng \u0111\u01B0\u1EE3c bi\u1EBFn floorplan th\xE0nh \u1EA3nh n\u1ED9i th\u1EA5t th\xF4ng th\u01B0\u1EDDng.
 Y\xEAu c\u1EA7u l\xE0m s\u1EA1ch b\u1EA3n v\u1EBD: ${floorplanAxonometricCleanupDirective}
+Y\xEAu c\u1EA7u m\xE0u s\u1EAFc: M\xF4 h\xECnh ph\u1ED1i c\u1EA3nh 3D axonometric ph\u1EA3i c\xF3 m\xE0u s\u1EAFc sinh \u0111\u1ED9ng, \u0111\u1EA7y \u0111\u1EE7 v\u1EADt li\u1EC7u (v\xED d\u1EE5: s\xE0n g\u1ED7 ho\u1EB7c g\u1EA1ch m\xE0u, t\u01B0\u1EDDng s\u01A1n m\xE0u \u1EA5m/s\xE1ng/kem, \u0111\u1ED3 n\u1ED9i th\u1EA5t c\xF3 m\xE0u s\u1EAFc v\xE0 ch\u1EA5t li\u1EC7u r\xF5 r\xE0ng nh\u01B0 g\u1ED7, v\u1EA3i, da), tuy\u1EC7t \u0111\u1ED1i kh\xF4ng \u0111\u1EC3 m\xE0u tr\u1EAFng to\xE0n b\u1ED9 (clay model) hay \u0111\u01A1n s\u1EAFc monochrome.
+Y\xEAu c\u1EA7u ph\xE2n t\xEDch: B\u1EAET BU\u1ED8C nh\u1EADn di\u1EC7n t\u1EA5t c\u1EA3 c\xE1c nh\xE3n ch\u1EEF ch\u1EC9 t\xEAn ph\xF2ng ho\u1EB7c c\xF4ng n\u0103ng vi\u1EBFt tr\xEAn b\u1EA3n v\u1EBD (v\xED d\u1EE5: Ph\xF2ng kh\xE1ch, Ph\xF2ng ng\u1EE7, WC, B\u1EBFp, Thang...). H\xE3y m\xF4 t\u1EA3 r\xF5 b\u1ED1 c\u1EE5c v\xE0 v\u1ECB tr\xED c\xE1c ph\xF2ng n\xE0y trong prompt \u0111\u1EC3 m\xF4 h\xECnh sinh \u1EA3nh d\u1EF1ng \u0111\xFAng c\xF4ng n\u0103ng ph\xF2ng.
 `;
+    if (referenceImages.length > 0) {
+      textPrompt += `Quy t\u1EAFc \u1EA3nh tham kh\u1EA3o n\u1ED9i th\u1EA5t: Gi\u1EEF nguy\xEAn tuy\u1EC7t \u0111\u1ED1i v\u1ECB tr\xED, lo\u1EA1i v\xE0 s\u1EAFp x\u1EBFp c\u1EE7a t\u1EEBng m\xF3n \u0111\u1ED3 n\u1ED9i th\u1EA5t c\xF3 trong \u1EA3nh tham kh\u1EA3o. TUY\u1EC6T \u0110\u1ED0I kh\xF4ng di chuy\u1EC3n, xoay, th\xEAm ho\u1EB7c b\u1ECF b\u1EA5t k\u1EF3 m\xF3n \u0111\u1ED3 n\xE0o. Ch\u1EC9 \u0111\u01B0\u1EE3c \xE1p d\u1EE5ng phong c\xE1ch ho\xE0n thi\u1EC7n b\u1EC1 m\u1EB7t t\u1EEB \u1EA3nh tham kh\u1EA3o l\xEAn v\u1ECB tr\xED \u0111\u1ED3 v\u1EADt \u0111\xE3 c\u1ED1 \u0111\u1ECBnh theo b\u1EA3n v\u1EBD.
+`;
+    }
     if (cameraAngleStyle) {
       textPrompt += `Style g\xF3c ch\u1EE5p: ${cameraAngleStyle}
 `;
@@ -2677,17 +3208,21 @@ Y\xEAu c\u1EA7u l\xE0m s\u1EA1ch b\u1EA3n v\u1EBD: ${floorplanAxonometricCleanup
 `;
     systemInstruction = [
       "B\u1EA1n l\xE0 chuy\xEAn gia ph\xE2n t\xEDch floorplan 2D v\xE0 t\xE1i d\u1EF1ng th\xE0nh kh\xF4ng gian 3D ch\xEDnh x\xE1c.",
+      "B\u1EAET BU\u1ED8C: H\xE3y \u0111\u1ECDc k\u1EF9 \u1EA3nh m\u1EB7t b\u1EB1ng \u0111\u1EA7u v\xE0o, t\xECm v\xE0 nh\u1EADn di\u1EC7n \u0111\xFAng t\u1EA5t c\u1EA3 c\xE1c nh\xE3n ch\u1EEF ch\u1EC9 t\xEAn/c\xF4ng n\u0103ng ph\xF2ng (v\xED d\u1EE5: Ph\xF2ng kh\xE1ch, Ph\xF2ng ng\u1EE7, WC, B\u1EBFp, C\u1EA7u thang...). B\u1EA1n ph\u1EA3i m\xF4 t\u1EA3 chi ti\u1EBFt v\u1ECB tr\xED c\u1EE7a t\u1EEBng khu v\u1EF1c ch\u1EE9c n\u0103ng n\xE0y trong prompt cu\u1ED1i c\xF9ng \u0111\u1EC3 m\xF4 h\xECnh sinh \u1EA3nh x\u1EBFp \u0111\xFAng v\u1ECB tr\xED, tuy\u1EC7t \u0111\u1ED1i kh\xF4ng \u0111\u01B0\u1EE3c t\u1EF1 \xFD \u0111\u1ED5i c\xF4ng n\u0103ng ph\xF2ng (kh\xF4ng bi\u1EBFn WC th\xE0nh ph\xF2ng ng\u1EE7, kh\xF4ng v\u1EBD nh\u1EA7m ph\xF2ng ng\u1EE7 th\xE0nh ph\xF2ng kh\xE1ch).",
       "M\u1EB7t b\u1EB1ng l\xE0 s\u1EF1 th\u1EADt tuy\u1EC7t \u0111\u1ED1i: t\u01B0\u1EDDng, c\u1EEDa, thang, v\xE1ch v\xE0 nh\xE3n ph\xF2ng ph\u1EA3i \u0111\u01B0\u1EE3c t\xF4n tr\u1ECDng.",
-      "Nhan phong va ky hieu chi dung de suy luan bo cuc, khong duoc xuat hien lai trong anh ket qua.",
+      "Nh\xE3n ph\xF2ng v\xE0 k\xFD hi\u1EC7u ch\u1EC9 d\xF9ng \u0111\u1EC3 suy lu\u1EADn b\u1ED1 tr\xED, kh\xF4ng \u0111\u01B0\u1EE3c xu\u1EA5t hi\u1EC7n l\u1EA1i trong \u1EA3nh k\u1EBFt qu\u1EA3.",
+      "Kh\xF4ng \u0111\u01B0\u1EE3c ph\xE9p b\u1ED5 sung, x\xF3a b\u1ECF ho\u1EB7c s\u1EEDa \u0111\u1ED5i b\u1EA5t k\u1EF3 th\xE0nh ph\u1EA7n ki\u1EBFn tr\xFAc n\xE0o kh\xF4ng c\xF3 trong b\u1EA3n v\u1EBD; n\u1EBFu kh\xF4ng ch\u1EAFc, ph\u1EA3i gi\u1EEF nguy\xEAn thay v\xEC t\u1EF1 b\u1ECBa.",
+      "M\xF4 h\xECnh 3D axonometric ph\u1EA3i \u0111\u01B0\u1EE3c t\xF4 m\xE0u \u0111\u1EA7y \u0111\u1EE7, sinh \u0111\u1ED9ng cho s\xE0n, t\u01B0\u1EDDng, v\xE0 \u0111\u1ED3 n\u1ED9i th\u1EA5t theo phong c\xE1ch thi\u1EBFt k\u1EBF \u0111\xE3 ch\u1ECDn. KH\xD4NG \u0111\u01B0\u1EE3c t\u1EA1o m\xF4 h\xECnh \u0111\u1EA5t s\xE9t tr\u1EAFng (white clay model) hay \u0111\u01A1n s\u1EAFc tr\u1EAFng.",
+      referenceImages.length > 0 ? "Khi c\xF3 \u1EA3nh tham kh\u1EA3o n\u1ED9i th\u1EA5t: t\u1EEBng m\xF3n \u0111\u1ED3 tham kh\u1EA3o ch\u1EC9 \u0111\u01B0\u1EE3c d\xF9ng \u0111\u1EC3 kh\xF3a \u0111\xFAng ch\u1EE7ng lo\u1EA1i, h\u01B0\u1EDBng v\xE0 v\u1ECB tr\xED t\u01B0\u01A1ng \u1EE9ng theo m\u1EB7t b\u1EB1ng; kh\xF4ng t\u1EF1 \xFD th\xEAm b\u1EDBt hay di chuy\u1EC3n." : "N\u1EBFu kh\xF4ng c\xF3 \u1EA3nh tham kh\u1EA3o n\u1ED9i th\u1EA5t, b\u1ED1 tr\xED \u0111\u1ED3 \u0111\u1EA1c ph\u1EA3i b\xE1m logic m\u1EB7t b\u1EB1ng v\xE0 ch\u1EC9 d\u1EF1ng nh\u1EEFng g\xEC suy ra ch\u1EAFc ch\u1EAFn t\u1EEB b\u1EA3n v\u1EBD.",
       "T\u1EA5t c\u1EA3 \u0111\u1EA7u ra b\u1EB1ng ti\u1EBFng Vi\u1EC7t, \u01B0u ti\xEAn prompt cu\u1ED1i d\xF9ng \u0111\u01B0\u1EE3c ngay."
     ].join(" ");
     responseSchema = objectSchema(
       {
-        phan_tich_khoa_goc_ghi_hinh: stringField("T\xF3m t\u1EAFt c\xE1ch kh\xF3a logic floorplan."),
+        phan_tich_khoa_goc_ghi_hinh: stringField("Ph\xE2n t\xEDch chi ti\u1EBFt m\u1EB7t b\u1EB1ng: nh\u1EADn di\u1EC7n v\xE0 li\u1EC7t k\xEA t\u1EA5t c\u1EA3 c\xE1c ph\xF2ng/khu v\u1EF1c ch\u1EE9c n\u0103ng k\xE8m nh\xE3n t\xEAn t\u01B0\u01A1ng \u1EE9ng \u0111\u1EC3 \u0111\u1EA3m b\u1EA3o m\xF4 h\xECnh kh\xF4ng hi\u1EC3u sai l\u1EC7ch."),
         logic_phong_cach_va_cong_trinh: stringField("T\u1ED5ng h\u1EE3p phong c\xE1ch v\xE0 logic c\xF4ng tr\xECnh."),
         quyet_dinh_cat_tuong: stringField("M\xF4 t\u1EA3 chi\u1EBFn l\u01B0\u1EE3c c\u1EAFt t\u01B0\u1EDDng n\u1EBFu c\u1EA7n."),
         thiet_lap_anh_sang_va_studio: stringField("Thi\u1EBFt l\u1EADp \xE1nh s\xE1ng v\xE0 c\xE1ch tr\xECnh b\xE0y."),
-        prompt_tieng_viet_toi_uu: stringField("Prompt cu\u1ED1i c\xF9ng."),
+        prompt_tieng_viet_toi_uu: stringField("Prompt render cu\u1ED1i c\xF9ng. Ph\u1EA3i m\xF4 t\u1EA3 r\xF5 r\xE0ng v\u1ECB tr\xED c\u1EE5 th\u1EC3 c\u1EE7a t\u1EEBng ph\xF2ng/khu v\u1EF1c ch\u1EE9c n\u0103ng \u0111\xE3 nh\u1EADn di\u1EC7n."),
         prompt_phu_dinh: stringField("C\xE1c l\u1ED7i c\u1EA7n tr\xE1nh.")
       },
       [
@@ -2709,8 +3244,16 @@ B\u1ED1i c\u1EA3nh: ${context}
       textPrompt += `G\xF3c ch\u1EE5p: ${selectedAngle}
 `;
     }
+    textPrompt += [
+      "R\xE0ng bu\u1ED9c masterplan: ph\u1EA3i gi\u1EEF nguy\xEAn logic ph\xE2n khu, m\u1EA1ng l\u01B0\u1EDBi giao th\xF4ng, v\u1ECB tr\xED c\xF4ng tr\xECnh, m\u1EB7t n\u01B0\u1EDBc, c\xE2y xanh, ti\u1EC7n \xEDch, kho\u1EA3ng l\xF9i v\xE0 quan h\u1EC7 kh\xF4ng gian theo b\u1EA3n v\u1EBD g\u1ED1c.",
+      "Kh\xF4ng \u0111\u01B0\u1EE3c t\u1EF1 th\xEAm, b\u1EDBt, di chuy\u1EC3n, xoay ho\u1EB7c ho\xE1n \u0111\u1ED5i c\xE1c kh\u1ED1i c\xF4ng tr\xECnh, \u0111\u01B0\u1EDDng n\u1ED9i b\u1ED9, qu\u1EA3ng tr\u01B0\u1EDDng, h\u1ED3 c\u1EA3nh quan hay c\u1EE5m ch\u1EE9c n\u0103ng n\u1EBFu \u0111\u1EA7u v\xE0o kh\xF4ng th\u1EC3 hi\u1EC7n.",
+      "Ph\u1EA3i x\xF3a s\u1EA1ch m\u1ECDi ch\u1EEF, k\xFD hi\u1EC7u quy ho\u1EA1ch, dimension, m\u0169i t\xEAn, l\u01B0\u1EDBi tr\u1EE5c, ghi ch\xFA CAD, legend v\xE0 watermark kh\u1ECFi \u1EA3nh k\u1EBFt qu\u1EA3.",
+      "N\u1EBFu b\u1EA3n v\u1EBD kh\xF4ng r\xF5 m\u1ED9t chi ti\u1EBFt, \u01B0u ti\xEAn gi\u1EEF logic hi\u1EC7n tr\u1EA1ng g\u1EA7n nh\u1EA5t thay v\xEC t\u1EF1 s\xE1ng t\xE1c b\u1ED1 c\u1EE5c m\u1EDBi."
+    ].join(" ") + "\n";
     systemInstruction = [
       "B\u1EA1n l\xE0 chuy\xEAn gia bi\xEAn so\u1EA1n prompt masterplan 3D.",
+      "M\u1EE5c ti\xEAu l\xE0 d\u1EF1ng l\u1EA1i masterplan 3D b\xE1m s\xE1t b\u1EA3n v\u1EBD quy ho\u1EA1ch g\u1ED1c, \u01B0u ti\xEAn t\xEDnh \u0111\xFAng \u0111\u1EAFn kh\xF4ng gian h\u01A1n hi\u1EC7u \u1EE9ng \u0111\u1EB9p m\u1EAFt.",
+      "Kh\xF4ng \u0111\u01B0\u1EE3c s\xE1ng t\xE1c l\u1EA1i zoning, massing, \u0111\u01B0\u1EDDng giao th\xF4ng hay th\xEAm b\u1EDBt ti\u1EC7n \xEDch ngo\xE0i d\u1EEF li\u1EC7u \u0111\u1EA7u v\xE0o.",
       "Tr\u1EA3 v\u1EC1 JSON ng\u1EAFn g\u1ECDn v\xE0 prompt cu\u1ED1i c\xF3 th\u1EC3 render \u0111\u01B0\u1EE3c ngay."
     ].join(" ");
     thinkingLevel = "high";
@@ -2721,7 +3264,7 @@ B\u1ED1i c\u1EA3nh: ${context}
         camera_and_scale_logic: stringField("Logic g\xF3c nh\xECn v\xE0 t\u1EF7 l\u1EC7."),
         style_lighting_and_context: stringField("T\u1ED5ng h\u1EE3p phong c\xE1ch, \xE1nh s\xE1ng, b\u1ED1i c\u1EA3nh."),
         optimized_english_prompt: stringField("Prompt cu\u1ED1i c\xF9ng."),
-        negative_prompt: stringField("C\xE1c l\u1ED7i c\u1EA7n tr\xE1nh.")
+        negative_prompt: stringField("C\xE1c l\u1ED7i c\u1EA7n tr\xE1nh, \u0111\u1EB7c bi\u1EC7t l\u1ED7i b\u1ECBa zoning, sai giao th\xF4ng, sai v\u1ECB tr\xED kh\u1ED1i c\xF4ng tr\xECnh v\xE0 c\xF2n s\xF3t annotation quy ho\u1EA1ch.")
       },
       [
         "masterplan_analysis",

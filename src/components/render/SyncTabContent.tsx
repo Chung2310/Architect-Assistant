@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Icon } from "../Icon";
 import { toast } from "sonner";
 import Markdown from "react-markdown";
@@ -47,13 +47,13 @@ interface RenderJob {
 
 const MODELS = [
   {
-    id: "nano-banana-pro",
-    name: "Nano Banana Pro (PiAPI)",
-    isPro: true,
-  },
-  {
     id: "nano-banana-2",
     name: "Nano Banana 2 (Gemini 3.1 Flash Image)",
+    isPro: false,
+  },
+  {
+    id: "nano-banana-pro",
+    name: "Nano Banana Pro (Gemini 3 Pro Image)",
     isPro: true,
   },
 ];
@@ -934,7 +934,7 @@ export const SyncTabContent: React.FC = () => {
     try {
       updateStatus(5, "Đang tải ảnh gốc...");
       const ai = await getAIClient(
-        suggestion.selectedModel || "gemini-3.1-flash-image",
+        suggestion.selectedModel || "gemini-3-pro-image",
       );
 
       let base64Data = "";
@@ -959,7 +959,7 @@ export const SyncTabContent: React.FC = () => {
       }
 
       const selectedModel =
-        suggestion.selectedModel || "nano-banana-2";
+        suggestion.selectedModel || "nano-banana-pro";
 
       const generatedImageUrls: string[] = [];
 
@@ -1191,7 +1191,7 @@ export const SyncTabContent: React.FC = () => {
                         null,
                         2,
                       ),
-                      selectedModel: "nano-banana-2",
+                      selectedModel: "nano-banana-pro",
                     };
                   },
                 ),
@@ -1583,7 +1583,7 @@ export const SyncTabContent: React.FC = () => {
                                           className="w-full bg-surface-container-lowest border border-outline-variant/20 focus:border-primary rounded-lg p-2 text-xs font-medium text-on-surface appearance-none outline-none cursor-pointer pr-10 text-ellipsis overflow-hidden whitespace-nowrap"
                                           value={
                                             suggestion.selectedModel ||
-                                            "nano-banana-2"
+                                            "nano-banana-pro"
                                           }
                                           onChange={(e) => {
                                             const newCats = [
