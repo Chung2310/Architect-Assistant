@@ -597,6 +597,71 @@ const ROOM_STYLES = [
   }
 ];
 
+const STYLE_PRESETS: Record<string, {
+  flooring: string;
+  walls: string;
+  ceiling: string;
+  doors: string;
+  windows: string;
+}> = {
+  Rustic: {
+    flooring: "Red Oak",
+    walls: "White Plaster",
+    ceiling: "#ffffff",
+    doors: "natural_oak",
+    windows: "#1e293b",
+  },
+  Traditional: {
+    flooring: "natural_oak",
+    walls: "White Plaster",
+    ceiling: "#ffffff",
+    doors: "natural_oak",
+    windows: "#ffffff",
+  },
+  "Mid-century Modern": {
+    flooring: "Red Oak",
+    walls: "White Plaster",
+    ceiling: "#ffffff",
+    doors: "natural_oak",
+    windows: "#1e293b",
+  },
+  Scandinavian: {
+    flooring: "White Oak",
+    walls: "White Plaster",
+    ceiling: "#ffffff",
+    doors: "#ffffff",
+    windows: "#1e293b",
+  },
+  Modern: {
+    flooring: "Concrete - Light",
+    walls: "White Plaster",
+    ceiling: "#ffffff",
+    doors: "#ffffff",
+    windows: "#1e293b",
+  },
+  Farmhouse: {
+    flooring: "Birch",
+    walls: "White Plaster",
+    ceiling: "#ca8a04",
+    doors: "natural_oak",
+    windows: "#ffffff",
+  },
+  Coastal: {
+    flooring: "White Herringbone",
+    walls: "White Plaster",
+    ceiling: "#ffffff",
+    doors: "#ffffff",
+    windows: "#ffffff",
+  },
+  Industrial: {
+    flooring: "Concrete - Dark",
+    walls: "Exposed Brick",
+    ceiling: "#cbd5e1",
+    doors: "#1e293b",
+    windows: "#1e293b",
+  }
+};
+
 const ROOM_FLOORINGS = [
   {
     name: "White Wood Panelling",
@@ -813,8 +878,8 @@ const FURNITURE_CATEGORIES = [
         type: "wc_bathtub",
         name: "Bồn tắm",
         subItems: [
-          { type: "wc_bathtub", name: "Bồn tắm xây", style: "jacuzzi", w: 1.6, h: 0.8 },
-          { type: "wc_bathtub", name: "Bồn tắm độc lập", style: "freestanding", w: 1.6, h: 0.8 }
+          { type: "wc_bathtub", name: "Bồn tắm xây", style: "jacuzzi", w: 0.8, h: 1.6 },
+          { type: "wc_bathtub", name: "Bồn tắm độc lập", style: "freestanding", w: 0.8, h: 1.6 }
         ]
       },
       {
@@ -1067,6 +1132,13 @@ export const FloorPlanEditor: React.FC = () => {
   const [showDimensions, setShowDimensions] = useState(true);
   const [showLabels, setShowLabels] = useState(false);
 
+  // ── Draw-Wall mode state ──────────────────────────────────────────────────
+  const [drawingPoints, setDrawingPoints] = useState<{ x: number; y: number }[]>([]);
+  const [drawMousePos, setDrawMousePos] = useState<{ x: number; y: number } | null>(null);
+  const [drawWallRoomName, setDrawWallRoomName] = useState<string>("Phòng mới");
+  const [showDrawWallNameModal, setShowDrawWallNameModal] = useState(false);
+  const [activeTool, setActiveTool] = useState<"select" | "draw_wall">("select");
+
   const getSelectedFurniture = () => {
     if (!selectedFurnitureId || !floorPlan) return null;
     for (const room of floorPlan.rooms) {
@@ -1163,6 +1235,23 @@ export const FloorPlanEditor: React.FC = () => {
   // ── Undo/Redo keyboard shortcut ──────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape cancels draw_wall mode
+      if (e.key === "Escape") {
+        if (activeTool === "draw_wall") {
+          setDrawingPoints([]);
+          setDrawMousePos(null);
+          setActiveTool("select");
+        }
+        return;
+      }
+      // Enter / Backspace during draw mode
+      if (activeTool === "draw_wall") {
+        if (e.key === "Backspace") {
+          setDrawingPoints(prev => prev.slice(0, -1));
+          return;
+        }
+        return;
+      }
       if (!floorPlan) return;
       const isUndo = (e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey;
       const isRedo = (e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey));
@@ -1198,7 +1287,7 @@ export const FloorPlanEditor: React.FC = () => {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [floorPlan, floorPlans, activeFloorIndex]);
+  }, [floorPlan, floorPlans, activeFloorIndex, activeTool]);
 
   // ── Push to undo history helper ──────────────────────────────────────────
   const pushHistory = useCallback((plan: FloorPlanData) => {
@@ -1797,8 +1886,107 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
     setPan({ x: pointer.x - to.x * newScale, y: pointer.y - to.y * newScale });
   };
 
+  // ── Snap-to-grid helper for draw_wall ───────────────────────────────────
+  const snapGridSize = 0.5; // snap every 0.5m
+  const screenToWorld = (sx: number, sy: number) => {
+    const scale = METER_TO_PX * zoom;
+    return {
+      x: (sx - pan.x) / scale,
+      y: (sy - pan.y) / scale,
+    };
+  };
+  const snapToGrid = (wx: number, wy: number) => ({
+    x: Math.round(wx / snapGridSize) * snapGridSize,
+    y: Math.round(wy / snapGridSize) * snapGridSize,
+  });
+
+  // ── Finalise drawn polygon into a new room ───────────────────────────────
+  const finaliseDrawWall = (pts: { x: number; y: number }[]) => {
+    if (pts.length < 3) {
+      toast.error("Vẽ ít nhất 3 điểm để tạo phòng!");
+      return;
+    }
+    const xs = pts.map(p => p.x);
+    const ys = pts.map(p => p.y);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const maxX = Math.max(...xs);
+    const maxY = Math.max(...ys);
+    const w = parseFloat((maxX - minX).toFixed(2));
+    const h = parseFloat((maxY - minY).toFixed(2));
+    if (w < 0.5 || h < 0.5) {
+      toast.error("Phòng quá nhỏ, vui lòng vẽ lại!");
+      return;
+    }
+    const newRoom: Room = {
+      id: `room_drawn_${Date.now()}`,
+      name: drawWallRoomName || "Phòng mới",
+      x: parseFloat(minX.toFixed(2)),
+      y: parseFloat(minY.toFixed(2)),
+      w,
+      h,
+      color: ROOM_COLORS[drawWallRoomName] || ROOM_COLORS["default"],
+      furniture: [],
+      finishes: {
+        flooring: "natural_oak",
+        walls: "soft_white",
+        ceiling: "paint_white",
+        doors: "natural_oak",
+        windows: "clear_glass",
+      },
+    };
+    newRoom.furniture = getDefaultFurnitureForRoom(newRoom);
+
+    if (!floorPlan) {
+      // No plan yet — create a minimal one
+      const plan: FloorPlanData = { rooms: [newRoom], openings: [] };
+      setFloorPlan(plan);
+      setFloorPlans([plan]);
+    } else {
+      pushHistory(floorPlan);
+      const updatedPlan = { ...floorPlan, rooms: [...floorPlan.rooms, newRoom] };
+      setFloorPlan(updatedPlan);
+      const nextPlans = [...floorPlans];
+      nextPlans[activeFloorIndex] = updatedPlan;
+      setFloorPlans(nextPlans);
+    }
+
+    setSelectedRoomId(newRoom.id);
+    setDrawingPoints([]);
+    setDrawMousePos(null);
+    setActiveTool("select");
+    toast.success(`Đã tạo "${newRoom.name}" (${w.toFixed(1)} × ${h.toFixed(1)} m)`);
+  };
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleStageMouseDown = (e: any) => {
+    // ── Draw Wall mode: place a point on click ──────────────────────────────
+    if (activeTool === "draw_wall") {
+      const p = e.target.getStage().getPointerPosition();
+      const world = screenToWorld(p.x, p.y);
+      const snapped = snapToGrid(world.x, world.y);
+
+      // Double-click detection: if last point is very close to current → close polygon
+      if (drawingPoints.length >= 2) {
+        const last = drawingPoints[drawingPoints.length - 1];
+        const dist = Math.sqrt((last.x - snapped.x) ** 2 + (last.y - snapped.y) ** 2);
+        if (dist < 0.35) {
+          // Close polygon and create room
+          setShowDrawWallNameModal(true);
+          return;
+        }
+        // Close to first point → also close
+        const first = drawingPoints[0];
+        const distFirst = Math.sqrt((first.x - snapped.x) ** 2 + (first.y - snapped.y) ** 2);
+        if (distFirst < 0.35 && drawingPoints.length >= 3) {
+          setShowDrawWallNameModal(true);
+          return;
+        }
+      }
+      setDrawingPoints(prev => [...prev, snapped]);
+      return;
+    }
+    // ── Normal mode: pan ────────────────────────────────────────────────────
     if (e.target === e.target.getStage()) {
       setIsPanning(true);
       const p = e.target.getStage().getPointerPosition();
@@ -1811,11 +1999,134 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleStageMouseMove = (e: any) => {
-    if (!isPanning) return;
     const p = e.target.getStage().getPointerPosition();
+    if (activeTool === "draw_wall") {
+      const world = screenToWorld(p.x, p.y);
+      const snapped = snapToGrid(world.x, world.y);
+      setDrawMousePos(snapped);
+      return;
+    }
+    if (!isPanning) return;
     setPan({ x: p.x - panStart.current.x, y: p.y - panStart.current.y });
   };
   const handleStageMouseUp = () => setIsPanning(false);
+
+  // ── Render the live draw_wall preview on Konva canvas ───────────────────
+  const renderDrawWallPreview = () => {
+    if (activeTool !== "draw_wall") return null;
+    const scale = METER_TO_PX * zoom;
+    const toScreen = (wx: number, wy: number) => ({
+      x: pan.x + wx * scale,
+      y: pan.y + wy * scale,
+    });
+
+    const nodes: React.ReactNode[] = [];
+
+    // Draw completed segments
+    for (let i = 0; i < drawingPoints.length; i++) {
+      const sp = toScreen(drawingPoints[i].x, drawingPoints[i].y);
+      const next = i < drawingPoints.length - 1 ? drawingPoints[i + 1] : null;
+
+      if (next) {
+        const ep = toScreen(next.x, next.y);
+        nodes.push(
+          <Line
+            key={`seg_${i}`}
+            points={[sp.x, sp.y, ep.x, ep.y]}
+            stroke="#1e293b"
+            strokeWidth={4}
+            lineCap="round"
+          />
+        );
+        // Dimension label for completed segment
+        const len = Math.sqrt((next.x - drawingPoints[i].x) ** 2 + (next.y - drawingPoints[i].y) ** 2);
+        const mx = (sp.x + ep.x) / 2;
+        const my = (sp.y + ep.y) / 2;
+        nodes.push(
+          <Rect key={`dim_bg_${i}`} x={mx - 22} y={my - 10} width={44} height={18} fill="#1e293b" cornerRadius={4} />,
+          <Text
+            key={`dim_${i}`}
+            x={mx - 22}
+            y={my - 9}
+            width={44}
+            text={`${len.toFixed(1)}m`}
+            fontSize={11}
+            fontStyle="bold"
+            fill="#ffffff"
+            align="center"
+          />
+        );
+      }
+
+      // Vertex dot
+      const isFirst = i === 0;
+      nodes.push(
+        <Circle
+          key={`dot_${i}`}
+          x={sp.x}
+          y={sp.y}
+          radius={isFirst && drawingPoints.length >= 3 ? 8 : 5}
+          fill={isFirst ? "#22c55e" : "#1e293b"}
+          stroke="#ffffff"
+          strokeWidth={2}
+        />
+      );
+    }
+
+    // Draw live preview segment (from last point to mouse)
+    if (drawingPoints.length > 0 && drawMousePos) {
+      const lastPt = drawingPoints[drawingPoints.length - 1];
+      const sp = toScreen(lastPt.x, lastPt.y);
+      const ep = toScreen(drawMousePos.x, drawMousePos.y);
+      const len = Math.sqrt((drawMousePos.x - lastPt.x) ** 2 + (drawMousePos.y - lastPt.y) ** 2);
+      const mx = (sp.x + ep.x) / 2;
+      const my = (sp.y + ep.y) / 2;
+      nodes.push(
+        <Line
+          key="preview_line"
+          points={[sp.x, sp.y, ep.x, ep.y]}
+          stroke="#00b5cd"
+          strokeWidth={2}
+          dash={[8, 5]}
+          lineCap="round"
+        />,
+        <Rect key="preview_dim_bg" x={mx - 22} y={my - 10} width={44} height={18} fill="#00b5cd" cornerRadius={4} />,
+        <Text
+          key="preview_dim"
+          x={mx - 22}
+          y={my - 9}
+          width={44}
+          text={`${len.toFixed(1)}m`}
+          fontSize={11}
+          fontStyle="bold"
+          fill="#ffffff"
+          align="center"
+        />
+      );
+    }
+
+    // Cursor dot at mouse position
+    if (drawMousePos) {
+      const cp = toScreen(drawMousePos.x, drawMousePos.y);
+      const isNearFirst =
+        drawingPoints.length >= 3 &&
+        Math.sqrt((drawMousePos.x - drawingPoints[0].x) ** 2 + (drawMousePos.y - drawingPoints[0].y) ** 2) < 0.4;
+      nodes.push(
+        <Circle
+          key="cursor_dot"
+          x={cp.x}
+          y={cp.y}
+          radius={isNearFirst ? 10 : 5}
+          fill={isNearFirst ? "#22c55e" : "#00b5cd"}
+          stroke="#ffffff"
+          strokeWidth={2}
+          opacity={0.85}
+        />
+      );
+    }
+
+    return nodes;
+  };
 
   // ── Render 3D ──────────────────────────────────────────────────────────
   const handleRender3D = useCallback(async () => {
@@ -1945,7 +2256,7 @@ User prompt: "${enhancedPrompt}"`
       const renderPrompt = renderJobType === "Floorplan to 3D Floorplan"
         ? `You are a professional 3D architectural visualizer.
 Your task is to transform the provided floorplan preview into a polished 3D floorplan illustration with a clean axonometric/3D floorplan style.
-Style: ${gatherInfo.extras || "Modern Vietnamese contemporary"}.
+Style: ${selectedStyle || gatherInfo.extras || "Modern Vietnamese contemporary"}.
 
 Color and Material Guidelines:
 - The 3D floorplan model MUST be fully colored and textured.
@@ -1953,6 +2264,7 @@ Color and Material Guidelines:
 - Absolutely do NOT output a white clay model, raw plaster model, monochrome rendering, or all-white/grey visualization. It must look lively and colorful.
 
 Strict Layout & Furniture Preservation Guidelines:
+- The design style (${selectedStyle || "None"}) must only change the aesthetic finishes, colors, and textures of the walls, floors, and furniture. It MUST NOT alter, shift, or replace the architectural structure (walls, doors, windows, staircases) or the spatial layout of the furniture.
 - The floorplan consists of these rooms and layout: ${roomsDesc}. Each room must retain its specific function, placement, and interior elements as defined in the preview.
 - The input image is a floorplan preview. You MUST strictly preserve the exact room layout, wall positions, doors, windows and furniture arrangement.
 - Do NOT add, remove, or rearrange any furniture.
@@ -1967,9 +2279,10 @@ Requirements:
 - Output should resemble a professional 3D floorplan/axonometric render, not a typical interior photograph. Negative prompt: white clay model, monochrome, grayscale, raw plaster, all-white rendering, untextured model.${cameraPrompt}${customRoomPrompt}${customFurniturePrompt}`
         : `You are a professional 3D architectural visualizer.
 Your task is to transform the provided 3D spatial layout preview of the [${roomForRender}] into a hyper-realistic, photorealistic interior render.
-Style: ${gatherInfo.extras || "Modern Vietnamese contemporary"}.
+Style: ${currentRoom?.style || selectedStyle || gatherInfo.extras || "Modern Vietnamese contemporary"}.
 
 Strict Layout & Furniture Preservation Guidelines:
+- The design style (${currentRoom?.style || selectedStyle || "None"}) must only change the aesthetic finishes, colors, and textures of the walls, floors, and furniture. It MUST NOT alter, shift, or replace the architectural structure (walls, doors, windows, staircases) or the spatial layout of the furniture.
 - The input image is a 3D layout preview of the room. You MUST strictly preserve the exact layout, structure, and positions of all walls, doors, windows, and furniture items visible.
 - Do NOT add, remove, or rearrange any furniture.
 - A sofa in the preview must remain a sofa of the exact same size, shape, and orientation.
@@ -3463,6 +3776,21 @@ Requirements:
       const updatedRooms = floorPlan.rooms.map((r) => {
         if (r.id === roomId) {
           if (targetType === "style") {
+            const preset = STYLE_PRESETS[value];
+            if (preset) {
+              return {
+                ...r,
+                style: value,
+                finishes: {
+                  ...r.finishes,
+                  flooring: preset.flooring,
+                  walls: preset.walls,
+                  ceiling: preset.ceiling,
+                  doors: preset.doors,
+                  windows: preset.windows,
+                }
+              };
+            }
             return { ...r, style: value };
           } else {
             const currentFinishes = r.finishes || {};
@@ -3477,6 +3805,28 @@ Requirements:
         }
         return r;
       });
+      const updatedPlan = { ...floorPlan, rooms: updatedRooms };
+      setFloorPlan(updatedPlan);
+      const nextPlans = [...floorPlans];
+      nextPlans[activeFloorIndex] = updatedPlan;
+      setFloorPlans(nextPlans);
+    }
+  };
+
+  // ── Apply Finish To All Rooms ────────────────────────────────────────────
+  const applyFinishToAllRooms = (
+    targetType: "flooring" | "walls" | "ceiling" | "doors" | "windows",
+    value: string
+  ) => {
+    if (floorPlan) {
+      pushHistory(floorPlan);
+      const updatedRooms = floorPlan.rooms.map((r) => ({
+        ...r,
+        finishes: {
+          ...(r.finishes || {}),
+          [targetType]: value,
+        },
+      }));
       const updatedPlan = { ...floorPlan, rooms: updatedRooms };
       setFloorPlan(updatedPlan);
       const nextPlans = [...floorPlans];
@@ -3572,7 +3922,6 @@ Requirements:
   const [selectedCategoryIndex, setSelectedCategoryIndex] = useState<number | null>(null);
   const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
   const [furnitureSearch, setFurnitureSearch] = useState("");
-  const [activeTool, setActiveTool] = useState<"select" | "draw_wall">("select");
 
   const handleAddRoomManually = (roomName: string) => {
     if (!floorPlan) {
@@ -3645,7 +3994,7 @@ Requirements:
       else if (type.includes("fridge")) { w = 0.8; h = 0.8; }
       else if (type.includes("toilet")) { w = 0.5; h = 0.7; }
       else if (type.includes("lavabo")) { w = 0.6; h = 0.5; }
-      else if (type.includes("bathtub")) { w = 1.6; h = 0.8; }
+      else if (type.includes("bathtub")) { w = 0.8; h = 1.6; }
       else if (type.includes("car")) { w = 1.8; h = 4.2; }
       else if (type.includes("desk")) { w = 1.2; h = 0.6; }
       else if (type.includes("chair")) { w = 0.6; h = 0.6; }
@@ -3826,11 +4175,11 @@ Requirements:
             }}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "move";
+              if (stage && activeTool !== "draw_wall") stage.container().style.cursor = "move";
             }}
             onMouseLeave={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "default";
+              if (stage) stage.container().style.cursor = activeTool === "draw_wall" ? PEN_CURSOR : "default";
             }}
             onDragEnd={(e) => {
               e.cancelBubble = true;
@@ -3940,11 +4289,11 @@ Requirements:
             }}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "move";
+              if (stage && activeTool !== "draw_wall") stage.container().style.cursor = "move";
             }}
             onMouseLeave={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "default";
+              if (stage) stage.container().style.cursor = activeTool === "draw_wall" ? PEN_CURSOR : "default";
             }}
             onDragEnd={(e) => {
               e.cancelBubble = true;
@@ -4171,13 +4520,13 @@ Requirements:
                 draggable={true}
                 onMouseEnter={(e) => {
                   const stage = e.target.getStage();
-                  if (stage) stage.container().style.cursor = "ew-resize";
+                  if (stage && activeTool !== "draw_wall") stage.container().style.cursor = "ew-resize";
                   (e.target as any).stroke("#00b5cd");
                   e.target.getLayer()?.batchDraw();
                 }}
                 onMouseLeave={(e) => {
                   const stage = e.target.getStage();
-                  if (stage) stage.container().style.cursor = "default";
+                  if (stage) stage.container().style.cursor = activeTool === "draw_wall" ? PEN_CURSOR : "default";
                   (e.target as any).stroke("rgba(0,0,0,0.01)");
                   e.target.getLayer()?.batchDraw();
                 }}
@@ -4215,13 +4564,13 @@ Requirements:
                 draggable={true}
                 onMouseEnter={(e) => {
                   const stage = e.target.getStage();
-                  if (stage) stage.container().style.cursor = "ew-resize";
+                  if (stage && activeTool !== "draw_wall") stage.container().style.cursor = "ew-resize";
                   (e.target as any).stroke("#00b5cd");
                   e.target.getLayer()?.batchDraw();
                 }}
                 onMouseLeave={(e) => {
                   const stage = e.target.getStage();
-                  if (stage) stage.container().style.cursor = "default";
+                  if (stage) stage.container().style.cursor = activeTool === "draw_wall" ? PEN_CURSOR : "default";
                   (e.target as any).stroke("rgba(0,0,0,0.01)");
                   e.target.getLayer()?.batchDraw();
                 }}
@@ -4259,13 +4608,13 @@ Requirements:
                 draggable={true}
                 onMouseEnter={(e) => {
                   const stage = e.target.getStage();
-                  if (stage) stage.container().style.cursor = "ns-resize";
+                  if (stage && activeTool !== "draw_wall") stage.container().style.cursor = "ns-resize";
                   (e.target as any).stroke("#00b5cd");
                   e.target.getLayer()?.batchDraw();
                 }}
                 onMouseLeave={(e) => {
                   const stage = e.target.getStage();
-                  if (stage) stage.container().style.cursor = "default";
+                  if (stage) stage.container().style.cursor = activeTool === "draw_wall" ? PEN_CURSOR : "default";
                   (e.target as any).stroke("rgba(0,0,0,0.01)");
                   e.target.getLayer()?.batchDraw();
                 }}
@@ -4303,13 +4652,13 @@ Requirements:
                 draggable={true}
                 onMouseEnter={(e) => {
                   const stage = e.target.getStage();
-                  if (stage) stage.container().style.cursor = "ns-resize";
+                  if (stage && activeTool !== "draw_wall") stage.container().style.cursor = "ns-resize";
                   (e.target as any).stroke("#00b5cd");
                   e.target.getLayer()?.batchDraw();
                 }}
                 onMouseLeave={(e) => {
                   const stage = e.target.getStage();
-                  if (stage) stage.container().style.cursor = "default";
+                  if (stage) stage.container().style.cursor = activeTool === "draw_wall" ? PEN_CURSOR : "default";
                   (e.target as any).stroke("rgba(0,0,0,0.01)");
                   e.target.getLayer()?.batchDraw();
                 }}
@@ -5092,6 +5441,29 @@ Requirements:
 
       {/* ── CANVAS AREA ──────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col pt-12 relative overflow-hidden">
+
+        {/* Draw Wall status banner */}
+        {activeTool === "draw_wall" && (
+          <div className="absolute top-14 left-1/2 -translate-x-1/2 z-20 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center gap-3 bg-[#1e293b]/95 backdrop-blur text-white text-xs font-semibold px-4 py-2.5 rounded-2xl shadow-xl border border-white/10">
+              <div className="w-2 h-2 rounded-full bg-[#00b5cd] animate-pulse flex-shrink-0" />
+              <span>
+                {drawingPoints.length === 0
+                  ? "Click để đặt điểm tường đầu tiên"
+                  : drawingPoints.length < 3
+                  ? `${drawingPoints.length} điểm — Tiếp tục click để vẽ tường`
+                  : `${drawingPoints.length} điểm — Click vào điểm đầu hoặc double-click để đóng phòng`}
+              </span>
+              <div className="flex items-center gap-1.5 ml-1 border-l border-white/20 pl-3">
+                <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px] font-mono">Esc</kbd>
+                <span className="text-white/50 text-[10px]">hủy</span>
+                <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px] font-mono ml-1">⌫</kbd>
+                <span className="text-white/50 text-[10px]">xóa điểm</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Layout / Visualize switcher toggle */}
         {floorPlan && (
           <div className="absolute top-16 left-4 z-10 flex bg-slate-100 border border-slate-200 rounded-xl p-1 shadow-sm font-sans animate-in fade-in slide-in-from-top-3 duration-200">
@@ -5155,7 +5527,15 @@ Requirements:
         <div
           ref={stageContainerRef}
           className="flex-1 relative"
-          style={{ cursor: isPanning ? "grabbing" : "default", background: "white" }}
+          style={{
+            cursor:
+              activeTool === "draw_wall"
+                ? "crosshair"
+                : isPanning
+                ? "grabbing"
+                : "default",
+            background: "white",
+          }}
         >
           <Stage
             ref={stageRef}
@@ -5187,6 +5567,11 @@ Requirements:
                 {renderCameras()}
               </Layer>
             )}
+
+            {/* Draw Wall preview layer */}
+            <Layer listening={false}>
+              {renderDrawWallPreview()}
+            </Layer>
           </Stage>
 
           {/* Overlay: Gathering checklist (shown before plan is ready) */}
@@ -5674,17 +6059,28 @@ Requirements:
 
                 <button
                   onClick={() => {
-                    setActiveTool("draw_wall");
-                    setActiveBottomPopup(null);
-                    setShowShapeModal(true);
+                    if (activeTool === "draw_wall") {
+                      // Toggle off: cancel drawing
+                      setActiveTool("select");
+                      setDrawingPoints([]);
+                      setDrawMousePos(null);
+                    } else {
+                      setActiveTool("draw_wall");
+                      setActiveBottomPopup(null);
+                      setDrawingPoints([]);
+                      setDrawMousePos(null);
+                      toast.info("Click để đặt điểm tường. Double-click hoặc click vào điểm đầu để đóng phòng.");
+                    }
                   }}
                   className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
                     activeTool === "draw_wall"
-                      ? "bg-slate-900 text-white shadow-sm border border-slate-900"
+                      ? "bg-[#00b5cd] text-white shadow-sm border border-[#00b5cd]"
                       : "text-slate-600 hover:text-slate-800 hover:bg-slate-50 border border-transparent"
                   }`}
                 >
-                  <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                  <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 3h18v4H3zM3 10h8v4H3zM3 17h12v4H3z"/>
+                  </svg>
                   <span>Vẽ tường</span>
                 </button>
               </div>
@@ -6693,14 +7089,36 @@ Requirements:
                         <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Design References</span>
                         <button
                           onClick={() => {
-                            setFinishes({
-                              flooring: { type: "material", value: "natural_oak", name: "Natural Oak" },
-                              walls: { type: "color", value: "#ffffff", name: "White" },
-                              ceiling: { type: "color", value: "#ffffff", name: "White" },
-                              doors: { type: "material", value: "natural_oak", name: "Natural Oak" },
-                              windows: { type: "color", value: "#1c1c1e", name: "Dark" },
-                            });
+                            const defaultFinishes = {
+                              flooring: { type: "material" as const, value: "natural_oak", name: "Natural Oak" },
+                              walls: { type: "color" as const, value: "#ffffff", name: "White" },
+                              ceiling: { type: "color" as const, value: "#ffffff", name: "White" },
+                              doors: { type: "material" as const, value: "natural_oak", name: "Natural Oak" },
+                              windows: { type: "color" as const, value: "#1c1c1e", name: "Dark" },
+                            };
+                            setFinishes(defaultFinishes);
                             setSelectedStyle("");
+                            // Reset finishes cho toàn bộ phòng
+                            if (floorPlan) {
+                              pushHistory(floorPlan);
+                              const updatedRooms = floorPlan.rooms.map((r) => ({
+                                ...r,
+                                style: undefined,
+                                finishes: {
+                                  flooring: defaultFinishes.flooring.value,
+                                  walls: defaultFinishes.walls.value,
+                                  ceiling: defaultFinishes.ceiling.value,
+                                  doors: defaultFinishes.doors.value,
+                                  windows: defaultFinishes.windows.value,
+                                },
+                              }));
+                              const updatedPlan = { ...floorPlan, rooms: updatedRooms };
+                              setFloorPlan(updatedPlan);
+                              const nextPlans = [...floorPlans];
+                              nextPlans[activeFloorIndex] = updatedPlan;
+                              setFloorPlans(nextPlans);
+                            }
+                            toast.success("Đã reset vật liệu toàn bộ bản vẽ");
                           }}
                           className="text-[10px] text-[#00b5cd] hover:underline font-semibold cursor-pointer"
                         >
@@ -7151,6 +7569,89 @@ Requirements:
         }
       />
 
+      {/* ── DRAW WALL: Name Room Modal ──────────────────────────────── */}
+      <AnimatePresence>
+        {showDrawWallNameModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              className="w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden font-sans"
+            >
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-[#00b5cd]/10 flex items-center justify-center">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="#00b5cd" strokeWidth="2" fill="none"><path d="M3 3h18v4H3zM3 10h8v4H3zM3 17h12v4H3z"/></svg>
+                  </div>
+                  <span className="font-bold text-slate-800 text-sm">Đặt tên phòng</span>
+                </div>
+                <button
+                  onClick={() => { setShowDrawWallNameModal(false); setDrawingPoints([]); setActiveTool("select"); }}
+                  className="w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="px-6 py-5 space-y-4">
+                <p className="text-xs text-slate-500">Bạn vừa vẽ phòng với <strong>{drawingPoints.length} điểm</strong>. Chọn loại phòng hoặc nhập tên tùy ý.</p>
+                {/* Quick room name buttons */}
+                <div className="flex flex-wrap gap-1.5">
+                  {["Phòng khách", "Phòng ngủ", "Phòng bếp", "Phòng ăn", "WC", "Toilet", "Hành lang", "Gara"].map(name => (
+                    <button
+                      key={name}
+                      onClick={() => setDrawWallRoomName(name)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                        drawWallRoomName === name
+                          ? "bg-[#00b5cd] text-white border-[#00b5cd]"
+                          : "bg-slate-50 text-slate-600 border-slate-200 hover:border-[#00b5cd]/50 hover:text-[#00b5cd]"
+                      }`}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+                {/* Custom name input */}
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1.5">Tên tùy chỉnh</label>
+                  <input
+                    type="text"
+                    value={drawWallRoomName}
+                    onChange={e => setDrawWallRoomName(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") {
+                        setShowDrawWallNameModal(false);
+                        finaliseDrawWall(drawingPoints);
+                      }
+                    }}
+                    placeholder="Nhập tên phòng..."
+                    autoFocus
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm text-slate-800 outline-none focus:border-[#00b5cd] focus:ring-2 focus:ring-[#00b5cd]/20 transition-all"
+                  />
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={() => { setShowDrawWallNameModal(false); setDrawingPoints([]); setActiveTool("select"); }}
+                    className="flex-1 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowDrawWallNameModal(false);
+                      finaliseDrawWall(drawingPoints);
+                    }}
+                    className="flex-1 py-2 rounded-xl bg-[#00b5cd] text-white text-xs font-bold hover:bg-[#009db3] transition-all cursor-pointer shadow-sm"
+                  >
+                    Tạo phòng
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* ── CHOOSE STYLE MODAL ────────────────────────────────────── */}
       <AnimatePresence>
         {showStyleModal && (
@@ -7217,7 +7718,47 @@ Requirements:
                         onClick={() => {
                           setSelectedStyle(style.name);
                           setShowStyleModal(false);
-                          toast.success(`Đã chọn phong cách: ${style.name}`);
+
+                          const preset = STYLE_PRESETS[style.name];
+                          if (preset) {
+                            // 1. Update Floor/Level finishes state
+                            const flooringMatch = ROOM_FLOORINGS.find(f => f.value === preset.flooring) || ROOM_FLOORINGS[0];
+                            const wallsMatch = ROOM_WALLS.find(w => w.value === preset.walls) || ROOM_WALLS[0];
+                            const ceilingMatch = ROOM_CEILINGS.find(c => c.value === preset.ceiling) || ROOM_CEILINGS[0];
+                            const doorsMatch = ROOM_DOORS.find(d => d.value === preset.doors) || ROOM_DOORS[0];
+                            const windowsMatch = ROOM_WINDOWS.find(w => w.value === preset.windows) || ROOM_WINDOWS[0];
+                            
+                            setFinishes({
+                              flooring: { type: "material", value: flooringMatch.value, name: flooringMatch.name },
+                              walls: { type: wallsMatch.value.startsWith("#") ? "color" : "material", value: wallsMatch.value, name: wallsMatch.name },
+                              ceiling: { type: ceilingMatch.value.startsWith("#") ? "color" : "material", value: ceilingMatch.value, name: ceilingMatch.name },
+                              doors: { type: doorsMatch.value.startsWith("#") ? "color" : "material", value: doorsMatch.value, name: doorsMatch.name },
+                              windows: { type: windowsMatch.value.startsWith("#") ? "color" : "material", value: windowsMatch.value, name: windowsMatch.name },
+                            });
+
+                            // 2. Update style and finishes of all existing rooms on this floor
+                            if (floorPlan) {
+                              pushHistory(floorPlan);
+                              const updatedRooms = floorPlan.rooms.map((r) => ({
+                                ...r,
+                                style: style.name,
+                                finishes: {
+                                  ...r.finishes,
+                                  flooring: preset.flooring,
+                                  walls: preset.walls,
+                                  ceiling: preset.ceiling,
+                                  doors: preset.doors,
+                                  windows: preset.windows,
+                                }
+                              }));
+                              const updatedPlan = { ...floorPlan, rooms: updatedRooms };
+                              setFloorPlan(updatedPlan);
+                              const nextPlans = [...floorPlans];
+                              nextPlans[activeFloorIndex] = updatedPlan;
+                              setFloorPlans(nextPlans);
+                            }
+                          }
+                          toast.success(`Đã chọn phong cách: ${style.name} cho cả tầng`);
                         }}
                         className="group bg-[#18181a] border border-[#2d2d30] rounded-xl overflow-hidden cursor-pointer hover:border-[#00b5cd]/50 transition-colors"
                       >
@@ -7373,8 +7914,9 @@ Requirements:
                                   ...prev,
                                   [showFinishModal]: { type: "material", value: mat.value, name: mat.name }
                                 }));
+                                applyFinishToAllRooms(showFinishModal as "flooring" | "walls" | "ceiling" | "doors" | "windows", mat.value);
                                 setShowFinishModal(null);
-                                toast.success(`Đã chọn vật liệu: ${mat.name}`);
+                                toast.success(`Đã áp dụng vật liệu "${mat.name}" cho toàn bộ bản vẽ`);
                               }}
                               className={`group bg-[#1c1c1e] border rounded-xl overflow-hidden cursor-pointer hover:border-[#00b5cd]/50 transition-all p-1.5 ${
                                 isSelected ? "border-[#00b5cd] ring-2 ring-[#00b5cd]/25" : "border-[#2d2d30]"
@@ -7450,6 +7992,12 @@ Requirements:
                               [showFinishModal]: { type: "color", value: `#${val}`, name: `#${val.toUpperCase()}` }
                             }));
                           }}
+                          onBlur={(e) => {
+                            const val = e.target.value.trim();
+                            if (val.length === 6 || val.length === 3) {
+                              applyFinishToAllRooms(showFinishModal as "flooring" | "walls" | "ceiling" | "doors" | "windows", `#${val}`);
+                            }
+                          }}
                           className="w-full bg-[#1c1c1e] border border-[#2d2d30] rounded-xl pl-8 pr-4 py-2 text-xs font-mono text-slate-200 outline-none focus:border-[#00b5cd]/50"
                         />
                       </div>
@@ -7479,8 +8027,9 @@ Requirements:
                                 ...prev,
                                 [showFinishModal]: { type: "color", value: c.val, name: c.name }
                               }));
+                              applyFinishToAllRooms(showFinishModal as "flooring" | "walls" | "ceiling" | "doors" | "windows", c.val);
                               setShowFinishModal(null);
-                              toast.success(`Đã chọn màu: ${c.name}`);
+                              toast.success(`Đã áp dụng màu "${c.name}" cho toàn bộ bản vẽ`);
                             }}
                             className="w-6 h-6 rounded-full border border-[#2d2d30] cursor-pointer hover:scale-105 transition-transform"
                             style={{ backgroundColor: c.val }}
@@ -7499,3 +8048,4 @@ Requirements:
     </div>
   );
 };
+
