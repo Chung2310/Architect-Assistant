@@ -45,7 +45,7 @@ export const piapiService = {
 
     if (openRouterKey && isMatchedModel) {
       console.log(`[OpenRouter Image Task] Creating image synchronously for model: ${model}`);
-      let openRouterModel = "google/gemini-3.1-flash-image";
+      let openRouterModel: string;
       
       if (openRouterModels.includes(model)) {
         openRouterModel = model;
