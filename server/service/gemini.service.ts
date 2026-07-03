@@ -85,8 +85,135 @@ function mapToOpenRouterModel(modelName: string): string {
   return `google/${modelName}`;
 }
 
+async function callOpenRouterChat(
+  messages: Array<{ role: string; content: string }>,
+  model: string,
+  openRouterKey: string,
+  isJsonRequested: boolean
+): Promise<{ textResult: string; data: any }> {
+  const requestBody: Record<string, any> = {
+    model,
+    messages
+  };
+
+  if (isJsonRequested) {
+    requestBody.response_format = { type: "json_object" };
+  }
+
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${openRouterKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://staging-architect.igentechsolutions.com",
+      "X-Title": "iGen Architect Assistant",
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`OpenRouter API error ${response.status}: ${errText}`);
+  }
+
+  const data = (await response.json()) as any;
+  const textResult = data.choices?.[0]?.message?.content || "";
+  return { textResult, data };
+}
+
+async function callOpenRouterImage(
+  prompt: string,
+  model: string,
+  openRouterKey: string,
+  aspectRatio: string,
+  inputImageBase64?: string,
+  inputImageMimeType?: string
+): Promise<string> {
+  const headers: Record<string, string> = {
+    "Authorization": `Bearer ${openRouterKey}`,
+    "Content-Type": "application/json",
+    "HTTP-Referer": "https://staging-architect.igentechsolutions.com",
+    "X-Title": "iGen Architect Assistant",
+  };
+
+  const content: any[] = [{ type: "text", text: prompt }];
+
+  if (inputImageBase64) {
+    const mime = inputImageMimeType || "image/jpeg";
+    const dataUri = `data:${mime};base64,${inputImageBase64}`;
+    content.push({
+      type: "image_url",
+      image_url: {
+        url: dataUri
+      }
+    });
+  }
+
+  const allowedAspects = [
+    "1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"
+  ];
+  let aspect = aspectRatio || "1:1";
+  if (aspect === "Tự động" || aspect === "auto" || !allowedAspects.includes(aspect)) {
+    aspect = "1:1";
+  }
+
+  const body: Record<string, any> = {
+    model,
+    messages: [{ role: "user", content }],
+    modalities: ["image"],
+    image_config: {
+      aspect_ratio: aspect
+    }
+  };
+
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenRouter image generation failed: ${response.status} - ${errorText}`);
+  }
+
+  const json = (await response.json()) as any;
+  
+  // Lấy URL ảnh từ response của OpenRouter
+  const images = json.choices?.[0]?.message?.images;
+  let imgUrl = "";
+  if (Array.isArray(images) && images.length > 0) {
+    imgUrl = images[0]?.image_url?.url;
+  }
+
+  if (!imgUrl) {
+    const messageContent = json.choices?.[0]?.message?.content;
+    if (typeof messageContent === "string") {
+      if (messageContent.startsWith("http") || messageContent.startsWith("data:")) {
+        imgUrl = messageContent;
+      }
+    } else if (Array.isArray(messageContent)) {
+      for (const part of messageContent) {
+        if (part?.type === "image_url" && part?.image_url?.url) {
+          imgUrl = part.image_url.url;
+          break;
+        }
+        if (part?.type === "image" && part?.source?.data) {
+          imgUrl = `data:${part.source.media_type || "image/png"};base64,${part.source.data}`;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!imgUrl) {
+    throw new Error("Không nhận được dữ liệu hình ảnh từ OpenRouter Image API");
+  }
+
+  return imgUrl;
+}
+
 export const geminiService = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async generate(params: Record<string, any>, _userApiKey?: string): Promise<any> {
     const modelName = (params.model as string) || "";
     const systemInstruction = params.systemInstruction || params.config?.systemInstruction || params.generationConfig?.systemInstruction;
@@ -375,12 +502,95 @@ export const geminiService = {
           contents: finalContents,
           config: imageConfigForSdk,
         });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         const errStr = err?.message || JSON.stringify(err) || "";
         const statusCode = err?.status || err?.statusCode || 0;
         logger.error(`[Gemini Service] Native Image generation failed (Status: ${statusCode}, Msg: ${errStr}).`);
-        throw err;
+
+        const fallbackOpenRouterKey = process.env.OPENROUTER_API_KEY || "";
+        if (fallbackOpenRouterKey) {
+          const fallbackFluxModel = process.env.OPENROUTER_FALLBACK_IMAGE_MODEL || "black-forest-labs/flux.2-pro";
+          logger.info(`[Gemini Service] Fallback: calling Flux model (${fallbackFluxModel}) via OpenRouter due to Gemini Native Image failure...`);
+          try {
+            let promptText = "";
+            let inputImageBase64 = "";
+            let inputImageMimeType = "";
+
+            const contentsArray = Array.isArray(params.contents)
+              ? params.contents
+              : (params.contents && params.contents.parts ? [{ parts: params.contents.parts }] : []);
+
+            for (const content of contentsArray) {
+              if (content.parts && Array.isArray(content.parts)) {
+                for (const part of content.parts) {
+                  if (part.text) {
+                    promptText += part.text + "\n";
+                  } else if (part.inlineData && part.inlineData.data) {
+                    inputImageBase64 = part.inlineData.data;
+                    inputImageMimeType = part.inlineData.mimeType || "image/jpeg";
+                  }
+                }
+              }
+            }
+            promptText = promptText.trim();
+            if (systemInstruction) {
+              promptText = `${String(systemInstruction).trim()}\n\n${promptText}`.trim();
+            }
+
+            // Gọi sinh ảnh Flux qua OpenRouter
+            const imageUrl = await callOpenRouterImage(
+              promptText,
+              fallbackFluxModel,
+              fallbackOpenRouterKey,
+              aspectRatio,
+              inputImageBase64,
+              inputImageMimeType
+            );
+
+            // Tải hình ảnh trả về sang base64
+            const imgFetchRes = await fetch(imageUrl);
+            if (!imgFetchRes.ok) {
+              throw new Error(`Failed to download generated Flux image: ${imgFetchRes.status}`, { cause: err });
+            }
+            const arrayBuffer = await imgFetchRes.arrayBuffer();
+            const base64 = Buffer.from(arrayBuffer).toString("base64");
+            const mimeType = imgFetchRes.headers.get("content-type") || "image/png";
+
+            logger.info(`[Gemini Service] Fallback Flux image generated and downloaded successfully.`);
+
+            return {
+              generatedImages: [
+                {
+                  image: {
+                    imageBytes: base64,
+                    mimeType: mimeType,
+                  }
+                }
+              ],
+              candidates: [
+                {
+                  content: {
+                    parts: [
+                      {
+                        inlineData: {
+                          data: base64,
+                          mimeType: mimeType
+                        }
+                      }
+                    ],
+                    role: "model"
+                  },
+                  finishReason: "STOP"
+                }
+              ]
+            };
+          } catch (fallbackErr: any) {
+            logger.error(`[Gemini Service] Fallback to Flux via OpenRouter also failed: ${fallbackErr.message || fallbackErr}`);
+            throw err;
+          }
+        } else {
+          throw err;
+        }
       }
 
       const parts = response.candidates?.[0]?.content?.parts || [];
@@ -402,11 +612,8 @@ export const geminiService = {
       };
     }
 
-    // ── 3. TEXT MODEL via OpenRouter (bắt buộc nếu có OPENROUTER_API_KEY) ──
-    if (openRouterKey && !isImageModel && !isVideoModel) {
-      const openRouterModel = mapToOpenRouterModel(modelName);
-      logger.info(`[Gemini Service] ✅ Provider: OpenRouter → ${openRouterModel}`);
-
+    // ── 3. TEXT MODEL ──
+    if (!isImageModel && !isVideoModel) {
       // Chuyển đổi định dạng contents của Gemini sang messages của OpenAI/OpenRouter
       type OAIMessage = { role: string; content: string };
       const messages: OAIMessage[] = [];
@@ -434,93 +641,106 @@ export const geminiService = {
         if (rawText) messages.push({ role: "user", content: rawText });
       }
 
-      if (messages.length === 0) {
-        throw new Error("Không có nội dung để gửi đến OpenRouter.");
-      }
-
-      const requestBody: Record<string, any> = {
-        model: openRouterModel,
-        messages
-      };
-
-      // Ép kiểu JSON nếu frontend yêu cầu JSON
       const isJsonRequested =
         params.config?.responseMimeType === "application/json" ||
         params.generationConfig?.responseMimeType === "application/json" ||
         params.config?.response_mime_type === "application/json";
 
-      if (isJsonRequested) {
-        requestBody.response_format = { type: "json_object" };
-      }
+      const fallbackQwenModel = process.env.OPENROUTER_FALLBACK_MODEL || "qwen/qwen-2.5-72b-instruct";
 
-      logger.info(`[Gemini Service] OpenRouter request: ${messages.length} messages, forced JSON: ${isJsonRequested}`);
-
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${openRouterKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://staging-architect.igentechsolutions.com",
-          "X-Title": "iGen Architect Assistant",
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`OpenRouter API error ${response.status}: ${errText}`);
-      }
-
-      const data = await response.json() as {
-        choices?: Array<{ message?: { content?: string } }>;
+      // Trình thực thi OpenRouter Qwen fallback
+      const performQwenFallback = async (primaryError: any): Promise<any> => {
+        if (!openRouterKey) {
+          throw primaryError;
+        }
+        logger.warn(`[Gemini Service] Fallback: calling Qwen model (${fallbackQwenModel}) via OpenRouter API due to primary error: ${primaryError.message || primaryError}`);
+        try {
+          if (messages.length === 0) {
+            throw new Error("Không có nội dung để gửi đến OpenRouter.", { cause: primaryError });
+          }
+          const { textResult } = await callOpenRouterChat(messages, fallbackQwenModel, openRouterKey, isJsonRequested);
+          logger.info(`[Gemini Service] Fallback OpenRouter Qwen response received (${textResult.length} chars): ${textResult.slice(0, 100)}...`);
+          return {
+            candidates: [{
+              content: {
+                parts: [{ text: textResult }],
+                role: "model",
+              },
+              finishReason: "STOP",
+            }],
+            text: textResult,
+          };
+        } catch (fallbackErr: any) {
+          logger.error(`[Gemini Service] Fallback to Qwen via OpenRouter also failed: ${fallbackErr.message || fallbackErr}`);
+          throw primaryError; // Throw the original error so we know the root cause
+        }
       };
-      const textResult = data.choices?.[0]?.message?.content || "";
-      logger.info(`[Gemini Service] OpenRouter response received (${textResult.length} chars): ${textResult.slice(0, 100)}...`);
 
-      return {
-        candidates: [{
-          content: {
-            parts: [{ text: textResult }],
-            role: "model",
-          },
-          finishReason: "STOP",
-        }],
-        text: textResult,
-      };
-    }
+      // Quyết định provider chính:
+      // Nếu có GEMINI_API_KEY hợp lệ -> dùng Gemini Native SDK làm phương án chính.
+      // Nếu không có GEMINI_API_KEY hợp lệ nhưng có OpenRouter Key -> dùng OpenRouter Gemini làm phương án chính.
+      const hasValidNativeKey = apiKey && isValidGeminiKey(apiKey);
 
-    // ─── XỬ LÝ MODEL TEXT QUA GOOGLE GENAI SDK ──────────────────────────────────
-    if (!apiKey) {
-      throw new Error("API Key không hợp lệ hoặc không có quyền truy cập.");
-    }
+      if (hasValidNativeKey) {
+        const ai = new GoogleGenAI({ apiKey: apiKey as string });
+        logger.info(`[Gemini Service] Provider: Gemini Native. Model: ${modelName}`);
 
-    const ai = new GoogleGenAI({ apiKey: apiKey as string });
-    logger.info(`[Gemini Service] Provider: Gemini text. Model: ${modelName}`);
+        // Clone and sanitize config to avoid validation errors on models without thinking support
+        const rawConfig = params.config || params.generationConfig || {};
+        const sanitizedConfig = { ...rawConfig };
 
-    // Clone and sanitize config to avoid validation errors on models without thinking support
-    const rawConfig = params.config || params.generationConfig || {};
-    const sanitizedConfig = { ...rawConfig };
+        const isThinkingModel = modelName.toLowerCase().includes("thinking");
+        if (!isThinkingModel) {
+          if ("thinkingConfig" in sanitizedConfig) {
+            delete sanitizedConfig.thinkingConfig;
+          }
+          if ("thinking_config" in sanitizedConfig) {
+            delete sanitizedConfig.thinking_config;
+          }
+        }
 
-    const isThinkingModel = modelName.toLowerCase().includes("thinking");
-    if (!isThinkingModel) {
-      if ("thinkingConfig" in sanitizedConfig) {
-        delete sanitizedConfig.thinkingConfig;
+        if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
+          sanitizedConfig.systemInstruction = systemInstruction;
+        }
+
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: params.contents,
+            config: sanitizedConfig,
+          });
+          return response;
+        } catch (err: any) {
+          logger.error(`[Gemini Service] Gemini Native API call failed: ${err.message || err}`);
+          return await performQwenFallback(err);
+        }
+      } else if (openRouterKey) {
+        const openRouterModel = mapToOpenRouterModel(modelName);
+        logger.info(`[Gemini Service] Provider: OpenRouter (Primary). Model: ${openRouterModel}`);
+
+        try {
+          if (messages.length === 0) {
+            throw new Error("Không có nội dung để gửi đến OpenRouter.");
+          }
+          const { textResult } = await callOpenRouterChat(messages, openRouterModel, openRouterKey, isJsonRequested);
+          logger.info(`[Gemini Service] OpenRouter Gemini response received (${textResult.length} chars): ${textResult.slice(0, 100)}...`);
+          return {
+            candidates: [{
+              content: {
+                parts: [{ text: textResult }],
+                role: "model",
+              },
+              finishReason: "STOP",
+            }],
+            text: textResult,
+          };
+        } catch (err: any) {
+          logger.error(`[Gemini Service] Gemini via OpenRouter failed: ${err.message || err}`);
+          return await performQwenFallback(err);
+        }
+      } else {
+        throw new Error("Không tìm thấy API Key hợp lệ cho Gemini Native hoặc OpenRouter.");
       }
-      if ("thinking_config" in sanitizedConfig) {
-        delete sanitizedConfig.thinking_config;
-      }
     }
-
-    if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
-      sanitizedConfig.systemInstruction = systemInstruction;
-    }
-
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: params.contents,
-      config: sanitizedConfig,
-    });
-
-    return response;
   }
 };
