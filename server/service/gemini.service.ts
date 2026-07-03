@@ -91,9 +91,18 @@ async function callOpenRouterChat(
   openRouterKey: string,
   isJsonRequested: boolean
 ): Promise<{ textResult: string; data: any }> {
+  const finalMessages = [...messages];
+
+  if (isJsonRequested) {
+    const hasJsonWord = finalMessages.some(m => m.content.toLowerCase().includes("json"));
+    if (!hasJsonWord) {
+      finalMessages.push({ role: "system", content: "You must return a valid JSON object." });
+    }
+  }
+
   const requestBody: Record<string, any> = {
     model,
-    messages
+    messages: finalMessages
   };
 
   if (isJsonRequested) {
