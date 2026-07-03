@@ -29,13 +29,13 @@ interface RenderJob {
 
 const MODELS = [
   {
-    id: "nano-banana-pro",
-    name: "Nano Banana Pro (PiAPI)",
-    isPro: true,
-  },
-  {
     id: "nano-banana-2",
     name: "Nano Banana 2 (Gemini 3.1 Flash Image)",
+    isPro: false,
+  },
+  {
+    id: "nano-banana-pro",
+    name: "Nano Banana Pro (Gemini 3 Pro Image)",
     isPro: true,
   },
 ];
@@ -93,7 +93,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
   const [isDraggingRef, setIsDraggingRef] = useState(false);
 
   const [selectedModel, setSelectedModel] = useState(
-    "nano-banana-pro",
+    "nano-banana-2",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
 
@@ -501,10 +501,11 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
 - CHÚ Ý: đây là bản vẽ floorplan 2D kỹ thuật với tường dày, cánh cửa, và ký hiệu phòng. KHÔNG chuyển sang kiểu ảnh chụp nội thất; chỉ dựng lại đúng cấu trúc mặt bằng sang phối cảnh 3D.
 - Style công trình: ${buildingStyle || "Không có"}
 - Phong cách: ${interiorStyle || "Không có"}
-- Quy tắc nhận diện bản vẽ: dùng tường ngăn, vách ngăn, cửa và ký hiệu phòng để xác định vị trí chính xác của từng đồ đạc.
+- Quy tắc nhận diện bản vẽ: BẮT BUỘC nhận diện tất cả các nhãn chữ chỉ tên phòng/công năng (ví dụ: Phòng khách, Phòng ngủ, WC, Bếp, Cầu thang...). Bạn phải mô tả chi tiết vị trí của từng khu vực chức năng này trong prompt cuối cùng để mô hình sinh dựng đúng công năng phòng ở vị trí tương ứng. Tuyệt đối không tự ý đổi công năng phòng (không biến WC thành phòng ngủ, không vẽ nhầm phòng ngủ thành phòng khách).
 - Quy tắc làm sạch bản vẽ: phải xóa hoàn toàn chữ, nhãn phòng, số đo, hatch, nét CAD, mũi tên, khung tên và mọi dấu vết 2D không thuộc mô hình 3D cuối.
 - Bố cục: giữ nguyên tuyệt đối vị trí tường, cửa, phòng và đồ đạc theo bản vẽ; không thêm cửa, không dịch chuyển hay mở rộng không gian.
 - Nếu tủ áo nằm sau bức tường, tủ phải ở trong phòng tương ứng và KHÔNG được đặt xuyên qua tường.
+- Yêu cầu màu sắc: mô hình 3D axonometric phải được tô màu sinh động và đầy đủ vật liệu (ví dụ: sàn gỗ ấm hoặc gạch men màu, tường sơn màu ấm/sáng/kem, đồ nội thất có chất liệu và màu sắc rõ ràng). Tuyệt đối không để mô hình đất sét trắng (white clay model) hay đơn sắc trắng toàn bộ.
 `
                 : `
 - Style ảnh: ${style || "Không có"}

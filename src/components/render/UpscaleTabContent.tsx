@@ -9,13 +9,13 @@ import { uploadMedia, getAIClient, checkUserCredits, generateContentWithRetry, g
 
 const MODELS = [
   {
-    id: "nano-banana-pro",
-    name: "Nano Banana Pro (PiAPI)",
-    isPro: true,
-  },
-  {
     id: "nano-banana-2",
     name: "Nano Banana 2 (Gemini 3.1 Flash Image)",
+    isPro: false,
+  },
+  {
+    id: "nano-banana-pro",
+    name: "Nano Banana Pro (Gemini 3 Pro Image)",
     isPro: true,
   },
 ];
