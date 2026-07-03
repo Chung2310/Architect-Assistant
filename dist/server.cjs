@@ -1919,7 +1919,7 @@ ${promptText}`.trim();
         logger.error(`[Gemini Service] Native Image generation failed (Status: ${statusCode}, Msg: ${errStr}).`);
         const fallbackOpenRouterKey = process.env.OPENROUTER_API_KEY || "";
         if (fallbackOpenRouterKey) {
-          const fallbackFluxModel = process.env.OPENROUTER_FALLBACK_IMAGE_MODEL || "black-forest-labs/flux.2-pro";
+          const fallbackFluxModel = process.env.OPENROUTER_FALLBACK_IMAGE_MODEL || "black-forest-labs/flux.2-klein-4b";
           logger.info(`[Gemini Service] Fallback: calling Flux model (${fallbackFluxModel}) via OpenRouter due to Gemini Native Image failure...`);
           try {
             let promptText = "";
@@ -2028,7 +2028,7 @@ ${promptText}`.trim();
         if (rawText) messages.push({ role: "user", content: rawText });
       }
       const isJsonRequested = params.config?.responseMimeType === "application/json" || params.generationConfig?.responseMimeType === "application/json" || params.config?.response_mime_type === "application/json";
-      const fallbackQwenModel = process.env.OPENROUTER_FALLBACK_MODEL || "qwen/qwen-2.5-72b-instruct";
+      const fallbackQwenModel = process.env.OPENROUTER_FALLBACK_MODEL || "qwen/qwen3.6-flash";
       const performQwenFallback = async (primaryError) => {
         if (!openRouterKey) {
           throw primaryError;
