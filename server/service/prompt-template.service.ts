@@ -860,8 +860,10 @@ Nhiệm vụ:
 - Lấy nhân vật trong ảnh "Nhân vật tham khảo (Character Reference Image)" để ghép vào ảnh "Bối cảnh nền (Background Image)".
 - Giữ nguyên 100% khuôn mặt, vóc dáng, mái tóc, quần áo và nhận diện của nhân vật từ ảnh "Nhân vật tham khảo".
 - Đặt nhân vật vào bối cảnh của ảnh "Bối cảnh nền" theo đúng mô tả hành động dưới đây.
+- Bảo tồn nguyên vẹn 100% bối cảnh nền. TUYỆT ĐỐI KHÔNG tự ý sinh thêm, chỉnh sửa hoặc thay thế bất kỳ chi tiết nào (bao gồm tường, cửa, trần, sàn, đồ đạc, vật dụng, đồ trang trí, cây cối, nội thất hoặc bất kỳ đồ vật nào khác) trong ảnh "Bối cảnh nền" nếu không có yêu cầu rõ ràng từ người dùng.
+- Khóa cứng hoàn toàn cấu trúc không gian và cách bài trí nội thất hiện có của "Bối cảnh nền". Không di dời, thay đổi hình dáng hay loại bỏ bất cứ chi tiết nào. Chỉ được vẽ và đặt duy nhất nhân vật vào bối cảnh.
+- Giữ nguyên 100% tỷ lệ khung hình, góc chụp (framing), và góc máy rộng (field of view) của ảnh "Bối cảnh nền". Tuyệt đối không tự ý cắt xén (crop) bên trái/bên phải/phía trên/phía dưới, không zoom cận cảnh hay thay đổi tiêu cự khung hình gốc.
 - Đồng bộ tuyệt đối ánh sáng, hướng nắng, màu sắc môi trường, đổ bóng tiếp xúc và phối cảnh giữa nhân vật và bối cảnh nền.
-- Không tự ý thay đổi cấu trúc kiến trúc của bối cảnh nền.
 - Không để nhân vật trông giống bị cắt ghép, lơ lửng hoặc sai tỷ lệ so với các đồ đạc xung quanh.
 
 Yêu cầu hành động của nhân vật: ${String(input.userAction || "")}`,

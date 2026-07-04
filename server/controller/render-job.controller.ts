@@ -44,6 +44,7 @@ const limitQuerySchema = Joi.object({
     "number.integer": "Giới hạn phải là số nguyên.",
     "number.min": "Giới hạn tối thiểu là 1.",
   }),
+  type: Joi.string().optional(),
 });
 
 const paginationQuerySchema = Joi.object({
@@ -199,8 +200,9 @@ export const renderJobController = {
     }
     try {
       const limit = parseInt(String(req.query.limit || "50"), 10);
-      const jobs = await renderJobService.getListByUser(req.user!.userId, limit);
-      logger.info(`[renderJobController.getMyJobs] Retrieved ${jobs.length} jobs for user: ${req.user!.userId}`);
+      const type = req.query.type ? String(req.query.type) : undefined;
+      const jobs = await renderJobService.getListByUser(req.user!.userId, limit, type);
+      logger.info(`[renderJobController.getMyJobs] Retrieved ${jobs.length} jobs for user: ${req.user!.userId} (type: ${type || 'all'})`);
       res.json({ success: true, data: jobs });
     } catch (error) {
       logger.error(`[renderJobController.getMyJobs] Error: ${error}`);
@@ -259,6 +261,29 @@ export const renderJobController = {
       return;
     }
     try {
+      // Nếu job đã được hoàn thành hoặc thất bại sẵn từ client (ví dụ ở chức năng Đồng bộ)
+      if (req.body.status === "completed" || req.body.status === "failed") {
+        const job = await renderJobService.create({
+          userId: req.user!.userId,
+          type: req.body.type,
+          subType: req.body.subType,
+          inputImageUrls: req.body.inputImageUrls || [],
+          referenceImageUrls: req.body.referenceImageUrls || [],
+          outputImageUrls: req.body.outputImageUrls || [],
+          prompt: req.body.prompt || req.body.settings?.prompt || "",
+          model: req.body.model || req.body.settings?.model || "",
+          resolution: req.body.resolution || req.body.settings?.resolution || "1K",
+          status: req.body.status,
+          progress: req.body.progress !== undefined ? req.body.progress : 100,
+          piapiTaskId: req.body.piapiTaskId || "",
+        });
+
+        logger.info(`[renderJobController.createJob] Completed job saved successfully: ${job._id} | User: ${req.user!.userId}`);
+        emitToUser(req.user!.userId, "renderJobUpdated", job);
+        res.status(201).json({ success: true, data: job });
+        return;
+      }
+
       // Kiểm tra credits trước khi tạo job
       const credits = await userService.getCredits(req.user!.userId);
       if (credits <= 0) {
