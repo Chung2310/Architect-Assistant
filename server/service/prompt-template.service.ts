@@ -15,6 +15,7 @@ type PromptTemplateParams = {
 
 function normalizeKey(value: unknown): string {
   return String(value || "")
+    .replace(/[đĐ]/g, "d")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
@@ -750,6 +751,35 @@ function buildSyncAnalyzePrompt(input: Record<string, unknown>): PromptTemplateP
   };
 }
 
+function buildSyncVariationGeneratePrompt(input: Record<string, unknown>): PromptTemplateParams {
+  const promptInstruction = String(input.promptInstruction || "");
+  const aspectRatio = String(input.aspectRatio || "16:9");
+  const images = (input.images as InlineImageInput[] | undefined) || [];
+
+  return {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          ...imageParts(images),
+          { text: promptInstruction },
+        ],
+      },
+    ],
+    systemInstruction: [
+      "Bạn là một chuyên gia kết xuất kiến trúc chân thực.",
+      "Hãy sinh ảnh biến thể mới dựa trên ảnh kiến trúc gốc và chỉ dẫn mô tả của người dùng.",
+      "Giữ nguyên 100% hình khối kiến trúc, tỉ lệ và cấu trúc chính của công trình gốc.",
+      "Thay đổi bối cảnh xung quanh, thời tiết, góc chụp nhẹ, ánh sáng hoặc vật liệu theo đúng mô tả của người dùng.",
+    ].join(" "),
+    config: {
+      imageConfig: {
+        aspectRatio,
+      },
+    },
+  };
+}
+
 export function resolvePromptTemplate(
   templateKey: string,
   input: Record<string, unknown>,
@@ -760,6 +790,8 @@ export function resolvePromptTemplate(
   }
 
   switch (templateKey) {
+    case "sync_variation_generate_prompt":
+      return buildSyncVariationGeneratePrompt(input);
     case "render_tab_prompt":
       return buildRenderTabPrompt(input);
     case "render_edit_prompt":
