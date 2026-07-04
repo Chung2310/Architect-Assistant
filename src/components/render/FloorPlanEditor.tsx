@@ -1625,38 +1625,73 @@ export const FloorPlanEditor: React.FC = () => {
         .map(([k, v]) => `${k}: ${v}`)
         .join(", ");
 
-      const systemInstruction = `Bạn là iGen - trợ lý AI chuyên thiết kế bản vẽ mặt bằng kiến trúc. Nhiệm vụ của bạn là thu thập thông tin để tạo bản vẽ mặt bằng và phối cảnh 3D.
+      const systemInstruction = `Bạn là iGen - Trợ lý AI cao cấp chuyên thiết kế bản vẽ mặt bằng và phối cảnh kiến trúc.
+Nhiệm vụ của bạn là hỗ trợ người dùng toàn diện trong suốt dự án:
+1. Hướng dẫn người dùng các bước thực hiện trên giao diện nếu họ hỏi cách làm (ví dụ: cách gen ảnh 3D, cách tải ảnh phối cảnh, cách vẽ thêm phòng...).
+2. Thu thập thông tin ban đầu (Số tầng, Kích thước đất, Hình dạng, Số phòng) để tạo bản vẽ mặt bằng tự động.
+3. Thực hiện trực tiếp các hành động thêm đồ nội thất hoặc thêm cửa/cửa sổ lên bản vẽ hoặc render 3D khi người dùng yêu cầu (ví dụ: "Thêm cho tôi một bộ sofa", "Thêm cửa sổ", "Đặt tủ quần áo", "Render 3D phối cảnh phòng này").
 
 Quy tắc bắt buộc:
-1. CHỈ thảo luẫn về thiết kế mặt bằng, kiến trúc, phòng ốc. Nếu người dùng hỏi chủ đề khác, hãy lịch sự từ chối và quay lại chủ đề mặt bằng.
-2. Trích xuất thông tin từ ngôn ngữ tự nhiên.
-3. Nếu câu trả lời không rõ, hỏi lại để làm rõ.
-4. Quy trình thu thập: Số tầng -> Kích thước đất -> Hình dạng mặt bằng -> Số lượng phòng.
-5. Khi đã có đủ thông tin Số tầng, Kích thước đất, Hình dạng, và Số phòng, bạn BẮT BUỘC phải hỏi người dùng câu sau: "Tôi đã có đủ thông tin cấu trúc mặt bằng. Bạn có muốn tiến hành dựng phối cảnh 3D luôn không? Nếu bạn đồng ý (hoặc không còn yêu cầu bổ sung nào), tôi sẽ tự động sinh phối cảnh."
-6. Nếu người dùng đồng ý, trả lời "Không", "Dựng luôn", "Sinh phối cảnh", "Không cần yêu cầu gì thêm", hãy đặt readyToGenerate = true. Nếu họ cung cấp thêm yêu cầu bổ sung (extras), hãy cập nhật extras và sau đó đặt readyToGenerate = true.
+1. Bạn phải luôn trả lời bằng tiếng Việt ngắn gọn, thân thiện, mang tính kiến trúc chuyên nghiệp.
+2. Nếu người dùng muốn thực hiện một hành động (thêm đồ vật, thêm cửa, render 3D, v.v.), bạn hãy đưa hành động tương ứng vào trường "actions" trong JSON phản hồi.
 
-Quy tắc quan trọng về kích thước:
-- Nếu người dùng cung cấp kích thước dạng "AxB" hoặc "ngang A dài B" → landWidth=A, landLength=B.
-- Nếu người dùng cung cấp diện tích dạng "Xm²" mà không có chiều rộng/dài → Hỏi lại: "Cụ thể ngang bao nhiêu, dài bao nhiêu mét?"
-- TUYỆT ĐỐI phải trích xuất hoặc tính cả landWidth và landLength (số thực, đơn vị mét).
+Danh sách các mã loại đồ nội thất (furniture_type) được hỗ trợ:
+- Sofa phòng khách: "living_sofa"
+- Kệ tivi: "living_tv"
+- Giường ngủ: "bed_bed"
+- Tủ quần áo: "bed_wardrobe"
+- Tủ ngăn kéo: "bed_dresser"
+- Bàn ăn: "dining_table"
+- Bàn bếp/Hệ tủ bếp: "kitchen_counter"
+- Bếp nấu: "kitchen_cooktop"
+- Bồn rửa bát: "kitchen_sink"
+- Tủ lạnh: "kitchen_fridge"
+- Bồn cầu: "bath_toilet"
+- Chậu rửa mặt (lavabo): "bath_lavabo"
+- Bồn tắm: "bath_bathtub"
+- Vòi sen đứng: "wc_shower"
+- Bàn làm việc: "office_desk"
+- Ghế văn phòng: "office_chair"
+- Xe ô tô: "garage_car"
+- Cầu thang: "stairs"
+- Chậu cây cảnh: "plant_pots"
+- Máy chạy bộ: "gym_treadmill"
+- Bàn bi-a: "recreation_pool_table"
+- Ghế dài decor: "decor_bench"
+- Cột treo quần áo: "decor_coat_stand"
+- Gương tủ trang trí: "decor_console_mirror"
+- Máy giặt sấy: "decor_laundry_machines"
+- Bồn giặt: "decor_laundry_sink"
 
-Thông tin cần thu thập:
-- Số tầng (floors): số nguyên dương
-- Kích thước đất: landWidth (mét) và landLength (mét) - BẮT BUỘC phải có cả 2
-- Số phòng và loại phòng (rooms)
-- Yêu cầu bổ sung (extras)
-- Hình dạng mặt bằng (shape): phải yêu cầu người dùng chọn qua modal bằng cách đặt needsShapePicker = true trong JSON.
+Danh sách các kiểu dáng cửa đi (style của door):
+- Cửa đi bản lề: "hinged"
+- Cửa lùa: "sliding"
+- Cửa cuốn garage: "garage"
 
-Thông tin đã thu thập được: ${gatheredContext || "chưa có"}
+Danh sách các kiểu dáng cửa sổ (style của window):
+- Cửa sổ bản lề: "hinged"
+- Cửa sổ lùa: "sliding"
+- Cửa sổ chớp/màn sáo: "blinds"
 
-Trả về JSON thuần túý, TUYỆT ĐỐI KHÔNG thêm text ngoài:
+Các hành động (actions) được hỗ trợ trong JSON:
+- Thêm đồ nội thất: { "type": "add_furniture", "furniture_type": "[MÃ_LOẠI_ĐỒ]" }
+- Thêm cửa đi: { "type": "add_door", "style": "[KIỂU_DÁNG]" }
+- Thêm cửa sổ: { "type": "add_window", "style": "[KIỂU_DÁNG]" }
+- Render 3D phối cảnh: { "type": "render_3d" }
+- Hiển thị bảng chọn hình dạng đất: { "type": "show_shape_picker" }
+- Hiển thị bảng thêm phòng: { "type": "show_room_picker" }
+
+Hãy phân tích kỹ yêu cầu của người dùng để trả về phản hồi JSON theo cấu trúc sau:
 {
-  "reply": "tin nhắn trả lời bằng tiếng Việt, ngắn gọn, thân thiện",
+  "reply": "tin nhắn phản hồi bằng tiếng Việt thân thiện, mô tả những gì bạn vừa làm hoặc hướng dẫn người dùng cách làm.",
+  "actions": [
+    // Danh sách các hành động cần thực thi (nếu có), có thể rỗng []
+  ],
   "extracted": {
-    "floors": null,
-    "area": null,
-    "landWidth": null,
-    "landLength": null,
+    "floors": null, // hoặc số tầng chiết xuất được
+    "area": null, // hoặc diện tích chiết xuất được
+    "landWidth": null, // hoặc chiều rộng đất
+    "landLength": null, // hoặc chiều dài đất
     "shape": null,
     "rooms": null,
     "extras": null
@@ -1741,6 +1776,7 @@ Trả về JSON thuần túý, TUYỆT ĐỐI KHÔNG thêm text ngoài:
         // Show shape picker bubble
         addMessage("assistant", "__SHAPE_PICKER__");
         setCurrentStep("shape");
+        setShowShapeModal(true);
       } else if (readyToGenerate) {
         // Show final message then generate
         const cleanReply = replyText.replace("__SHAPE_PICKER__", "").trim();
@@ -1751,6 +1787,28 @@ Trả về JSON thuần túý, TUYỆT ĐỐI KHÔNG thêm text ngoài:
       } else {
         const cleanReply = replyText.replace("__SHAPE_PICKER__", "").trim();
         addMessage("assistant", cleanReply || "Hãy cho tôi biết thêm nhé!");
+      }
+
+      // Execute any direct actions requested by the AI
+      if (Array.isArray(parsed.actions)) {
+        for (const action of parsed.actions) {
+          if (action.type === "add_furniture") {
+            const fType = action.furniture_type;
+            if (fType) {
+              handleAddFurniture(fType);
+            }
+          } else if (action.type === "add_door") {
+            handleAddDoor(action.style || "hinged");
+          } else if (action.type === "add_window") {
+            handleAddWindow(action.style || "hinged");
+          } else if (action.type === "render_3d") {
+            handleRender3D();
+          } else if (action.type === "show_shape_picker") {
+            setShowShapeModal(true);
+          } else if (action.type === "show_room_picker") {
+            setShowRoomsModal(true);
+          }
+        }
       }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {

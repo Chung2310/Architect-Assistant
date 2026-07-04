@@ -246,7 +246,7 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
       const dy = pt.y - resizeStart.current.svgY;
       const signX = resizingCorner.includes("r") ? 1 : -1;
       const signY = resizingCorner.includes("b") ? 1 : -1;
-      const newW = Math.max(2, Math.min(50, Math.round((resizeStart.current.origW + (dx * signX) / scale) * 10) / 10));
+      const newW = Math.max(2, Math.min(80, Math.round((resizeStart.current.origW + (dx * signX) / scale) * 10) / 10));
       const newL = Math.max(2, Math.min(80, Math.round((resizeStart.current.origL + (dy * signY) / scale) * 10) / 10));
       setLocalWidth(newW);
       setLocalLength(newL);
@@ -311,11 +311,11 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
               <input
                 type="number"
                 value={widthInput}
-                min={2} max={50} step={0.5}
+                min={2} max={80} step={0.5}
                 onChange={e => {
                   setWidthInput(e.target.value);
                   const v = parseFloat(e.target.value);
-                  if (!isNaN(v) && v >= 2 && v <= 50) setLocalWidth(v);
+                  if (!isNaN(v) && v >= 2 && v <= 80) setLocalWidth(v);
                 }}
                 className="w-16 bg-[#1d1d1f] border border-[#2d2d30] rounded-lg px-2 py-1 text-[#00B5CD] font-bold focus:outline-none focus:border-[#00B5CD] text-center"
               />

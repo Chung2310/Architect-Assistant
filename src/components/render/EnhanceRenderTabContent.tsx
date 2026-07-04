@@ -9,12 +9,12 @@ import { getAIClient, safeJsonParse, checkUserCredits, generateContentWithRetry,
 const MODELS = [
   {
     id: "nano-banana-2",
-    name: "Nano Banana 2 (Gemini 3.1 Flash Image)",
+    name: "Igen gemini Image Flash",
     isPro: false,
   },
   {
     id: "nano-banana-pro",
-    name: "Nano Banana Pro (Gemini 3 Pro Image)",
+    name: "Igen gemini Image Pro",
     isPro: true,
   },
 ];
@@ -730,7 +730,7 @@ ${
                 >
                   {MODELS.map((model) => (
                     <option key={model.id} value={model.id}>
-                      {model.name} {model.isPro ? "(Pro)" : ""}
+                      {model.name}
                     </option>
                   ))}
                 </select>
@@ -1051,7 +1051,7 @@ ${
                   >
                     {MODELS.map((model) => (
                       <option key={model.id} value={model.id}>
-                        {model.name} {model.isPro ? "(Pro)" : ""}
+                        {model.name}
                       </option>
                     ))}
                   </select>
