@@ -112,7 +112,12 @@ export const UpscaleTabContent: React.FC = () => {
 
     if (!(await checkUserCredits())) return;
     setIsUploading(true);
-    setUploadProgress(0);
+    setUploadProgress(1);
+    let progressVal = 1;
+    const progressInterval = setInterval(() => {
+      progressVal += (95 - progressVal) * 0.1;
+      setUploadProgress(Math.round(progressVal));
+    }, 150);
 
     try {
       const processedFilesNested = await Promise.all(
@@ -136,19 +141,24 @@ export const UpscaleTabContent: React.FC = () => {
         .filter((f): f is File => f !== null);
 
       if (processedFiles.length === 0) {
+        clearInterval(progressInterval);
         setIsUploading(false);
         return;
       }
 
       const fileToUpload = processedFiles[0];
 
-      setUploadProgress(30);
       const downloadURL = await uploadMedia(fileToUpload, "uploads");
-      setUploadProgress(100);
       cacheImage(downloadURL, fileToUpload);
       setInputImage(downloadURL);
-      setIsUploading(false);
+
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      setTimeout(() => {
+        setIsUploading(false);
+      }, 400);
     } catch (error) {
+      clearInterval(progressInterval);
       console.error("Error processing files:", error);
       setIsUploading(false);
     }

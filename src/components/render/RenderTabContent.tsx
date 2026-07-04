@@ -702,7 +702,12 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
 
     if (!(await checkUserCredits())) return;
     setIsUploading(true);
-    setUploadProgress(6);
+    setUploadProgress(1);
+    let progressVal = 1;
+    const progressInterval = setInterval(() => {
+      progressVal += (95 - progressVal) * 0.1;
+      setUploadProgress(Math.round(progressVal));
+    }, 150);
 
     try {
       const processedFilesNested = await Promise.all(
@@ -727,29 +732,26 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
       );
 
       if (validFiles.length === 0) {
+        clearInterval(progressInterval);
         setIsUploading(false);
         return;
       }
 
       const downloadURLs: string[] = [];
-      let idx = 0;
       for (const file of validFiles) {
-        const uploadStartProgress = Math.round((idx / validFiles.length) * 80) + 10;
-        setUploadProgress(Math.min(95, uploadStartProgress));
         const url = await uploadMedia(file, "uploads");
         cacheImage(url, file);
-
-
         downloadURLs.push(url);
-        idx++;
-        const uploadCompleteProgress = Math.round((idx / validFiles.length) * 80) + 15;
-        setUploadProgress(Math.min(98, uploadCompleteProgress));
       }
 
       setInputImages((prev) => [...prev, ...downloadURLs]);
+      clearInterval(progressInterval);
       setUploadProgress(100);
-      setIsUploading(false);
+      setTimeout(() => {
+        setIsUploading(false);
+      }, 400);
     } catch (error) {
+      clearInterval(progressInterval);
       console.error("Error initiating upload:", error);
       setIsUploading(false);
       toast.error("Đã xảy ra lỗi khi tải ảnh lên.");
@@ -814,28 +816,29 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
 
     if (!(await checkUserCredits())) return;
     setIsUploadingRef(true);
-    setUploadProgressRef(6);
+    setUploadProgressRef(1);
+    let progressVal = 1;
+    const progressInterval = setInterval(() => {
+      progressVal += (95 - progressVal) * 0.1;
+      setUploadProgressRef(Math.round(progressVal));
+    }, 150);
 
     try {
       const downloadURLs: string[] = [];
-      let idx = 0;
       for (const file of files) {
-        const uploadStartProgress = Math.round((idx / files.length) * 80) + 10;
-        setUploadProgressRef(Math.min(95, uploadStartProgress));
         const url = await uploadMedia(file, "uploads");
         cacheImage(url, file);
-
-
         downloadURLs.push(url);
-        idx++;
-        const uploadCompleteProgress = Math.round((idx / files.length) * 80) + 15;
-        setUploadProgressRef(Math.min(98, uploadCompleteProgress));
       }
 
       setReferenceImages((prev) => [...prev, ...downloadURLs]);
+      clearInterval(progressInterval);
       setUploadProgressRef(100);
-      setIsUploadingRef(false);
+      setTimeout(() => {
+        setIsUploadingRef(false);
+      }, 400);
     } catch (error) {
+      clearInterval(progressInterval);
       console.error("Error initiating upload:", error);
       setIsUploadingRef(false);
       toast.error("Đã xảy ra lỗi khi tải ảnh lên.");
