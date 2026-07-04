@@ -312,6 +312,8 @@ export const generateContentWithRetry = async (
           params: {
             model: modelName,
             contents: callParams.contents,
+            promptTemplateKey: callParams.promptTemplateKey,
+            promptTemplateInput: callParams.promptTemplateInput,
             systemInstruction,
             config: {
               imageConfig: {
