@@ -310,6 +310,9 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     if (referenceImages.length > 0) {
       textPrompt += `Quy tắc ảnh tham khảo nội thất: Giữ nguyên tuyệt đối vị trí, loại và sắp xếp của từng món đồ nội thất có trong ảnh tham khảo (giường, tủ, bàn, ghế, đèn, v.v.). TUYỆT ĐỐI không di chuyển, xoay, thêm hoặc bỏ bất kỳ món đồ nào so với ảnh tham khảo. Chỉ được phép áp dụng phong cách hoàn thiện bề mặt (màu sắc, vật liệu, ánh sáng) từ ảnh tham khảo lên vị trí đồ vật đã cố định.\n`;
     }
+    if (selectedAngle) {
+      textPrompt += `Góc chụp: ${selectedAngle}\n`;
+    }
     if (cameraAngleStyle) {
       textPrompt += `Style góc chụp: ${cameraAngleStyle}\n`;
     }
@@ -317,6 +320,7 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     systemInstruction = [
       "Bạn là chuyên gia chuyển mặt bằng thành không gian 3D.",
       "Mục tiêu là dựng lại không gian từ floorplan thật chính xác, không được phá vỡ bố cục.",
+      "BẮT BUỘC: Nếu có Góc chụp được chỉ định, bạn PHẢI ưu tiên và tuân thủ tuyệt đối góc chụp (camera angle) đó làm bố cục chính của khung cảnh. Loại bỏ hoàn toàn góc chụp mặc định từ cửa ra vào hoặc các góc khác nếu góc chụp được chỉ định là khác.",
       "Phải phân biệt ro rang giua du lieu bo cuc can giu va dau vet do hoa ban ve can xoa bo.",
       "Không được phép suy luận sang tạo vào kiến trúc nếu bản vẽ không thể hiện; ưu tiên bảo tồn ý nguyên bản vẽ hơn thẩm mỹ hình ảnh.",
       "Nếu có thể nhận diện đồ nội thất từ bản vẽ hoặc ảnh tham khảo, từng món phải giữ đúng loại, vị trí, hướng và quan hệ không gian; không được tự ý di chuyển, xoay, thêm hoặc bỏ.",

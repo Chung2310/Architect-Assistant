@@ -27,6 +27,7 @@ import { FloorPlan3DViewer } from "./FloorPlan3DViewer";
 // ── Constants ──────────────────────────────────────────────────────────────
 const METER_TO_PX = 48;
 const _GRID_SIZE = 0.5;
+const PEN_CURSOR = "crosshair";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 export interface FurnitureItem {
