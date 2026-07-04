@@ -1069,6 +1069,137 @@ export const FloorPlanEditor: React.FC = () => {
   const [floorPlan, setFloorPlan] = useState<FloorPlanData | null>(null);
   const [activeFloorIndex, setActiveFloorIndex] = useState(0);
   const [floorPlans, setFloorPlans] = useState<FloorPlanData[]>([]);
+
+  // ── Project History state ──────────────────────────────────────────────────
+  const [projects, setProjects] = useState<any[]>([]);
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [activeSidebarTab, setActiveSidebarTab] = useState<"chat" | "history">("chat");
+
+  const handleLoadProject = useCallback((proj: any) => {
+    setCurrentProjectId(proj.id);
+    setProjectName(proj.name);
+    setFloorPlans(proj.floorPlans || []);
+    setActiveFloorIndex(proj.activeFloorIndex || 0);
+    setGatherInfo(proj.gatherInfo || {});
+    setCurrentStep(proj.currentStep || "floors");
+    setCompletedSteps(new Set(proj.completedSteps || []));
+    setMessages(proj.messages || []);
+    
+    if (proj.floorPlans && proj.floorPlans.length > 0) {
+      setFloorPlan(proj.floorPlans[proj.activeFloorIndex || 0]);
+    } else {
+      setFloorPlan(null);
+    }
+    
+    setActiveSidebarTab("chat");
+    toast.success(`Đã tải dự án: ${proj.name}`);
+  }, []);
+
+  const handleNewProject = useCallback(() => {
+    const newId = "proj_" + Date.now();
+    
+    const newProject = {
+      id: newId,
+      name: "Untitled Project",
+      floorPlans: [],
+      activeFloorIndex: 0,
+      gatherInfo: {},
+      currentStep: "floors",
+      completedSteps: [],
+      messages: [
+        {
+          id: "msg_" + Date.now(),
+          role: "assistant" as const,
+          content: "Xin chào! Tôi sẽ giúp bạn tạo bản vẽ mặt bằng với AI.\n\nHãy bắt đầu — **Công trình của bạn có bao nhiêu tầng?**",
+          timestamp: new Date(),
+        }
+      ],
+      updatedAt: new Date().toISOString(),
+    };
+    
+    try {
+      const savedProjectsStr = localStorage.getItem("igen_floorplan_projects") || "[]";
+      const savedProjects = JSON.parse(savedProjectsStr);
+      savedProjects.push(newProject);
+      localStorage.setItem("igen_floorplan_projects", JSON.stringify(savedProjects));
+      setProjects(savedProjects);
+    } catch (err) {
+      console.error(err);
+    }
+    
+    setCurrentProjectId(newId);
+    setProjectName("Untitled Project");
+    setFloorPlans([]);
+    setActiveFloorIndex(0);
+    setGatherInfo({});
+    setCurrentStep("floors");
+    setCompletedSteps(new Set());
+    setMessages(newProject.messages);
+    setFloorPlan(null);
+    
+    setActiveSidebarTab("chat");
+    toast.success("Đã tạo dự án mới");
+  }, []);
+
+  const handleDeleteProject = useCallback((projId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const savedProjectsStr = localStorage.getItem("igen_floorplan_projects") || "[]";
+      let savedProjects = JSON.parse(savedProjectsStr);
+      savedProjects = savedProjects.filter((p: any) => p.id !== projId);
+      localStorage.setItem("igen_floorplan_projects", JSON.stringify(savedProjects));
+      setProjects(savedProjects);
+      
+      if (currentProjectId === projId) {
+        if (savedProjects.length > 0) {
+          const sorted = [...savedProjects].sort((a: any, b: any) => 
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          );
+          handleLoadProject(sorted[0]);
+        } else {
+          handleNewProject();
+        }
+      }
+      toast.success("Đã xóa dự án");
+    } catch (err) {
+      console.error("Error deleting project:", err);
+    }
+  }, [currentProjectId, handleLoadProject, handleNewProject]);
+
+  // ── Project History Pagination & Editing State ─────────────────────────────
+  const [historyPage, setHistoryPage] = useState(1);
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [editingProjectName, setEditingProjectName] = useState("");
+
+  const handleSaveProjectName = useCallback((projId: string) => {
+    if (!editingProjectName.trim()) {
+      setEditingProjectId(null);
+      return;
+    }
+    try {
+      const savedProjectsStr = localStorage.getItem("igen_floorplan_projects") || "[]";
+      const savedProjects = JSON.parse(savedProjectsStr);
+      const updated = savedProjects.map((p: any) => 
+        p.id === projId ? { ...p, name: editingProjectName.trim(), updatedAt: new Date().toISOString() } : p
+      );
+      updated.sort((a: any, b: any) => 
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      );
+      const capped = updated.slice(0, 20);
+      localStorage.setItem("igen_floorplan_projects", JSON.stringify(capped));
+      setProjects(capped);
+      
+      if (currentProjectId === projId) {
+        setProjectName(editingProjectName.trim());
+      }
+      
+      setEditingProjectId(null);
+      toast.success("Đã đổi tên dự án");
+    } catch (err) {
+      console.error("Error renaming project:", err);
+    }
+  }, [editingProjectName, currentProjectId]);
+
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 60, y: 60 });
   const [isPanning, setIsPanning] = useState(false);
@@ -1223,15 +1354,84 @@ export const FloorPlanEditor: React.FC = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping]);
 
-  // ── Auto-save floorPlans to localStorage ────────────────────────────────
+  // ── Project History load & auto-save effects ────────────────────────────
+  // On mount: Load projects list, but start with a clean slate (reset all)
   useEffect(() => {
-    if (floorPlans.length > 0) {
-      try {
-        localStorage.setItem("igen_floorplans", JSON.stringify(floorPlans));
-        localStorage.setItem("igen_projectname", projectName);
-      } catch (_e) { /* ignore quota errors */ }
+    try {
+      const savedProjectsStr = localStorage.getItem("igen_floorplan_projects") || "[]";
+      const savedProjects = JSON.parse(savedProjectsStr);
+      setProjects(savedProjects);
+      
+      // Start with a new blank slate (not saved to list until edited/interacted with)
+      const newId = "proj_" + Date.now();
+      setCurrentProjectId(newId);
+      setProjectName("Untitled Project");
+      setFloorPlans([]);
+      setActiveFloorIndex(0);
+      setGatherInfo({});
+      setCurrentStep("floors");
+      setCompletedSteps(new Set());
+      setMessages([
+        {
+          id: "msg_init_" + newId,
+          role: "assistant" as const,
+          content: "Xin chào! Tôi sẽ giúp bạn tạo bản vẽ mặt bằng với AI.\n\nHãy bắt đầu — **Công trình của bạn có bao nhiêu tầng?**",
+          timestamp: new Date(),
+        }
+      ]);
+      setFloorPlan(null);
+    } catch (err) {
+      console.error("Error loading project history:", err);
     }
-  }, [floorPlans, projectName]);
+  }, []);
+
+  // Debounced auto-save current project to the list of projects
+  useEffect(() => {
+    if (!currentProjectId) return;
+    
+    // Check if the project is completely blank/empty to avoid polluting history on refresh
+    const isEmpty = 
+      projectName === "Untitled Project" &&
+      floorPlans.length === 0 &&
+      Object.keys(gatherInfo).length === 0 &&
+      messages.length === 1 &&
+      messages[0]?.content.includes("Xin chào! Tôi sẽ giúp bạn tạo bản vẽ mặt bằng");
+      
+    if (isEmpty) return; // Do not auto-save a blank, untouched project
+    
+    const timer = setTimeout(() => {
+      try {
+        const savedProjectsStr = localStorage.getItem("igen_floorplan_projects") || "[]";
+        const savedProjects = JSON.parse(savedProjectsStr);
+        
+        const existingIdx = savedProjects.findIndex((p: any) => p.id === currentProjectId);
+        const updatedProject = {
+          id: currentProjectId,
+          name: projectName,
+          floorPlans,
+          activeFloorIndex,
+          gatherInfo,
+          currentStep,
+          completedSteps: Array.from(completedSteps),
+          messages,
+          updatedAt: new Date().toISOString(),
+        };
+        
+        if (existingIdx >= 0) {
+          savedProjects[existingIdx] = updatedProject;
+        } else {
+          savedProjects.push(updatedProject);
+        }
+        
+        localStorage.setItem("igen_floorplan_projects", JSON.stringify(savedProjects));
+        setProjects(savedProjects);
+      } catch (err) {
+        console.error("Error auto-saving project:", err);
+      }
+    }, 800);
+    
+    return () => clearTimeout(timer);
+  }, [currentProjectId, projectName, floorPlans, activeFloorIndex, gatherInfo, currentStep, completedSteps, messages]);
 
   // ── Undo/Redo keyboard shortcut ──────────────────────────────────────────
   useEffect(() => {
@@ -5163,7 +5363,7 @@ Requirements:
 
   // ════════════════════════════════════════════════════════════════════════
   return (
-    <div className="flex h-screen bg-white text-slate-900 font-sans overflow-hidden">
+    <div className="flex h-[calc(100vh-64px)] bg-white text-slate-900 font-sans overflow-hidden">
       {/* ── TOP BAR ─────────────────────────────────────────────────────── */}
       <div className="absolute top-0 inset-x-0 h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4 z-30">
         <div className="flex items-center gap-3">
@@ -5300,148 +5500,318 @@ Requirements:
 
       {/* ── CHAT SIDEBAR ─────────────────────────────────────────────────── */}
       <div className="w-[380px] flex-shrink-0 flex flex-col bg-slate-50 border-r border-slate-200 pt-12 z-20">
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-300">
-          <AnimatePresence initial={false}>
-            {messages.map((msg) => {
-              // Special shape-picker bubble
-              if (msg.role === "assistant" && msg.content === "__SHAPE_PICKER__") {
-                return (
-                  <motion.div
-                    key={msg.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.25 }}
-                    className="flex justify-start"
-                  >
-                    <div className="max-w-[92%] rounded-2xl rounded-bl-md bg-white text-slate-700 shadow-sm border border-slate-100 overflow-hidden">
-                      <div className="px-3.5 py-2.5 text-xs leading-relaxed">
-                        Rõ rồi! Giờ hãy chọn <strong>hình dạng mặt bằng</strong> phù hợp với lô đất của bạn:
-                      </div>
-                      <div className="px-3 pb-3">
-                        <button
-                          onClick={() => setShowShapeModal(true)}
-                          className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all"
-                        >
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="3" y="3" width="7" height="7" rx="1"/>
-                            <path d="M14 3h7v4h-4v3h-3V3z"/>
-                            <rect x="3" y="14" width="7" height="7" rx="1"/>
-                            <rect x="14" y="14" width="7" height="7" rx="1"/>
-                          </svg>
-                          Chọn hình dạng mặt bằng
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              }
+        {/* Sidebar Tab Switcher */}
+        <div className="flex border-b border-slate-200 bg-white shrink-0">
+          <button
+            onClick={() => setActiveSidebarTab("chat")}
+            className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-colors border-b-2 ${
+              activeSidebarTab === "chat"
+                ? "border-[#00b5cd] text-[#00b5cd] bg-slate-50/50"
+                : "border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-50/30"
+            }`}
+          >
+            Trò chuyện AI
+          </button>
+          <button
+            onClick={() => setActiveSidebarTab("history")}
+            className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-colors border-b-2 ${
+              activeSidebarTab === "history"
+                ? "border-[#00b5cd] text-[#00b5cd] bg-slate-50/50"
+                : "border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-50/30"
+            }`}
+          >
+            Lịch sử dự án
+          </button>
+        </div>
 
-              // Special room-picker bubble
-              if (msg.role === "assistant" && msg.content === "__ROOM_PICKER__") {
-                return (
-                  <motion.div
-                    key={msg.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.25 }}
-                    className="flex justify-start"
-                  >
-                    <div className="max-w-[92%] rounded-2xl rounded-bl-md bg-white text-slate-700 shadow-sm border border-slate-100 overflow-hidden">
-                      <div className="px-3.5 py-2.5 text-xs leading-relaxed">
-                        Bạn có thể chọn số lượng và loại phòng mong muốn bằng công cụ chọn phòng:
-                      </div>
-                      <div className="px-3 pb-3">
-                        <button
-                          onClick={() => setShowRoomsModal(true)}
-                          className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all"
-                        >
-                          <Plus className="w-4 h-4" />
-                          Chọn phòng mong muốn
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              }
+        {activeSidebarTab === "chat" ? (
+          <>
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-300">
+              <AnimatePresence initial={false}>
+                {messages.map((msg) => {
+                  // Special shape-picker bubble
+                  if (msg.role === "assistant" && msg.content === "__SHAPE_PICKER__") {
+                    return (
+                      <motion.div
+                        key={msg.id}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="flex justify-start"
+                      >
+                        <div className="max-w-[92%] rounded-2xl rounded-bl-md bg-white text-slate-700 shadow-sm border border-slate-100 overflow-hidden">
+                          <div className="px-3.5 py-2.5 text-xs leading-relaxed">
+                            Rõ rồi! Giờ hãy chọn <strong>hình dạng mặt bằng</strong> phù hợp với lô đất của bạn:
+                          </div>
+                          <div className="px-3 pb-3">
+                            <button
+                              onClick={() => setShowShapeModal(true)}
+                              className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all"
+                            >
+                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="3" y="3" width="7" height="7" rx="1"/>
+                                <path d="M14 3h7v4h-4v3h-3V3z"/>
+                                <rect x="3" y="14" width="7" height="7" rx="1"/>
+                                <rect x="14" y="14" width="7" height="7" rx="1"/>
+                              </svg>
+                              Chọn hình dạng mặt bằng
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  }
 
-              return (
+                  // Special room-picker bubble
+                  if (msg.role === "assistant" && msg.content === "__ROOM_PICKER__") {
+                    return (
+                      <motion.div
+                        key={msg.id}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="flex justify-start"
+                      >
+                        <div className="max-w-[92%] rounded-2xl rounded-bl-md bg-white text-slate-700 shadow-sm border border-slate-100 overflow-hidden">
+                          <div className="px-3.5 py-2.5 text-xs leading-relaxed">
+                            Bạn có thể chọn số lượng và loại phòng mong muốn bằng công cụ chọn phòng:
+                          </div>
+                          <div className="px-3 pb-3">
+                            <button
+                              onClick={() => setShowRoomsModal(true)}
+                              className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all"
+                            >
+                              <Plus className="w-4 h-4" />
+                              Chọn phòng mong muốn
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  }
+
+                  return (
+                    <motion.div
+                      key={msg.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.25 }}
+                      className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                    >
+                      <div
+                        className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed ${
+                          msg.role === "user"
+                            ? "bg-[#00b5cd] text-white font-semibold rounded-br-md"
+                            : "bg-white text-slate-700 rounded-bl-md shadow-sm border border-slate-100"
+                        }`}
+                        style={{ whiteSpace: "pre-wrap" }}
+                        dangerouslySetInnerHTML={{
+                          __html: msg.content
+                            .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+                            .replace(/\n/g, "<br/>"),
+                        }}
+                      />
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+
+              {/* Typing indicator */}
+              {isTyping && (
                 <motion.div
-                  key={msg.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.25 }}
-                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex justify-start"
                 >
-                  <div
-                    className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed ${
-                      msg.role === "user"
-                        ? "bg-[#00b5cd] text-white font-semibold rounded-br-md"
-                        : "bg-white text-slate-700 rounded-bl-md shadow-sm border border-slate-100"
-                    }`}
-                    style={{ whiteSpace: "pre-wrap" }}
-                    dangerouslySetInnerHTML={{
-                      __html: msg.content
-                        .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-                        .replace(/\n/g, "<br/>"),
-                    }}
-                  />
+                  <div className="bg-white rounded-2xl rounded-bl-md px-4 py-3 flex gap-1.5 items-center shadow-sm border border-slate-100">
+                    {[0, 1, 2].map((i) => (
+                      <motion.div
+                        key={i}
+                        className="w-1.5 h-1.5 bg-[#00b5cd] rounded-full"
+                        animate={{ y: [0, -4, 0] }}
+                        transition={{ duration: 0.6, delay: i * 0.15, repeat: Infinity }}
+                      />
+                    ))}
+                  </div>
                 </motion.div>
-              );
-            })}
-          </AnimatePresence>
+              )}
+              <div ref={chatEndRef} />
+            </div>
 
-          {/* Typing indicator */}
-          {isTyping && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex justify-start"
-            >
-              <div className="bg-white rounded-2xl rounded-bl-md px-4 py-3 flex gap-1.5 items-center shadow-sm border border-slate-100">
-                {[0, 1, 2].map((i) => (
-                  <motion.div
-                    key={i}
-                    className="w-1.5 h-1.5 bg-[#00b5cd] rounded-full"
-                    animate={{ y: [0, -4, 0] }}
-                    transition={{ duration: 0.6, delay: i * 0.15, repeat: Infinity }}
-                  />
-                ))}
+            {/* Input */}
+            <div className="p-3 border-t border-slate-200 bg-white shrink-0">
+              <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#d4a853]/40 focus-within:border-[#d4a853]/50 transition-all shadow-sm">
+                <input
+                  ref={inputRef}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={isGenerating || isTyping}
+                  placeholder={
+                    currentStep === "done" || isGenerating
+                      ? "Đang xử lý..."
+                      : "Trả lời iGen..."
+                  }
+                  className="flex-1 bg-transparent text-slate-700 text-xs placeholder-slate-400 outline-none"
+                />
+                <button
+                  onClick={handleSend}
+                  disabled={!inputValue.trim() || isGenerating || isTyping}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg bg-[#d4a853] hover:bg-[#c49843] disabled:opacity-30 disabled:cursor-not-allowed transition-all text-[#1a1612]"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </button>
               </div>
-            </motion.div>
-          )}
-          <div ref={chatEndRef} />
-        </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col bg-slate-50 overflow-hidden">
+            {/* History List header */}
+            <div className="p-3 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Danh sách bản vẽ</span>
+              <button
+                onClick={handleNewProject}
+                className="flex items-center gap-1 px-3 py-1.5 bg-[#00b5cd] hover:bg-[#009db3] text-white text-xs font-bold rounded-lg transition-all shadow-sm cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Dự án mới
+              </button>
+            </div>
 
-        {/* Input */}
-        <div className="p-3 border-t border-slate-200">
-          <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#d4a853]/40 focus-within:border-[#d4a853]/50 transition-all shadow-sm">
-            <input
-              ref={inputRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={isGenerating || isTyping}
-              placeholder={
-                currentStep === "done" || isGenerating
-                  ? "Đang xử lý..."
-                  : "Trả lời iGen..."
-              }
-              className="flex-1 bg-transparent text-slate-700 text-xs placeholder-slate-400 outline-none"
-            />
-            <button
-              onClick={handleSend}
-              disabled={!inputValue.trim() || isGenerating || isTyping}
-              className="w-7 h-7 flex items-center justify-center rounded-lg bg-[#d4a853] hover:bg-[#c49843] disabled:opacity-30 disabled:cursor-not-allowed transition-all text-[#1a1612]"
-            >
-              <Send className="w-3.5 h-3.5" />
-            </button>
+            {/* List */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-300">
+              {(() => {
+                const displayProjects = projects.filter((p: any) => p.floorPlans && p.floorPlans.length > 0);
+                const ITEMS_PER_PAGE = 5;
+                const totalPages = Math.ceil(displayProjects.length / ITEMS_PER_PAGE);
+                const currentPage = Math.max(1, Math.min(historyPage, totalPages || 1));
+                const paginatedProjects = [...displayProjects]
+                  .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+                  .slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+                if (displayProjects.length === 0) {
+                  return (
+                    <div className="text-center py-10 text-slate-400 text-xs font-medium">
+                      Chưa có dự án bản vẽ 2D nào được lưu.
+                    </div>
+                  );
+                }
+
+                return (
+                  <>
+                    {paginatedProjects.map((proj) => {
+                      const isActive = currentProjectId === proj.id;
+                      const isEditing = editingProjectId === proj.id;
+                      const dateStr = new Date(proj.updatedAt).toLocaleString("vi-VN", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        day: "2-digit",
+                        month: "2-digit",
+                      });
+                      const floors = proj.gatherInfo?.floors || 0;
+                      const area = proj.gatherInfo?.area || "Chưa xác định";
+
+                      return (
+                        <div
+                          key={proj.id}
+                          onClick={() => !isEditing && handleLoadProject(proj)}
+                          className={`group p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                            isActive
+                              ? "bg-[#00b5cd]/5 border-[#00b5cd] shadow-sm"
+                              : "bg-white border-slate-200 hover:border-[#00b5cd]/50 hover:shadow-sm"
+                          }`}
+                        >
+                          {isEditing ? (
+                            <div className="flex-1 pr-2" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                autoFocus
+                                value={editingProjectName}
+                                onChange={(e) => setEditingProjectName(e.target.value)}
+                                onBlur={() => handleSaveProjectName(proj.id)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") handleSaveProjectName(proj.id);
+                                  if (e.key === "Escape") setEditingProjectId(null);
+                                }}
+                                className="w-full bg-slate-100 border border-slate-300 rounded px-2 py-1 text-xs font-semibold text-slate-900 focus:outline-none focus:border-[#00b5cd]"
+                              />
+                              <span className="text-[8px] text-slate-400 block mt-0.5 font-normal">Press Enter to save · Esc to cancel</span>
+                            </div>
+                          ) : (
+                            <div className="space-y-1 min-w-0 flex-1 pr-2">
+                              <p className="text-xs font-bold text-slate-800 truncate">
+                                {proj.name}
+                              </p>
+                              <div className="flex items-center gap-1.5 text-[9px] text-slate-400 font-semibold">
+                                <span>{dateStr}</span>
+                                <span>•</span>
+                                <span>{floors > 0 ? `${floors} tầng` : "Chưa tạo"}</span>
+                                <span>•</span>
+                                <span>{area}</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {!isEditing && (
+                            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingProjectId(proj.id);
+                                  setEditingProjectName(proj.name);
+                                }}
+                                className="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
+                                title="Đổi tên dự án"
+                              >
+                                <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                              </button>
+                              <button
+                                onClick={(e) => handleDeleteProject(proj.id, e)}
+                                className="w-7 h-7 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 flex items-center justify-center transition-colors cursor-pointer"
+                                title="Xóa dự án"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                      <div className="p-2.5 mt-2 border-t border-slate-200/60 bg-white/50 rounded-xl flex items-center justify-between text-xs text-slate-500 font-semibold select-none">
+                        <button
+                          disabled={currentPage === 1}
+                          onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+                          className="p-1 px-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                          Trước
+                        </button>
+                        <span>
+                          Trang {currentPage} / {totalPages}
+                        </span>
+                        <button
+                          disabled={currentPage === totalPages}
+                          onClick={() => setHistoryPage(p => Math.min(totalPages, p + 1))}
+                          className="p-1 px-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-0.5 cursor-pointer"
+                        >
+                          Sau
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* ── CANVAS AREA ──────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col pt-12 relative overflow-hidden">
+      <div className="flex-1 min-w-0 flex flex-col pt-12 relative overflow-hidden">
 
         {/* Draw Wall status banner */}
         {activeTool === "draw_wall" && (
