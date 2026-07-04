@@ -1071,7 +1071,14 @@ export const FloorPlanEditor: React.FC = () => {
   const [floorPlans, setFloorPlans] = useState<FloorPlanData[]>([]);
 
   // ── Project History state ──────────────────────────────────────────────────
-  const [projects, setProjects] = useState<any[]>([]);
+  const [projects, setProjects] = useState<any[]>(() => {
+    try {
+      const savedProjectsStr = localStorage.getItem("igen_floorplan_projects") || "[]";
+      return JSON.parse(savedProjectsStr);
+    } catch (_e) {
+      return [];
+    }
+  });
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [activeSidebarTab, setActiveSidebarTab] = useState<"chat" | "history">("chat");
 
@@ -1355,13 +1362,9 @@ export const FloorPlanEditor: React.FC = () => {
   }, [messages, isTyping]);
 
   // ── Project History load & auto-save effects ────────────────────────────
-  // On mount: Load projects list, but start with a clean slate (reset all)
+  // On mount: Start with a clean slate (reset all)
   useEffect(() => {
     try {
-      const savedProjectsStr = localStorage.getItem("igen_floorplan_projects") || "[]";
-      const savedProjects = JSON.parse(savedProjectsStr);
-      setProjects(savedProjects);
-      
       // Start with a new blank slate (not saved to list until edited/interacted with)
       const newId = "proj_" + Date.now();
       setCurrentProjectId(newId);
