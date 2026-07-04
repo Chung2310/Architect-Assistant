@@ -1364,28 +1364,31 @@ export const FloorPlanEditor: React.FC = () => {
   // ── Project History load & auto-save effects ────────────────────────────
   // On mount: Start with a clean slate (reset all)
   useEffect(() => {
-    try {
-      // Start with a new blank slate (not saved to list until edited/interacted with)
-      const newId = "proj_" + Date.now();
-      setCurrentProjectId(newId);
-      setProjectName("Untitled Project");
-      setFloorPlans([]);
-      setActiveFloorIndex(0);
-      setGatherInfo({});
-      setCurrentStep("floors");
-      setCompletedSteps(new Set());
-      setMessages([
-        {
-          id: "msg_init_" + newId,
-          role: "assistant" as const,
-          content: "Xin chào! Tôi sẽ giúp bạn tạo bản vẽ mặt bằng với AI.\n\nHãy bắt đầu — **Công trình của bạn có bao nhiêu tầng?**",
-          timestamp: new Date(),
-        }
-      ]);
-      setFloorPlan(null);
-    } catch (err) {
-      console.error("Error loading project history:", err);
-    }
+    const timer = setTimeout(() => {
+      try {
+        // Start with a new blank slate (not saved to list until edited/interacted with)
+        const newId = "proj_" + Date.now();
+        setCurrentProjectId(newId);
+        setProjectName("Untitled Project");
+        setFloorPlans([]);
+        setActiveFloorIndex(0);
+        setGatherInfo({});
+        setCurrentStep("floors");
+        setCompletedSteps(new Set());
+        setMessages([
+          {
+            id: "msg_init_" + newId,
+            role: "assistant" as const,
+            content: "Xin chào! Tôi sẽ giúp bạn tạo bản vẽ mặt bằng với AI.\n\nHãy bắt đầu — **Công trình của bạn có bao nhiêu tầng?**",
+            timestamp: new Date(),
+          }
+        ]);
+        setFloorPlan(null);
+      } catch (err) {
+        console.error("Error loading project history:", err);
+      }
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   // Debounced auto-save current project to the list of projects
