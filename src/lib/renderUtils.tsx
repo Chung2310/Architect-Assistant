@@ -298,7 +298,7 @@ export const generateContentWithRetry = async (
         }
       }
 
-      const isImagenMode = modelName.startsWith("imagen-") || modelName === "nano-banana-2" || modelName === "gemini-3.1-flash-image-preview" || modelName === "igen-image-flash";
+      const isImagenMode = modelName.includes("image") || modelName.includes("imagen") || modelName.includes("banana");
       if (isImagenMode) {
         const imageConfig = (callParams.config as { imageConfig?: { aspectRatio?: string; imageSize?: string } })?.imageConfig || {};
         console.info("[AI Request] Provider route: backend Gemini native image", {

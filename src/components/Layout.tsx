@@ -231,7 +231,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentScreen: _curren
         </div>
       </header>
 
-      <div className="flex flex-1 pt-16">
+      <div className="flex flex-1 pt-16 overflow-hidden max-w-full">
         {/* Main Content */}
         <main className="flex-1 overflow-auto">
           {children}
