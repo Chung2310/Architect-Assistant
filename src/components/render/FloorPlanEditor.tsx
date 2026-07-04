@@ -3144,23 +3144,23 @@ Requirements:
           if (isJacuzzi) {
             return (
               <Group>
-                <Rect x={-iw} y={-ih} width={iw * 2} height={ih * 2} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={4} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
-                <Rect x={-iw + 4} y={-ih + 4} width={(iw - 4) * 2} height={(ih - 4) * 2} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={3} />
-                <Circle x={0} y={0} radius={Math.min(iw, ih) * 0.75} fill="#f1f5f9" stroke="#475569" strokeWidth={0.8} />
+                <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={4} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
+                <Rect x={-iw / 2 + 2} y={-ih / 2 + 2} width={iw - 4} height={ih - 4} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={3} />
+                <Circle x={0} y={0} radius={Math.min(iw, ih) * 0.375} fill="#f1f5f9" stroke="#475569" strokeWidth={0.8} />
                 <Circle x={0} y={0} radius={3} fill="#0f172a" />
-                <Circle x={-iw + 10} y={0} radius={1.5} fill="#475569" />
-                <Circle x={iw - 10} y={0} radius={1.5} fill="#475569" />
-                <Circle x={0} y={-ih + 10} radius={1.5} fill="#475569" />
-                <Circle x={0} y={ih - 10} radius={1.5} fill="#475569" />
+                <Circle x={-iw / 2 + 5} y={0} radius={1.5} fill="#475569" />
+                <Circle x={iw / 2 - 5} y={0} radius={1.5} fill="#475569" />
+                <Circle x={0} y={-ih / 2 + 5} radius={1.5} fill="#475569" />
+                <Circle x={0} y={ih / 2 - 5} radius={1.5} fill="#475569" />
               </Group>
             );
           }
           return (
             <Group>
-              <Rect x={-iw} y={-ih} width={iw * 2} height={ih * 2} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={10} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
-              <Rect x={-iw + 4} y={-ih + 4} width={(iw - 4) * 2} height={(ih - 4) * 2} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={8} />
-              <Circle x={iw - 8} y={ih - 8} radius={2.5} fill="#94a3b8" />
-              <Line points={[iw - 8, ih - 8, iw - 15, ih - 15]} stroke="#94a3b8" strokeWidth={1.5} lineCap="round" />
+              <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={10} shadowColor="#0f172a" shadowBlur={4} shadowOpacity={0.1} shadowOffset={{ x: 1, y: 1 }} />
+              <Rect x={-iw / 2 + 2} y={-ih / 2 + 2} width={iw - 4} height={ih - 4} fill="#ffffff" stroke="#475569" strokeWidth={1} cornerRadius={8} />
+              <Circle x={iw / 2 - 4} y={ih / 2 - 4} radius={2.5} fill="#94a3b8" />
+              <Line points={[iw / 2 - 4, ih / 2 - 4, iw / 2 - 10, ih / 2 - 10]} stroke="#94a3b8" strokeWidth={1.5} lineCap="round" />
             </Group>
           );
         }
@@ -3556,18 +3556,21 @@ Requirements:
           </Group>
         );
       case "entry_console_mirror":
-        return (
-          <Group>
-            {/* Console table top */}
-            <Rect x={-iw / 2} y={-ih / 2} width={iw} height={ih} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={1} />
-            {/* Wall mirror line behind it */}
-            <Line points={[-iw * 0.8 / 2, -ih / 2, iw * 0.8 / 2, -ih / 2]} stroke="#38bdf8" strokeWidth={3} />
-            <Line points={[-iw * 0.8 / 2, -ih / 2, iw * 0.8 / 2, -ih / 2]} stroke="#0f172a" strokeWidth={1} />
-            {/* Decorative items on console */}
-            <Circle x={-iw / 4} y={0} radius={3} fill="#22c55e" stroke="#15803d" strokeWidth={0.8} /> {/* plant bowl */}
-            <Rect x={iw / 4 - 3} y={-2} width={6} height={4} fill="#e2e8f0" stroke="#475569" strokeWidth={0.5} /> {/* tray */}
-          </Group>
-        );
+        {
+          const safeIw = isNaN(iw) || iw <= 0 ? 40 : iw;
+          const safeIh = isNaN(ih) || ih <= 0 ? 16 : ih;
+          return (
+            <Group>
+              {/* Console table top */}
+              <Rect x={-safeIw / 2} y={-safeIh / 2} width={safeIw} height={safeIh} fill={fillColor} stroke="#0f172a" strokeWidth={1.5} cornerRadius={1} />
+              {/* Wall mirror line behind it */}
+              <Rect x={-safeIw * 0.8 / 2} y={-safeIh / 2 - 1.5} width={safeIw * 0.8} height={3} fill="#38bdf8" stroke="#0f172a" strokeWidth={1} cornerRadius={0.5} />
+              {/* Decorative items on console */}
+              <Circle x={-safeIw / 4} y={0} radius={Math.min(3, safeIw / 8)} fill="#22c55e" stroke="#15803d" strokeWidth={0.8} /> {/* plant bowl */}
+              <Rect x={safeIw / 4 - 3} y={-2} width={Math.min(6, safeIw / 4)} height={Math.min(4, safeIh / 2)} fill="#e2e8f0" stroke="#475569" strokeWidth={0.5} /> {/* tray */}
+            </Group>
+          );
+        }
       case "laundry_machines":
         {
           const isStacked = item.style === "stacked";
