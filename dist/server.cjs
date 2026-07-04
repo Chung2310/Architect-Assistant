@@ -1598,9 +1598,16 @@ function mapToOpenRouterModel(modelName) {
   return `google/${modelName}`;
 }
 async function callOpenRouterChat(messages, model, openRouterKey, isJsonRequested) {
+  const finalMessages = [...messages];
+  if (isJsonRequested) {
+    const hasJsonWord = finalMessages.some((m) => m.content.toLowerCase().includes("json"));
+    if (!hasJsonWord) {
+      finalMessages.push({ role: "system", content: "You must return a valid JSON object." });
+    }
+  }
   const requestBody = {
     model,
-    messages
+    messages: finalMessages
   };
   if (isJsonRequested) {
     requestBody.response_format = { type: "json_object" };
