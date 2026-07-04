@@ -298,11 +298,11 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div
-        className="bg-[#141415] border border-[#2d2d30] rounded-2xl w-full max-w-[700px] h-[92vh] max-h-[780px] flex flex-col shadow-2xl overflow-hidden text-slate-100 font-sans"
-        onClick={() => {}}
+        className="bg-[#141415] border border-[#2d2d30] rounded-2xl w-full max-w-[700px] h-[92vh] max-h-[780px] flex flex-col shadow-2xl overflow-hidden text-slate-100 font-sans animate-in fade-in zoom-in duration-200"
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-[#2d2d30] flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-[#2d2d30] flex items-center justify-between shrink-0">
           <div className="flex items-center gap-4">
             <h2 className="text-base font-bold tracking-wide text-slate-100">Choose Shape</h2>
             {/* Dimension inputs */}
@@ -339,191 +339,194 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
           </button>
         </div>
 
-        {/* Canvas */}
-        <div className="flex-1 bg-[#0b0b0c] relative flex items-center justify-center p-4 select-none">
-          <svg
-            ref={svgRef}
-            viewBox="0 0 400 350"
-            className="w-full h-full max-w-[450px] max-h-[350px] touch-none"
-            style={{ cursor: resizingCorner ? "nwse-resize" : draggedId ? "grabbing" : "default" }}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            onTouchMove={handleMouseMove}
-            onTouchEnd={handleMouseUp}
-          >
-            <defs>
-              <pattern id="dot-grid-csm" width="16" height="16" patternUnits="userSpaceOnUse">
-                <circle cx="2" cy="2" r="1" fill="#2d2d30" />
-              </pattern>
-            </defs>
-            <rect width="400" height="350" fill="url(#dot-grid-csm)" />
+        {/* Scrollable Content Body */}
+        <div className="flex-1 overflow-y-auto flex flex-col min-h-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-[#2d2d30]">
+          {/* Canvas */}
+          <div className="flex-1 min-h-[300px] bg-[#0b0b0c] relative flex items-center justify-center p-4 select-none">
+            <svg
+              ref={svgRef}
+              viewBox="0 0 400 350"
+              className="w-full h-full max-w-[450px] max-h-[350px] touch-none"
+              style={{ cursor: resizingCorner ? "nwse-resize" : draggedId ? "grabbing" : "default" }}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              onTouchMove={handleMouseMove}
+              onTouchEnd={handleMouseUp}
+            >
+              <defs>
+                <pattern id="dot-grid-csm" width="16" height="16" patternUnits="userSpaceOnUse">
+                  <circle cx="2" cy="2" r="1" fill="#2d2d30" />
+                </pattern>
+              </defs>
+              <rect width="400" height="350" fill="url(#dot-grid-csm)" />
 
-            {/* Shape polygon */}
-            {currentPolygon.length > 0 && (
-              <polygon
-                points={currentPolygon.map(p => { const s = toSvg(p); return `${s.x},${s.y}`; }).join(" ")}
-                fill="#161617"
-                stroke="#00B5CD"
-                strokeWidth="2.5"
-                className="transition-all duration-300"
-              />
-            )}
-
-            {/* Centroid label */}
-            <g transform={`translate(${centroid.x}, ${centroid.y})`} className="pointer-events-none">
-              <text textAnchor="middle" y="-6" className="text-[11px] font-semibold fill-slate-400 tracking-wide">Living space</text>
-              <text textAnchor="middle" y="12" className="text-[14px] font-bold fill-[#00B5CD]">{fmtSqFt(area)}</text>
-              <text textAnchor="middle" y="26" className="text-[10px] fill-slate-500">{area.toFixed(1)} m²</text>
-            </g>
-
-            {/* Dimension annotations */}
-            {currentPolygon.length > 0 && currentPolygon.map((a, idx) => {
-              const b = currentPolygon[(idx + 1) % currentPolygon.length];
-              const aS = toSvg(a), bS = toSvg(b);
-              const midx = (aS.x + bS.x) / 2, midy = (aS.y + bS.y) / 2;
-              const dx = bS.x - aS.x, dy = bS.y - aS.y;
-              const n1 = { x: -dy, y: dx }, n2 = { x: dy, y: -dx };
-              const vx = midx - centroid.x, vy = midy - centroid.y;
-              const chosen = (n1.x * vx + n1.y * vy > 0) ? n1 : n2;
-              const len = Math.sqrt(chosen.x ** 2 + chosen.y ** 2);
-              const tx = midx + (chosen.x / len) * 15, ty = midy + (chosen.y / len) * 15;
-              const realLen = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
-              return (
-                <g key={`dim-${idx}`} className="pointer-events-none">
-                  <text x={tx} y={ty + 3} textAnchor="middle" className="text-[9px] fill-[#00B5CD] font-medium">{fmtFt(realLen)}</text>
-                </g>
-              );
-            })}
-
-            {/* Dimension labels on bounding box edges */}
-            {/* Width label (top) */}
-            <g className="pointer-events-none">
-              <text x={offsetX + shapeW / 2} y={offsetY - 8} textAnchor="middle" className="text-[10px] fill-slate-400 font-bold">
-                {localWidth}m
-              </text>
-              {/* Length label (left) */}
-              <text
-                x={offsetX - 10}
-                y={offsetY + shapeH / 2}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                transform={`rotate(-90, ${offsetX - 10}, ${offsetY + shapeH / 2})`}
-                className="text-[10px] fill-slate-400 font-bold"
-              >
-                {localLength}m
-              </text>
-            </g>
-
-            {/* ── CORNER RESIZE HANDLES ──────────────────── */}
-            {corners.map(corner => (
-              <g key={corner.id} style={{ cursor: corner.cursor }}
-                onMouseDown={(e) => handleCornerResizeStart(corner.id, e)}>
-                {/* Invisible large hit area */}
-                <circle cx={corner.cx} cy={corner.cy} r={12} fill="transparent" />
-                {/* Visible dot */}
-                <circle
-                  cx={corner.cx} cy={corner.cy} r={5}
-                  fill={resizingCorner === corner.id ? "#00B5CD" : "#1a1a1b"}
+              {/* Shape polygon */}
+              {currentPolygon.length > 0 && (
+                <polygon
+                  points={currentPolygon.map(p => { const s = toSvg(p); return `${s.x},${s.y}`; }).join(" ")}
+                  fill="#161617"
                   stroke="#00B5CD"
-                  strokeWidth="2"
-                  className="transition-colors"
+                  strokeWidth="2.5"
+                  className="transition-all duration-300"
                 />
+              )}
+
+              {/* Centroid label */}
+              <g transform={`translate(${centroid.x}, ${centroid.y})`} className="pointer-events-none">
+                <text textAnchor="middle" y="-6" className="text-[11px] font-semibold fill-slate-400 tracking-wide">Living space</text>
+                <text textAnchor="middle" y="12" className="text-[14px] font-bold fill-[#00B5CD]">{fmtSqFt(area)}</text>
+                <text textAnchor="middle" y="26" className="text-[10px] fill-slate-500">{area.toFixed(1)} m²</text>
               </g>
-            ))}
 
-            {/* Placements */}
-            {placements.map(p => {
-              const svgPos = toSvg(p);
-              let color = "#00B5CD", w = 24, h = 8, isDashed = false, fillOpacity = 0.95;
-              if (p.type.startsWith("garage")) { color = "#64748b"; w = p.type === "garage_3" ? 54 : p.type === "garage_2" ? 42 : 30; h = 10; fillOpacity = 0.85; }
-              else if (p.type === "deck" || p.type === "porch") { color = "#10b981"; w = 40; h = 7; isDashed = true; fillOpacity = 0.25; }
-              return (
-                <g key={p.id} transform={`translate(${svgPos.x}, ${svgPos.y}) rotate(${p.angle})`}
-                  className="cursor-move" onMouseDown={(e) => handleStartDrag(p.id, e)} onTouchStart={(e) => handleStartDrag(p.id, e)}>
-                  <rect x={-w / 2} y={-h / 2} width={w} height={h} fill={color} fillOpacity={fillOpacity}
-                    stroke={color} strokeWidth={isDashed ? "1" : "0"} strokeDasharray={isDashed ? "3,2" : undefined} rx="1.5" />
-                  {p.type === "door" && <path d="M -6 -4 A 8 8 0 0 1 2 -4" fill="none" stroke="#00B5CD" strokeWidth="1" strokeDasharray="2,1" />}
-                  <text x="0" y={h + 7} textAnchor="middle" transform={`rotate(${-p.angle})`} className="text-[8px] font-bold fill-slate-300 pointer-events-none">{p.label}</text>
+              {/* Dimension annotations */}
+              {currentPolygon.length > 0 && currentPolygon.map((a, idx) => {
+                const b = currentPolygon[(idx + 1) % currentPolygon.length];
+                const aS = toSvg(a), bS = toSvg(b);
+                const midx = (aS.x + bS.x) / 2, midy = (aS.y + bS.y) / 2;
+                const dx = bS.x - aS.x, dy = bS.y - aS.y;
+                const n1 = { x: -dy, y: dx }, n2 = { x: dy, y: -dx };
+                const vx = midx - centroid.x, vy = midy - centroid.y;
+                const chosen = (n1.x * vx + n1.y * vy > 0) ? n1 : n2;
+                const len = Math.sqrt(chosen.x ** 2 + chosen.y ** 2);
+                const tx = midx + (chosen.x / len) * 15, ty = midy + (chosen.y / len) * 15;
+                const realLen = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+                return (
+                  <g key={`dim-${idx}`} className="pointer-events-none">
+                    <text x={tx} y={ty + 3} textAnchor="middle" className="text-[9px] fill-[#00B5CD] font-medium">{fmtFt(realLen)}</text>
+                  </g>
+                );
+              })}
+
+              {/* Dimension labels on bounding box edges */}
+              {/* Width label (top) */}
+              <g className="pointer-events-none">
+                <text x={offsetX + shapeW / 2} y={offsetY - 8} textAnchor="middle" className="text-[10px] fill-slate-400 font-bold">
+                  {localWidth}m
+                </text>
+                {/* Length label (left) */}
+                <text
+                  x={offsetX - 10}
+                  y={offsetY + shapeH / 2}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  transform={`rotate(-90, ${offsetX - 10}, ${offsetY + shapeH / 2})`}
+                  className="text-[10px] fill-slate-400 font-bold"
+                >
+                  {localLength}m
+                </text>
+              </g>
+
+              {/* ── CORNER RESIZE HANDLES ──────────────────── */}
+              {corners.map(corner => (
+                <g key={corner.id} style={{ cursor: corner.cursor }}
+                  onMouseDown={(e) => handleCornerResizeStart(corner.id, e)}>
+                  {/* Invisible large hit area */}
+                  <circle cx={corner.cx} cy={corner.cy} r={12} fill="transparent" />
+                  {/* Visible dot */}
+                  <circle
+                    cx={corner.cx} cy={corner.cy} r={5}
+                    fill={resizingCorner === corner.id ? "#00B5CD" : "#1a1a1b"}
+                    stroke="#00B5CD"
+                    strokeWidth="2"
+                    className="transition-colors"
+                  />
                 </g>
-              );
-            })}
-          </svg>
+              ))}
 
-          {/* Floating rotate/flip buttons */}
-          <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-2">
-            <button onClick={() => setRotation(r => (r + 90) % 360)}
-              className="w-8 h-8 rounded-full bg-[#171718]/85 backdrop-blur border border-[#2d2d30] flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#252526] transition-all" title="Rotate">
-              <RotateCw className="w-4 h-4" />
-            </button>
-            <button onClick={() => setFlipH(h => !h)}
-              className="w-8 h-8 rounded-full bg-[#171718]/85 backdrop-blur border border-[#2d2d30] flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#252526] transition-all" title="Flip Horizontal">
-              <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round"><line x1="2" y1="12" x2="22" y2="12" /><path d="M7 6l-5 5 5 5" /><path d="M17 6l5 5-5 5" /></svg>
-            </button>
-            <button onClick={() => setFlipV(v => !v)}
-              className="w-8 h-8 rounded-full bg-[#171718]/85 backdrop-blur border border-[#2d2d30] flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#252526] transition-all" title="Flip Vertical">
-              <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round"><line x1="12" y1="2" x2="12" y2="22" /><path d="M6 7l5-5 5 5" /><path d="M6 17l5 5 5-5" /></svg>
-            </button>
+              {/* Placements */}
+              {placements.map(p => {
+                const svgPos = toSvg(p);
+                let color = "#00B5CD", w = 24, h = 8, isDashed = false, fillOpacity = 0.95;
+                if (p.type.startsWith("garage")) { color = "#64748b"; w = p.type === "garage_3" ? 54 : p.type === "garage_2" ? 42 : 30; h = 10; fillOpacity = 0.85; }
+                else if (p.type === "deck" || p.type === "porch") { color = "#10b981"; w = 40; h = 7; isDashed = true; fillOpacity = 0.25; }
+                return (
+                  <g key={p.id} transform={`translate(${svgPos.x}, ${svgPos.y}) rotate(${p.angle})`}
+                    className="cursor-move" onMouseDown={(e) => handleStartDrag(p.id, e)} onTouchStart={(e) => handleStartDrag(p.id, e)}>
+                    <rect x={-w / 2} y={-h / 2} width={w} height={h} fill={color} fillOpacity={fillOpacity}
+                      stroke={color} strokeWidth={isDashed ? "1" : "0"} strokeDasharray={isDashed ? "3,2" : undefined} rx="1.5" />
+                    {p.type === "door" && <path d="M -6 -4 A 8 8 0 0 1 2 -4" fill="none" stroke="#00B5CD" strokeWidth="1" strokeDasharray="2,1" />}
+                    <text x="0" y={h + 7} textAnchor="middle" transform={`rotate(${-p.angle})`} className="text-[8px] font-bold fill-slate-300 pointer-events-none">{p.label}</text>
+                  </g>
+                );
+              })}
+            </svg>
+
+            {/* Floating rotate/flip buttons */}
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-2">
+              <button onClick={() => setRotation(r => (r + 90) % 360)}
+                className="w-8 h-8 rounded-full bg-[#171718]/85 backdrop-blur border border-[#2d2d30] flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#252526] transition-all" title="Rotate">
+                <RotateCw className="w-4 h-4" />
+              </button>
+              <button onClick={() => setFlipH(h => !h)}
+                className="w-8 h-8 rounded-full bg-[#171718]/85 backdrop-blur border border-[#2d2d30] flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#252526] transition-all" title="Flip Horizontal">
+                <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round"><line x1="2" y1="12" x2="22" y2="12" /><path d="M7 6l-5 5 5 5" /><path d="M17 6l5 5-5 5" /></svg>
+              </button>
+              <button onClick={() => setFlipV(v => !v)}
+                className="w-8 h-8 rounded-full bg-[#171718]/85 backdrop-blur border border-[#2d2d30] flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#252526] transition-all" title="Flip Vertical">
+                <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round"><line x1="12" y1="2" x2="12" y2="22" /><path d="M6 7l5-5 5 5" /><path d="M6 17l5 5 5-5" /></svg>
+              </button>
+            </div>
+
+            {/* Resize hint */}
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[10px] text-slate-600 pointer-events-none">
+              Drag <span className="text-[#00B5CD]">→</span> right handle to resize width · <span className="text-[#00B5CD]">↓</span> bottom handle to resize length
+            </div>
           </div>
 
-          {/* Resize hint */}
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[10px] text-slate-600 pointer-events-none">
-            Drag <span className="text-[#00B5CD]">→</span> right handle to resize width · <span className="text-[#00B5CD]">↓</span> bottom handle to resize length
+          {/* Placement toolbar */}
+          <div className="px-6 py-3 bg-[#111112] border-t border-b border-[#2d2d30] flex flex-wrap items-center justify-between gap-4 text-xs z-20 shrink-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-slate-500 font-semibold uppercase tracking-wider text-[10px]">Place:</span>
+              <button onClick={() => handleTogglePlacement("door", "Front door")}
+                className={`px-3 py-1.5 rounded-lg border font-bold ${placements.some(p => p.type === "door") ? "bg-[#00B5CD]/10 border-[#00B5CD] text-[#00B5CD]" : "bg-[#1d1d1f] border-[#2d2d30] text-slate-400 hover:bg-[#252526]"}`}>
+                Front door
+              </button>
+              <button onClick={() => handleTogglePlacement("garage_1", "1-car garage")}
+                className={`px-3 py-1.5 rounded-lg border font-bold ${placements.some(p => p.type === "garage_1") ? "bg-slate-800 border-slate-600 text-slate-300" : "bg-[#1d1d1f] border-[#2d2d30] text-slate-400 hover:bg-[#252526]"}`}>
+                Garage (1)
+              </button>
+              <button onClick={() => handleTogglePlacement("garage_2", "2-car garage")}
+                className={`px-3 py-1.5 rounded-lg border font-bold ${placements.some(p => p.type === "garage_2") ? "bg-slate-800 border-slate-600 text-slate-300" : "bg-[#1d1d1f] border-[#2d2d30] text-slate-400 hover:bg-[#252526]"}`}>
+                Garage (2)
+              </button>
+              <button onClick={() => handleTogglePlacement("deck", "Deck / balcony")}
+                className={`px-3 py-1.5 rounded-lg border font-bold ${placements.some(p => p.type === "deck") ? "bg-emerald-950/20 border-emerald-800/40 text-emerald-400" : "bg-[#1d1d1f] border-[#2d2d30] text-slate-400 hover:bg-[#252526]"}`}>
+                Deck
+              </button>
+              <button onClick={() => handleTogglePlacement("porch", "Front porch")}
+                className={`px-3 py-1.5 rounded-lg border font-bold ${placements.some(p => p.type === "porch") ? "bg-emerald-950/20 border-emerald-800/40 text-emerald-400" : "bg-[#1d1d1f] border-[#2d2d30] text-slate-400 hover:bg-[#252526]"}`}>
+                Porch
+              </button>
+            </div>
+            <div className="text-xs text-slate-500 font-semibold">
+              {localWidth}m × {localLength}m = <span className="text-[#00B5CD]">{(localWidth * localLength).toFixed(0)} m²</span>
+            </div>
           </div>
-        </div>
 
-        {/* Placement toolbar */}
-        <div className="px-6 py-3 bg-[#111112] border-t border-b border-[#2d2d30] flex flex-wrap items-center justify-between gap-4 text-xs z-20">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-slate-500 font-semibold uppercase tracking-wider text-[10px]">Place:</span>
-            <button onClick={() => handleTogglePlacement("door", "Front door")}
-              className={`px-3 py-1.5 rounded-lg border font-bold ${placements.some(p => p.type === "door") ? "bg-[#00B5CD]/10 border-[#00B5CD] text-[#00B5CD]" : "bg-[#1d1d1f] border-[#2d2d30] text-slate-400 hover:bg-[#252526]"}`}>
-              Front door
-            </button>
-            <button onClick={() => handleTogglePlacement("garage_1", "1-car garage")}
-              className={`px-3 py-1.5 rounded-lg border font-bold ${placements.some(p => p.type === "garage_1") ? "bg-slate-800 border-slate-600 text-slate-300" : "bg-[#1d1d1f] border-[#2d2d30] text-slate-400 hover:bg-[#252526]"}`}>
-              Garage (1)
-            </button>
-            <button onClick={() => handleTogglePlacement("garage_2", "2-car garage")}
-              className={`px-3 py-1.5 rounded-lg border font-bold ${placements.some(p => p.type === "garage_2") ? "bg-slate-800 border-slate-600 text-slate-300" : "bg-[#1d1d1f] border-[#2d2d30] text-slate-400 hover:bg-[#252526]"}`}>
-              Garage (2)
-            </button>
-            <button onClick={() => handleTogglePlacement("deck", "Deck / balcony")}
-              className={`px-3 py-1.5 rounded-lg border font-bold ${placements.some(p => p.type === "deck") ? "bg-emerald-950/20 border-emerald-800/40 text-emerald-400" : "bg-[#1d1d1f] border-[#2d2d30] text-slate-400 hover:bg-[#252526]"}`}>
-              Deck
-            </button>
-            <button onClick={() => handleTogglePlacement("porch", "Front porch")}
-              className={`px-3 py-1.5 rounded-lg border font-bold ${placements.some(p => p.type === "porch") ? "bg-emerald-950/20 border-emerald-800/40 text-emerald-400" : "bg-[#1d1d1f] border-[#2d2d30] text-slate-400 hover:bg-[#252526]"}`}>
-              Porch
-            </button>
-          </div>
-          <div className="text-xs text-slate-500 font-semibold">
-            {localWidth}m × {localLength}m = <span className="text-[#00B5CD]">{(localWidth * localLength).toFixed(0)} m²</span>
-          </div>
-        </div>
-
-        {/* Shape grid */}
-        <div className="p-4 bg-[#141415] space-y-2">
-          <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px] px-2 block">Select Base Layout Shape</span>
-          <div className="flex gap-3 overflow-x-auto py-1 px-2 scrollbar-thin">
-            {SHAPE_TEMPLATES.map((item, idx) => {
-              const isSelected = selectedIdx === idx;
-              return (
-                <button key={idx} onClick={() => setSelectedIdx(idx)}
-                  className={`w-14 h-14 shrink-0 rounded-xl border-2 flex items-center justify-center transition-all cursor-pointer ${isSelected ? "border-[#00B5CD] bg-[#00B5CD]/10 text-[#00B5CD]" : "border-[#2d2d30] bg-[#171718] text-slate-500 hover:border-slate-700 hover:text-slate-300"}`}
-                  title={item.name}>
-                  <svg viewBox="0 0 120 120" className="w-10 h-10">
-                    <polygon points={item.points.map(p => `${10 + p.x * 0.8},${10 + p.y * 0.8}`).join(" ")}
-                      fill="none" stroke="currentColor" strokeWidth="8" strokeLinejoin="round" />
-                  </svg>
-                </button>
-              );
-            })}
+          {/* Shape grid */}
+          <div className="p-4 bg-[#141415] space-y-2 shrink-0">
+            <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px] px-2 block">Select Base Layout Shape</span>
+            <div className="flex gap-3 overflow-x-auto py-1 px-2 scrollbar-thin">
+              {SHAPE_TEMPLATES.map((item, idx) => {
+                const isSelected = selectedIdx === idx;
+                return (
+                  <button key={idx} onClick={() => setSelectedIdx(idx)}
+                    className={`w-14 h-14 shrink-0 rounded-xl border-2 flex items-center justify-center transition-all cursor-pointer ${isSelected ? "border-[#00B5CD] bg-[#00B5CD]/10 text-[#00B5CD]" : "border-[#2d2d30] bg-[#171718] text-slate-500 hover:border-slate-700 hover:text-slate-300"}`}
+                    title={item.name}>
+                    <svg viewBox="0 0 120 120" className="w-10 h-10">
+                      <polygon points={item.points.map(p => `${10 + p.x * 0.8},${10 + p.y * 0.8}`).join(" ")}
+                        fill="none" stroke="currentColor" strokeWidth="8" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-[#2d2d30] bg-[#111112] flex items-center justify-center gap-4">
+        <div className="px-6 py-4 border-t border-[#2d2d30] bg-[#111112] flex items-center justify-center gap-4 shrink-0">
           <button onClick={onClose} className="px-8 py-2.5 rounded-full border border-[#2d2d30] hover:bg-slate-800 text-slate-300 font-bold text-xs">
             Cancel
           </button>
