@@ -5,7 +5,7 @@ import { apiClient } from "../../services/apiClient";
 import { toast } from "sonner";
 import { convertPdfToImage } from "../../lib/pdfUtils";
 import { ImageLibraryModal } from "./ImageLibraryModal";
-import { uploadMedia, getAIClient, checkUserCredits, generateContentWithRetry, getImageBase64, cacheImage, scaleToResolution } from "../../lib/renderUtils";
+import { uploadMedia, getAIClient, checkUserCredits, generateContentWithRetry, getImageBase64, cacheImage, scaleToResolution, safeJsonParse } from "../../lib/renderUtils";
 
 const MODELS = [
   {
@@ -112,7 +112,12 @@ export const UpscaleTabContent: React.FC = () => {
 
     if (!(await checkUserCredits())) return;
     setIsUploading(true);
-    setUploadProgress(0);
+    setUploadProgress(1);
+    let progressVal = 1;
+    const progressInterval = setInterval(() => {
+      progressVal += (95 - progressVal) * 0.1;
+      setUploadProgress(Math.round(progressVal));
+    }, 150);
 
     try {
       const processedFilesNested = await Promise.all(
@@ -136,19 +141,24 @@ export const UpscaleTabContent: React.FC = () => {
         .filter((f): f is File => f !== null);
 
       if (processedFiles.length === 0) {
+        clearInterval(progressInterval);
         setIsUploading(false);
         return;
       }
 
       const fileToUpload = processedFiles[0];
 
-      setUploadProgress(30);
       const downloadURL = await uploadMedia(fileToUpload, "uploads");
-      setUploadProgress(100);
       cacheImage(downloadURL, fileToUpload);
       setInputImage(downloadURL);
-      setIsUploading(false);
+
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      setTimeout(() => {
+        setIsUploading(false);
+      }, 400);
     } catch (error) {
+      clearInterval(progressInterval);
       console.error("Error processing files:", error);
       setIsUploading(false);
     }
@@ -268,10 +278,13 @@ export const UpscaleTabContent: React.FC = () => {
         throw new Error("Failed to generate prompt from image.");
       }
 
-      let parsedResult;
+      let parsedResult: any;
       try {
-        parsedResult = JSON.parse(textResult);
+        parsedResult = safeJsonParse(textResult);
         console.log("Upscale AI Analysis Result:", parsedResult);
+        if (!parsedResult || typeof parsedResult !== "object" || Array.isArray(parsedResult)) {
+          throw new Error("Parsed result is not a valid JSON object.");
+        }
       } catch (e) {
         console.error("Parse JSON error", e);
         throw new Error("Invalid output format from AI.", { cause: e });
@@ -296,7 +309,9 @@ export const UpscaleTabContent: React.FC = () => {
 
       if (
         selectedModel === "gemini-3.1-flash-image" ||
-        selectedModel === "gemini-3-pro-image"
+        selectedModel === "gemini-3-pro-image" ||
+        selectedModel === "nano-banana-2" ||
+        selectedModel === "nano-banana-pro"
       ) {
         imageConfig.imageSize = resolution;
         imageConfig.negativePrompt = negativePrompt;

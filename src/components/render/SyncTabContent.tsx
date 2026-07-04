@@ -188,16 +188,24 @@ export const SyncTabContent: React.FC = () => {
       if (!(await checkUserCredits())) return;
 
       setIsUploading(true);
-      setUploadProgress(0);
+      setUploadProgress(1);
+      let progressVal = 1;
+      const progressInterval = setInterval(() => {
+        progressVal += (95 - progressVal) * 0.1;
+        setUploadProgress(Math.round(progressVal));
+      }, 150);
 
       try {
-        setUploadProgress(30);
         const downloadURL = await uploadMedia(file, "uploads");
-        setUploadProgress(100);
         cacheImage(downloadURL, file);
         setInputImage(downloadURL);
-        setIsUploading(false);
+        clearInterval(progressInterval);
+        setUploadProgress(100);
+        setTimeout(() => {
+          setIsUploading(false);
+        }, 400);
       } catch (error) {
+        clearInterval(progressInterval);
         console.error("Error uploading file:", error);
         setIsUploading(false);
       }
@@ -711,16 +719,24 @@ export const SyncTabContent: React.FC = () => {
 
     if (!(await checkUserCredits())) return;
     setIsUploading(true);
-    setUploadProgress(0);
+    setUploadProgress(1);
+    let progressVal = 1;
+    const progressInterval = setInterval(() => {
+      progressVal += (95 - progressVal) * 0.1;
+      setUploadProgress(Math.round(progressVal));
+    }, 150);
 
     try {
-      setUploadProgress(30);
       const downloadURL = await uploadMedia(file, "uploads");
-      setUploadProgress(100);
       cacheImage(downloadURL, file);
       setInputImage(downloadURL);
-      setIsUploading(false);
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      setTimeout(() => {
+        setIsUploading(false);
+      }, 400);
     } catch (error) {
+      clearInterval(progressInterval);
       console.error("Error uploading image:", error);
       setIsUploading(false);
     }

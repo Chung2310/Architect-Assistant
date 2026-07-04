@@ -15,6 +15,7 @@ type PromptTemplateParams = {
 
 function normalizeKey(value: unknown): string {
   return String(value || "")
+    .replace(/[đĐ]/g, "d")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
@@ -310,6 +311,9 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     if (referenceImages.length > 0) {
       textPrompt += `Quy tắc ảnh tham khảo nội thất: Giữ nguyên tuyệt đối vị trí, loại và sắp xếp của từng món đồ nội thất có trong ảnh tham khảo (giường, tủ, bàn, ghế, đèn, v.v.). TUYỆT ĐỐI không di chuyển, xoay, thêm hoặc bỏ bất kỳ món đồ nào so với ảnh tham khảo. Chỉ được phép áp dụng phong cách hoàn thiện bề mặt (màu sắc, vật liệu, ánh sáng) từ ảnh tham khảo lên vị trí đồ vật đã cố định.\n`;
     }
+    if (selectedAngle) {
+      textPrompt += `Góc chụp: ${selectedAngle}\n`;
+    }
     if (cameraAngleStyle) {
       textPrompt += `Style góc chụp: ${cameraAngleStyle}\n`;
     }
@@ -317,6 +321,7 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     systemInstruction = [
       "Bạn là chuyên gia chuyển mặt bằng thành không gian 3D.",
       "Mục tiêu là dựng lại không gian từ floorplan thật chính xác, không được phá vỡ bố cục.",
+      "BẮT BUỘC: Nếu có Góc chụp được chỉ định, bạn PHẢI ưu tiên và tuân thủ tuyệt đối góc chụp (camera angle) đó làm bố cục chính của khung cảnh. Loại bỏ hoàn toàn góc chụp mặc định từ cửa ra vào hoặc các góc khác nếu góc chụp được chỉ định là khác.",
       "Phải phân biệt ro rang giua du lieu bo cuc can giu va dau vet do hoa ban ve can xoa bo.",
       "Không được phép suy luận sang tạo vào kiến trúc nếu bản vẽ không thể hiện; ưu tiên bảo tồn ý nguyên bản vẽ hơn thẩm mỹ hình ảnh.",
       "Nếu có thể nhận diện đồ nội thất từ bản vẽ hoặc ảnh tham khảo, từng món phải giữ đúng loại, vị trí, hướng và quan hệ không gian; không được tự ý di chuyển, xoay, thêm hoặc bỏ.",
@@ -746,6 +751,62 @@ function buildSyncAnalyzePrompt(input: Record<string, unknown>): PromptTemplateP
   };
 }
 
+function buildSyncVariationGeneratePrompt(input: Record<string, unknown>): PromptTemplateParams {
+  const promptInstruction = String(input.promptInstruction || "");
+  const aspectRatio = String(input.aspectRatio || "16:9");
+  const images = (input.images as InlineImageInput[] | undefined) || [];
+
+  return {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          ...imageParts(images),
+          { text: promptInstruction },
+        ],
+      },
+    ],
+    systemInstruction: [
+      "Bạn là một chuyên gia kết xuất kiến trúc chân thực.",
+      "Hãy sinh ảnh biến thể mới dựa trên ảnh kiến trúc gốc và chỉ dẫn mô tả của người dùng.",
+      "Giữ nguyên 100% hình khối kiến trúc, tỉ lệ và cấu trúc chính của công trình gốc.",
+      "Thay đổi bối cảnh xung quanh, thời tiết, góc chụp nhẹ, ánh sáng hoặc vật liệu theo đúng mô tả của người dùng.",
+    ].join(" "),
+    config: {
+      imageConfig: {
+        aspectRatio,
+      },
+    },
+  };
+}
+
+function buildCharacterGeneratePrompt(input: Record<string, unknown>): PromptTemplateParams {
+  const characterPrompt = String(input.characterPrompt || "");
+  const aspectRatio = String(input.aspectRatio || "1:1");
+
+  return {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { text: characterPrompt },
+        ],
+      },
+    ],
+    systemInstruction: [
+      "Bạn là chuyên gia tạo hình nhân vật chân thực.",
+      "Hãy tạo ảnh chân dung hoặc toàn thân của nhân vật dựa trên mô tả của người dùng.",
+      "Nhân vật phải có tỷ lệ giải phẫu học chính xác, khuôn mặt tự nhiên, không bị biến dạng.",
+      "Ánh sáng studio rõ ràng, chi tiết da, tóc, quần áo sắc nét.",
+    ].join(" "),
+    config: {
+      imageConfig: {
+        aspectRatio,
+      },
+    },
+  };
+}
+
 export function resolvePromptTemplate(
   templateKey: string,
   input: Record<string, unknown>,
@@ -756,6 +817,10 @@ export function resolvePromptTemplate(
   }
 
   switch (templateKey) {
+    case "character_generate_prompt":
+      return buildCharacterGeneratePrompt(input);
+    case "sync_variation_generate_prompt":
+      return buildSyncVariationGeneratePrompt(input);
     case "render_tab_prompt":
       return buildRenderTabPrompt(input);
     case "render_edit_prompt":
@@ -766,31 +831,56 @@ export function resolvePromptTemplate(
       return buildUpscalePrompt(input);
     case "sync_analyze_prompt":
       return buildSyncAnalyzePrompt(input);
-    case "sync_character_composite_prompt":
+    case "sync_character_composite_prompt": {
+      const imgArray = (input.images as InlineImageInput[] | undefined) || [];
+      const parts: Array<Record<string, unknown>> = [];
+      
+      if (imgArray.length >= 2) {
+        parts.push({ text: "Bối cảnh nền (Background Image):" });
+        parts.push({
+          inlineData: {
+            data: imgArray[0].data,
+            mimeType: imgArray[0].mimeType || "image/jpeg",
+          },
+        });
+        parts.push({ text: "Nhân vật tham khảo (Character Reference Image):" });
+        parts.push({
+          inlineData: {
+            data: imgArray[1].data,
+            mimeType: imgArray[1].mimeType || "image/jpeg",
+          },
+        });
+      } else {
+        parts.push(...imageParts(imgArray));
+      }
+
+      parts.push({
+        text: `Bạn là chuyên gia ghép nhân vật vào bối cảnh kiến trúc theo cách siêu thực.
+Nhiệm vụ:
+- Lấy nhân vật trong ảnh "Nhân vật tham khảo (Character Reference Image)" để ghép vào ảnh "Bối cảnh nền (Background Image)".
+- Giữ nguyên 100% khuôn mặt, vóc dáng, mái tóc, quần áo và nhận diện của nhân vật từ ảnh "Nhân vật tham khảo".
+- Đặt nhân vật vào bối cảnh của ảnh "Bối cảnh nền" theo đúng mô tả hành động dưới đây.
+- Bảo tồn nguyên vẹn 100% bối cảnh nền. TUYỆT ĐỐI KHÔNG tự ý sinh thêm, chỉnh sửa hoặc thay thế bất kỳ chi tiết nào (bao gồm tường, cửa, trần, sàn, đồ đạc, vật dụng, đồ trang trí, cây cối, nội thất hoặc bất kỳ đồ vật nào khác) trong ảnh "Bối cảnh nền" nếu không có yêu cầu rõ ràng từ người dùng.
+- Khóa cứng hoàn toàn cấu trúc không gian và cách bài trí nội thất hiện có của "Bối cảnh nền". Không di dời, thay đổi hình dáng hay loại bỏ bất cứ chi tiết nào. Chỉ được vẽ và đặt duy nhất nhân vật vào bối cảnh.
+- Giữ nguyên 100% tỷ lệ khung hình, góc chụp (framing), và góc máy rộng (field of view) của ảnh "Bối cảnh nền". Tuyệt đối không tự ý cắt xén (crop) bên trái/bên phải/phía trên/phía dưới, không zoom cận cảnh hay thay đổi tiêu cự khung hình gốc.
+- Đồng bộ tuyệt đối ánh sáng, hướng nắng, màu sắc môi trường, đổ bóng tiếp xúc và phối cảnh giữa nhân vật và bối cảnh nền.
+- Không để nhân vật trông giống bị cắt ghép, lơ lửng hoặc sai tỷ lệ so với các đồ đạc xung quanh.
+
+Yêu cầu hành động của nhân vật: ${String(input.userAction || "")}`,
+      });
+
       return {
         contents: [
           {
             role: "user",
-            parts: [
-              ...imageParts((input.images as InlineImageInput[] | undefined) || []),
-              {
-                text: `Bạn là chuyên gia ghép nhân vật vào bối cảnh kiến trúc theo cách siêu thực.
-Nhiệm vụ:
-- Giữ nguyên khuôn mặt, vóc dáng, quần áo và nhận diện của chủ thể tham khảo.
-- Nếu yêu cầu người dùng trống, tự suy luận vị trí và tư thế phù hợp với ảnh nền.
-- Đồng bộ tuyệt đối ánh sáng, màu môi trường, đổ bóng tiếp xúc và phối cảnh.
-- Cho phép vi chỉnh rất nhẹ vật thể nền nếu cần để tạo tiếp xúc vật lý hợp lý.
-- Không để chủ thể bị dán lên ảnh, lơ lửng, sai tỷ lệ hoặc lệch hướng sáng.
-
-Yêu cầu người dùng: ${String(input.userAction || "")}`,
-              },
-            ],
+            parts,
           },
         ],
         config: {
           imageConfig: input.imageConfig as Record<string, unknown>,
         },
       };
+    }
     case "utility_layout_prompt": {
       const toolName = String(input.toolName || "");
       const selectedStyle = String(input.selectedStyle || "Không có");

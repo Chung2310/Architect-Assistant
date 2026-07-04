@@ -455,7 +455,12 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
         let floorplanStylePrompt = "";
         if (activeSubTab === "Floorplan to 3D") {
           if (style === "Phối cảnh thực tế") {
-            floorplanStylePrompt = `- Kiểu chụp: Ảnh phối cảnh thực tế ở ngang tầm mắt, góc nhìn tự nhiên của người đứng trong không gian, không dùng góc panorama hoặc góc quá cao nếu bản vẽ không yêu cầu.
+            const selectedAngleValue = customCameraAngle || cameraAngle;
+            floorplanStylePrompt = `- Kiểu chụp: ${
+              selectedAngleValue 
+                ? `${selectedAngleValue} (Bắt buộc dựng đúng góc chụp này, loại bỏ hoàn toàn mọi góc chụp mặc định khác hoặc góc chụp từ cửa ra vào)` 
+                : "Ảnh phối cảnh thực tế ở ngang tầm mắt, góc nhìn tự nhiên của người đứng trong không gian"
+            }, không dùng góc panorama hoặc góc quá cao nếu bản vẽ không yêu cầu.
 - Tiêu điểm ảnh: phân tích bản vẽ để xác định chính xác các không gian, đồ đạc, cửa mở và hướng nhìn thực sự có trong đầu vào; nếu có ảnh tham chiếu thì chỉ dùng để khóa đúng loại đồ và vị trí cần giữ. Không tự giả định loại phòng hoặc thêm món đồ đặc thù ngoài dữ liệu đầu vào.
 - Bố cục: giữ nguyên 100% vị trí đồ đạc, tường ngăn, cửa và lối đi theo bản vẽ gốc; không thêm đồ đạc mới, không dịch chuyển nội thất sang khu vực khác.
 `;
@@ -487,12 +492,14 @@ ${activeSubTab === "Render Nội Thất"
 - Phong cách nội thất: ${interiorStyle || "Không có"}
 - Ánh sáng: ${lighting || "Không có"}
 - Tone màu: ${colorTone || "Không có"}
+- Góc chụp: ${customCameraAngle || cameraAngle || "Không có"}
 `
             : activeSubTab === "Floorplan to 3D"
               ? `
 - Style render: ${style || "Không có"}
 - Loại phòng: ${roomType || "Không có"}
 - Phong cách: ${interiorStyle || "Không có"}
+- Góc chụp: ${customCameraAngle || cameraAngle || "Không có"}
 ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ nguyên 100% vị trí tường, cửa, cửa sổ, lối đi, phân khu phòng và đồ đạc theo bản vẽ. CHỈ được dựng các thành phần có cơ sở từ bản vẽ hoặc ảnh tham chiếu; không tự gán thêm món đồ đặc thù, không đổi vị trí nội thất và không làm lệch cấu trúc mặt bằng.
 `
               : activeSubTab === "Floorplan to 3D Floorplan"
@@ -695,7 +702,12 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
 
     if (!(await checkUserCredits())) return;
     setIsUploading(true);
-    setUploadProgress(6);
+    setUploadProgress(1);
+    let progressVal = 1;
+    const progressInterval = setInterval(() => {
+      progressVal += (95 - progressVal) * 0.1;
+      setUploadProgress(Math.round(progressVal));
+    }, 150);
 
     try {
       const processedFilesNested = await Promise.all(
@@ -720,29 +732,26 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
       );
 
       if (validFiles.length === 0) {
+        clearInterval(progressInterval);
         setIsUploading(false);
         return;
       }
 
       const downloadURLs: string[] = [];
-      let idx = 0;
       for (const file of validFiles) {
-        const uploadStartProgress = Math.round((idx / validFiles.length) * 80) + 10;
-        setUploadProgress(Math.min(95, uploadStartProgress));
         const url = await uploadMedia(file, "uploads");
         cacheImage(url, file);
-
-
         downloadURLs.push(url);
-        idx++;
-        const uploadCompleteProgress = Math.round((idx / validFiles.length) * 80) + 15;
-        setUploadProgress(Math.min(98, uploadCompleteProgress));
       }
 
       setInputImages((prev) => [...prev, ...downloadURLs]);
+      clearInterval(progressInterval);
       setUploadProgress(100);
-      setIsUploading(false);
+      setTimeout(() => {
+        setIsUploading(false);
+      }, 400);
     } catch (error) {
+      clearInterval(progressInterval);
       console.error("Error initiating upload:", error);
       setIsUploading(false);
       toast.error("Đã xảy ra lỗi khi tải ảnh lên.");
@@ -807,28 +816,29 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
 
     if (!(await checkUserCredits())) return;
     setIsUploadingRef(true);
-    setUploadProgressRef(6);
+    setUploadProgressRef(1);
+    let progressVal = 1;
+    const progressInterval = setInterval(() => {
+      progressVal += (95 - progressVal) * 0.1;
+      setUploadProgressRef(Math.round(progressVal));
+    }, 150);
 
     try {
       const downloadURLs: string[] = [];
-      let idx = 0;
       for (const file of files) {
-        const uploadStartProgress = Math.round((idx / files.length) * 80) + 10;
-        setUploadProgressRef(Math.min(95, uploadStartProgress));
         const url = await uploadMedia(file, "uploads");
         cacheImage(url, file);
-
-
         downloadURLs.push(url);
-        idx++;
-        const uploadCompleteProgress = Math.round((idx / files.length) * 80) + 15;
-        setUploadProgressRef(Math.min(98, uploadCompleteProgress));
       }
 
       setReferenceImages((prev) => [...prev, ...downloadURLs]);
+      clearInterval(progressInterval);
       setUploadProgressRef(100);
-      setIsUploadingRef(false);
+      setTimeout(() => {
+        setIsUploadingRef(false);
+      }, 400);
     } catch (error) {
+      clearInterval(progressInterval);
       console.error("Error initiating upload:", error);
       setIsUploadingRef(false);
       toast.error("Đã xảy ra lỗi khi tải ảnh lên.");
@@ -1576,23 +1586,49 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                     onChange={(e) => setCameraAngle(e.target.value)}
                   >
                     <option value="">Hoặc chọn một góc chụp có sẵn</option>
-                    <option>Góc chụp trực diện toàn cảnh mặt tiền căn nhà</option>
-                    <option>Góc chụp 3/4 bên trái, thể hiện cả mặt tiền và hông nhà</option>
-                    <option>Góc chụp 3/4 bên phải, lấy được chiều sâu công trình</option>
-                    <option>Góc chụp từ trên cao nhìn xuống (drone view) toàn cảnh khuôn viên</option>
-                    <option>Góc chụp từ dưới lên (low angle), nhấn mạnh chiều cao và sự bề thế</option>
-                    <option>Góc chụp cận cảnh chi tiết cửa chính và vật liệu mặt tiền</option>
-                    <option>Góc chụp xuyên qua hàng cây/cảnh quan để tạo khung tự nhiên</option>
-                    <option>Góc chụp từ trong nhà nhìn ra sân vườn hoặc cổng</option>
-                    <option>Góc chụp ban đêm với ánh sáng nhân tạo, nhấn mạnh hệ thống đèn</option>
-                    <option>Góc chụp panorama quét ngang, bao trọn bối cảnh và môi trường xung quanh</option>
-                    <option>Góc chụp từ trên xuống (Top-down) như một bản vẽ mặt bằng kiến trúc</option>
-                    <option>Góc chụp cận cảnh chi tiết vật liệu đặc trưng</option>
-                    <option>Góc chụp phản chiếu công trình trên mặt nước</option>
-                    <option>Góc chụp qua khung cửa sổ nhà đối diện</option>
-                    <option>Góc chụp từ ban công nhà đối diện, có các chậu cây làm tiền cảnh</option>
-                    <option>Góc chụp từ người ngồi uống cà phê bên kia đường</option>
-                    <option>Close shot of this image</option>
+                    {activeSubTab === "Floorplan to 3D" || activeSubTab === "Render Nội Thất" ? (
+                      <>
+                        <option>Góc chụp từ trên cao nhìn xuống toàn bộ không gian phòng</option>
+                        <option>Góc chụp góc 3/4 bên trái bao quát cả căn phòng</option>
+                        <option>Góc chụp góc 3/4 bên phải bao quát cả căn phòng</option>
+                        <option>Góc chụp góc chính diện thẳng vào trung tâm phòng</option>
+                        <option>Góc chụp góc chéo từ cửa ra vào nhìn vào trong phòng</option>
+                        <option>Góc chụp từ phía sau sofa nhìn về hướng cửa sổ</option>
+                        <option>Góc chụp từ trong phòng nhìn ngược ra cửa chính</option>
+                        <option>Góc chụp từ trần nhà thấp xuống tạo chiều sâu không gian</option>
+                        <option>Góc chụp đối xứng cân bằng toàn bộ phòng</option>
+                        <option>Góc chụp từ một góc tường chéo tạo cảm giác rộng</option>
+                        <option>Góc chụp khu vực sofa và bàn trà từ góc nhìn ngang</option>
+                        <option>Góc chụp khu vực kệ tivi và tường trang trí từ góc nhìn chính diện</option>
+                        <option>Góc chụp bàn ăn và ghế từ góc nghiêng 45 độ</option>
+                        <option>Góc chụp cửa sổ lớn và ánh sáng tự nhiên tràn vào phòng</option>
+                        <option>Góc chụp góc tường trang trí với tranh nghệ thuật và đèn hắt sáng</option>
+                        <option>Góc chụp góc nhìn về khu vực bếp liên thông với phòng khách</option>
+                        <option>Góc chụp khu vực đọc sách với kệ sách và ghế đơn</option>
+                        <option>Góc chụp thảm trải sàn bao quanh bàn trà</option>
+                        <option>Góc chụp khu vực treo rèm cửa và ánh sáng chiếu vào</option>
+                      </>
+                    ) : (
+                      <>
+                        <option>Góc chụp trực diện toàn cảnh mặt tiền căn nhà</option>
+                        <option>Góc chụp 3/4 bên trái, thể hiện cả mặt tiền và hông nhà</option>
+                        <option>Góc chụp 3/4 bên phải, lấy được chiều sâu công trình</option>
+                        <option>Góc chụp từ trên cao nhìn xuống (drone view) toàn cảnh khuôn viên</option>
+                        <option>Góc chụp từ dưới lên (low angle), nhấn mạnh chiều cao và sự bề thế</option>
+                        <option>Góc chụp cận cảnh chi tiết cửa chính và vật liệu mặt tiền</option>
+                        <option>Góc chụp xuyên qua hàng cây/cảnh quan để tạo khung tự nhiên</option>
+                        <option>Góc chụp từ trong nhà nhìn ra sân vườn hoặc cổng</option>
+                        <option>Góc chụp ban đêm với ánh sáng nhân tạo, nhấn mạnh hệ thống đèn</option>
+                        <option>Góc chụp panorama quét ngang, bao trọn bối cảnh và môi trường xung quanh</option>
+                        <option>Góc chụp từ trên xuống (Top-down) như một bản vẽ mặt bằng kiến trúc</option>
+                        <option>Góc chụp cận cảnh chi tiết vật liệu đặc trưng</option>
+                        <option>Góc chụp phản chiếu công trình trên mặt nước</option>
+                        <option>Góc chụp qua khung cửa sổ nhà đối diện</option>
+                        <option>Góc chụp từ ban công nhà đối diện, có các chậu cây làm tiền cảnh</option>
+                        <option>Góc chụp từ người ngồi uống cà phê bên kia đường</option>
+                        <option>Close shot of this image</option>
+                      </>
+                    )}
                   </select>
                   <Icon
                     name="keyboard_arrow_down"

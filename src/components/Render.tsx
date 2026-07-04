@@ -1059,14 +1059,24 @@ ${cropInfo}
 
     if (!(await checkUserCredits())) return;
     setIsUploading(true);
-    setUploadProgress(0);
+    setUploadProgress(1);
+    let progressVal = 1;
+    const progressInterval = setInterval(() => {
+      progressVal += (95 - progressVal) * 0.1;
+      setUploadProgress(Math.round(progressVal));
+    }, 150);
 
     try {
       const downloadURL = await uploadMedia(file, "uploads");
       cacheImage(downloadURL, file);
       setInputImage(downloadURL);
-      setIsUploading(false);
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      setTimeout(() => {
+        setIsUploading(false);
+      }, 400);
     } catch (error) {
+      clearInterval(progressInterval);
       console.error("Error initiating upload:", error);
       setIsUploading(false);
       toast.error("Đã xảy ra lỗi.");
@@ -1082,7 +1092,12 @@ ${cropInfo}
     if (!(await checkUserCredits())) return;
 
     setIsUploading(true);
-    setUploadProgress(0);
+    setUploadProgress(1);
+    let progressVal = 1;
+    const progressInterval = setInterval(() => {
+      progressVal += (95 - progressVal) * 0.1;
+      setUploadProgress(Math.round(progressVal));
+    }, 150);
 
     try {
       let fileToUpload = inputFile;
@@ -1099,8 +1114,13 @@ ${cropInfo}
       const downloadURL = await uploadMedia(fileToUpload, "uploads");
       cacheImage(downloadURL, fileToUpload);
       setInputImage(downloadURL);
-      setIsUploading(false);
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      setTimeout(() => {
+        setIsUploading(false);
+      }, 400);
     } catch (error) {
+      clearInterval(progressInterval);
       console.error("Error initiating upload:", error);
       setIsUploading(false);
       toast.error("Đã xảy ra lỗi.");
@@ -1145,7 +1165,12 @@ ${cropInfo}
     if (!(await checkUserCredits())) return;
 
     setIsUploadingRef(true);
-    setUploadProgressRef(0);
+    setUploadProgressRef(1);
+    let progressVal = 1;
+    const progressInterval = setInterval(() => {
+      progressVal += (95 - progressVal) * 0.1;
+      setUploadProgressRef(Math.round(progressVal));
+    }, 150);
 
     try {
       let fileToUpload = inputFile;
@@ -1162,8 +1187,13 @@ ${cropInfo}
       const downloadURL = await uploadMedia(fileToUpload, "uploads");
       cacheImage(downloadURL, fileToUpload);
       setReferenceImage(downloadURL);
-      setIsUploadingRef(false);
+      clearInterval(progressInterval);
+      setUploadProgressRef(100);
+      setTimeout(() => {
+        setIsUploadingRef(false);
+      }, 400);
     } catch (error) {
+      clearInterval(progressInterval);
       console.error("Error initiating upload:", error);
       setIsUploadingRef(false);
       toast.error("Đã xảy ra lỗi.");
@@ -3938,14 +3968,24 @@ const LayoutTabContent: React.FC = () => {
 
     if (!(await checkUserCredits())) return;
     setIsUploading(true);
-    setUploadProgress(0);
+    setUploadProgress(1);
+    let progressVal = 1;
+    const progressInterval = setInterval(() => {
+      progressVal += (95 - progressVal) * 0.1;
+      setUploadProgress(Math.round(progressVal));
+    }, 150);
 
     try {
       const downloadURL = await uploadMedia(file, "uploads");
       cacheImage(downloadURL, file);
       setInputImage(downloadURL);
-      setIsUploading(false);
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      setTimeout(() => {
+        setIsUploading(false);
+      }, 400);
     } catch (error) {
+      clearInterval(progressInterval);
       console.error("Error initiating upload:", error);
       setIsUploading(false);
       toast.error("Đã xảy ra lỗi.");
@@ -3978,14 +4018,24 @@ const LayoutTabContent: React.FC = () => {
 
     if (!(await checkUserCredits())) return;
     setIsUploading(true);
-    setUploadProgress(0);
+    setUploadProgress(1);
+    let progressVal = 1;
+    const progressInterval = setInterval(() => {
+      progressVal += (95 - progressVal) * 0.1;
+      setUploadProgress(Math.round(progressVal));
+    }, 150);
 
     try {
       const downloadURL = await uploadMedia(file, "uploads");
       cacheImage(downloadURL, file);
       setInputImage(downloadURL);
-      setIsUploading(false);
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      setTimeout(() => {
+        setIsUploading(false);
+      }, 400);
     } catch (error) {
+      clearInterval(progressInterval);
       console.error("Error initiating upload:", error);
       setIsUploading(false);
       toast.error("Đã xảy ra lỗi.");
@@ -4801,7 +4851,7 @@ const UtilitiesTabContent: React.FC = () => {
   const [results, setResults] = useState<string[]>([]);
   const [prompt, setPrompt] = useState("");
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const [moodProgress, setMoodProgress] = useState(0);
   const [moodResults, setMoodResults] = useState<
@@ -4960,6 +5010,13 @@ const UtilitiesTabContent: React.FC = () => {
     }
 
     setIsUploading(true);
+    setUploadProgress(1);
+    let progressVal = 1;
+    const progressInterval = setInterval(() => {
+      progressVal += (95 - progressVal) * 0.1;
+      setUploadProgress(Math.round(progressVal));
+    }, 150);
+
     try {
       let fileToUpload = inputFile;
       if (inputFile.type === "application/pdf") {
@@ -4976,10 +5033,16 @@ const UtilitiesTabContent: React.FC = () => {
       cacheImage(downloadURL, fileToUpload);
       if (target === 1) setInputImage(downloadURL);
       else setInputImage2(downloadURL);
+
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      setTimeout(() => {
+        setIsUploading(false);
+      }, 400);
     } catch (error) {
+      clearInterval(progressInterval);
       console.error("Upload failed:", error);
       toast.error("Tải ảnh lên thất bại.");
-    } finally {
       setIsUploading(false);
     }
   };

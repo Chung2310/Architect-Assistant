@@ -312,6 +312,8 @@ export const generateContentWithRetry = async (
           params: {
             model: modelName,
             contents: callParams.contents,
+            promptTemplateKey: callParams.promptTemplateKey,
+            promptTemplateInput: callParams.promptTemplateInput,
             systemInstruction,
             config: {
               imageConfig: {
@@ -328,10 +330,13 @@ export const generateContentWithRetry = async (
         const imageResponse = backendRes.data;
 
         const base64Data =
-          imageResponse.generatedImages?.[0]?.image?.imageBytes;
+          imageResponse.generatedImages?.[0]?.image?.imageBytes ||
+          imageResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
         if (!base64Data) {
           throw new Error("Không nhận được dữ liệu ảnh từ Imagen API.");
         }
+        const mimeType =
+          imageResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.mimeType || "image/png";
         result = {
           candidates: [
             {
@@ -340,7 +345,7 @@ export const generateContentWithRetry = async (
                   {
                     inlineData: {
                       data: base64Data,
-                      mimeType: "image/png",
+                      mimeType: mimeType,
                     },
                   },
                 ],

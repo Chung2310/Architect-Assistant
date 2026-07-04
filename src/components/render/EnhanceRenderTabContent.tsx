@@ -289,18 +289,20 @@ export const EnhanceRenderTabContent: React.FC = () => {
 
     if (!(await checkUserCredits())) return;
     setIsUploading(true);
-    setUploadProgress(0);
+    setUploadProgress(1);
+    let progressVal = 1;
+    const progressInterval = setInterval(() => {
+      progressVal += (95 - progressVal) * 0.1;
+      setUploadProgress(Math.round(progressVal));
+    }, 150);
 
     const newImageUrls: string[] = [];
-    let idx = 0;
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
-        setUploadProgress(Math.round((idx / files.length) * 100));
         const downloadURL = await uploadMedia(file, "uploads");
         cacheImage(downloadURL, file);
         newImageUrls.push(downloadURL);
-        idx++;
       } catch (error) {
         console.error("Error uploading image:", error);
         toast.error("Lỗi khi tải ảnh lên. Vui lòng thử lại.");
@@ -308,7 +310,11 @@ export const EnhanceRenderTabContent: React.FC = () => {
     }
 
     setInputImages((prev) => [...prev, ...newImageUrls]);
-    setIsUploading(false);
+    clearInterval(progressInterval);
+    setUploadProgress(100);
+    setTimeout(() => {
+      setIsUploading(false);
+    }, 400);
   };
 
   const handleDeleteInputImage = async (
