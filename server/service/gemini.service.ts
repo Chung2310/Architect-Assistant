@@ -437,8 +437,238 @@ export const geminiService = {
       }
     }
 
-    // ─── XỬ LÝ MODEL IMAGEN NATIVE QUA GOOGLE GENAI SDK ─────────────────────────
+    // ─── XỬ LÝ MODEL IMAGEN NATIVE (GEMINI IMAGE GENERATION) ────────────────────
     if (isGeminiNativeImageModel) {
+      const imageConfig = params.config?.imageConfig || params.generationConfig?.imageConfig || {};
+      const aspectRatio = imageConfig.aspectRatio || "1:1";
+      const openRouterKey = process.env.OPENROUTER_API_KEY || "";
+
+      if (openRouterKey) {
+        const isFlashVariant =
+          modelName === "gemini-3.1-flash-image" ||
+          modelName === "gemini-3.1-flash-image-preview" ||
+          modelName.includes("flash-image");
+
+        const openRouterModel = isFlashVariant ? "google/gemini-3.1-flash-image" : "google/gemini-3-pro-image";
+        logger.info(`[Gemini Service] Provider: OpenRouter (Primary for Native Image). Model: ${openRouterModel}, Aspect: ${aspectRatio}`);
+
+        try {
+          const contentItems: any[] = [];
+
+          if (systemInstruction) {
+            contentItems.push({ type: "text", text: `SYSTEM INSTRUCTION: ${systemInstruction}\n\n` });
+          }
+
+          const contentsArray = Array.isArray(params.contents)
+            ? params.contents
+            : params.contents
+              ? [params.contents]
+              : [];
+
+          for (const content of contentsArray) {
+            if (content && typeof content === "object" && "parts" in content) {
+              const parts = (content as { parts?: any[] }).parts || [];
+              for (const part of parts) {
+                if (part.text) {
+                  contentItems.push({ type: "text", text: part.text });
+                } else if (part.inlineData && part.inlineData.data) {
+                  const mime = part.inlineData.mimeType || "image/jpeg";
+                  contentItems.push({
+                    type: "image_url",
+                    image_url: {
+                      url: `data:${mime};base64,${part.inlineData.data}`
+                    }
+                  });
+                }
+              }
+            } else if (typeof content === "string") {
+              contentItems.push({ type: "text", text: content });
+            }
+          }
+
+          if (aspectRatio && aspectRatio !== "1:1") {
+            contentItems.push({ type: "text", text: `\n[Aspect ratio: ${aspectRatio}]` });
+          }
+
+          const requestBody: Record<string, any> = {
+            model: openRouterModel,
+            messages: [{ role: "user", content: contentItems }],
+            modalities: ["image"],
+            image_config: {
+              aspect_ratio: aspectRatio === "Tự động" || aspectRatio === "auto" ? "1:1" : aspectRatio
+            }
+          };
+
+          const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${openRouterKey}`,
+              "Content-Type": "application/json",
+              "HTTP-Referer": "https://staging-architect.igentechsolutions.com",
+              "X-Title": "iGen Architect Assistant",
+            },
+            body: JSON.stringify(requestBody),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`OpenRouter primary image generation failed: ${response.status} - ${errorText}`);
+          }
+
+          const json = (await response.json()) as any;
+          const images = json.choices?.[0]?.message?.images;
+          let imgUrl = "";
+          if (Array.isArray(images) && images.length > 0) {
+            imgUrl = images[0]?.image_url?.url;
+          }
+
+          if (!imgUrl) {
+            const messageContent = json.choices?.[0]?.message?.content;
+            if (typeof messageContent === "string") {
+              if (messageContent.startsWith("http") || messageContent.startsWith("data:")) {
+                imgUrl = messageContent;
+              }
+            } else if (Array.isArray(messageContent)) {
+              for (const part of messageContent) {
+                if (part?.type === "image_url" && part?.image_url?.url) {
+                  imgUrl = part.image_url.url;
+                  break;
+                }
+                if (part?.type === "image" && part?.source?.data) {
+                  imgUrl = `data:${part.source.media_type || "image/png"};base64,${part.source.data}`;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (!imgUrl) {
+            throw new Error("Không nhận được dữ liệu hình ảnh từ OpenRouter Image API");
+          }
+
+          const imgFetchRes = await fetch(imgUrl);
+          if (!imgFetchRes.ok) {
+            throw new Error(`Failed to download OpenRouter generated image: ${imgFetchRes.status}`);
+          }
+          const arrayBuffer = await imgFetchRes.arrayBuffer();
+          const base64 = Buffer.from(arrayBuffer).toString("base64");
+          const mimeType = imgFetchRes.headers.get("content-type") || "image/png";
+
+          logger.info(`[Gemini Service] Image generated and downloaded successfully via OpenRouter primary.`);
+
+          return {
+            generatedImages: [
+              {
+                image: {
+                  imageBytes: base64,
+                  mimeType: mimeType,
+                }
+              }
+            ],
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      inlineData: {
+                        data: base64,
+                        mimeType: mimeType
+                      }
+                    }
+                  ],
+                  role: "model"
+                },
+                finishReason: "STOP"
+              }
+            ]
+          };
+
+        } catch (primaryErr: any) {
+          logger.error(`[Gemini Service] OpenRouter Primary Image generation failed: ${primaryErr.message || primaryErr}. Falling back to Flux...`);
+          
+          // Call Fallback to Flux via OpenRouter
+          const fallbackFluxModel = process.env.OPENROUTER_FALLBACK_IMAGE_MODEL || "black-forest-labs/flux.2-klein-4b";
+          logger.info(`[Gemini Service] Fallback: calling Flux model (${fallbackFluxModel}) via OpenRouter...`);
+          try {
+            let promptText = "";
+            let inputImageBase64 = "";
+            let inputImageMimeType = "";
+
+            const contentsArray = Array.isArray(params.contents)
+              ? params.contents
+              : (params.contents && params.contents.parts ? [{ parts: params.contents.parts }] : []);
+
+            for (const content of contentsArray) {
+              if (content.parts && Array.isArray(content.parts)) {
+                for (const part of content.parts) {
+                  if (part.text) {
+                    promptText += part.text + "\n";
+                  } else if (part.inlineData && part.inlineData.data) {
+                    inputImageBase64 = part.inlineData.data;
+                    inputImageMimeType = part.inlineData.mimeType || "image/jpeg";
+                  }
+                }
+              }
+            }
+            promptText = promptText.trim();
+            if (systemInstruction) {
+              promptText = `${String(systemInstruction).trim()}\n\n${promptText}`.trim();
+            }
+
+            const imageUrl = await callOpenRouterImage(
+              promptText,
+              fallbackFluxModel,
+              openRouterKey,
+              aspectRatio,
+              inputImageBase64,
+              inputImageMimeType
+            );
+
+            const imgFetchRes = await fetch(imageUrl);
+            if (!imgFetchRes.ok) {
+              throw new Error(`Failed to download generated Flux image: ${imgFetchRes.status}`, { cause: primaryErr });
+            }
+            const arrayBuffer = await imgFetchRes.arrayBuffer();
+            const base64 = Buffer.from(arrayBuffer).toString("base64");
+            const mimeType = imgFetchRes.headers.get("content-type") || "image/png";
+
+            logger.info(`[Gemini Service] Fallback Flux image generated and downloaded successfully.`);
+
+            return {
+              generatedImages: [
+                {
+                  image: {
+                    imageBytes: base64,
+                    mimeType: mimeType,
+                  }
+                }
+              ],
+              candidates: [
+                {
+                  content: {
+                    parts: [
+                      {
+                        inlineData: {
+                          data: base64,
+                          mimeType: mimeType
+                        }
+                      }
+                    ],
+                    role: "model"
+                  },
+                  finishReason: "STOP"
+                }
+              ]
+            };
+          } catch (fallbackErr: any) {
+            logger.error(`[Gemini Service] Fallback to Flux via OpenRouter also failed: ${fallbackErr.message || fallbackErr}`);
+            throw primaryErr;
+          }
+        }
+      }
+
+      // ─── NATIVE GEMINI SDK FALLBACK (IF NO OPENROUTER KEY) ───────────────────
+      logger.info(`[Gemini Service] Fallback: Using native Gemini SDK.`);
       if (!apiKey) {
         throw new Error("API Key không hợp lệ hoặc không có quyền truy cập.");
       }
@@ -446,15 +676,10 @@ export const geminiService = {
       const ai = new GoogleGenAI({ apiKey: apiKey as string });
       logger.info(`[Gemini Service] Provider: Gemini native image. Requested model: ${modelName}`);
 
-      const imageConfig = params.config?.imageConfig || params.generationConfig?.imageConfig || {};
-      const aspectRatio = imageConfig.aspectRatio || "1:1";
-
-      // Chọn model Gemini native dựa trên model được yêu cầu:
-      // - nano-banana-2 / igen-image-flash / gemini-3.1-flash-image → Flash (nhanh hơn, rẻ hơn)
-      // - Các model khác → Pro (chất lượng cao hơn)
       const isFlashVariant =
         modelName === "gemini-3.1-flash-image" ||
-        modelName === "gemini-3.1-flash-image-preview";
+        modelName === "gemini-3.1-flash-image-preview" ||
+        modelName.includes("flash-image");
 
       const IMAGE_GEN_MODEL = isFlashVariant ? "gemini-3.1-flash-image" : "gemini-3-pro-image";
       logger.info(`[Gemini Service] Using model: ${IMAGE_GEN_MODEL} (variant: ${isFlashVariant ? 'flash' : 'pro'}), aspect: ${aspectRatio}`);
@@ -546,7 +771,6 @@ export const geminiService = {
               promptText = `${String(systemInstruction).trim()}\n\n${promptText}`.trim();
             }
 
-            // Gọi sinh ảnh Flux qua OpenRouter
             const imageUrl = await callOpenRouterImage(
               promptText,
               fallbackFluxModel,
@@ -556,7 +780,6 @@ export const geminiService = {
               inputImageMimeType
             );
 
-            // Tải hình ảnh trả về sang base64
             const imgFetchRes = await fetch(imageUrl);
             if (!imgFetchRes.ok) {
               throw new Error(`Failed to download generated Flux image: ${imgFetchRes.status}`, { cause: err });
@@ -608,7 +831,6 @@ export const geminiService = {
         throw new Error("Không nhận được dữ liệu ảnh từ mô hình native của Gemini.");
       }
 
-      // Trả về format tương thích với controller (generatedImages[0].image.imageBytes)
       return {
         generatedImages: imageParts.map((p: { inlineData: { data: string; mimeType: string } }) => ({
           image: {
@@ -616,7 +838,6 @@ export const geminiService = {
             mimeType: p.inlineData.mimeType || "image/jpeg",
           }
         })),
-        // Cũng giữ candidates để tương thích ngược
         candidates: response.candidates,
       };
     }
