@@ -30,12 +30,12 @@ interface RenderJob {
 const MODELS = [
   {
     id: "nano-banana-2",
-    name: "Nano Banana 2 (Gemini 3.1 Flash Image)",
+    name: "Igen gemini Image Flash",
     isPro: false,
   },
   {
     id: "nano-banana-pro",
-    name: "Nano Banana Pro (Gemini 3 Pro Image)",
+    name: "Igen gemini Image Pro",
     isPro: true,
   },
 ];
@@ -1588,16 +1588,13 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                     <option value="">Hoặc chọn một góc chụp có sẵn</option>
                     {activeSubTab === "Floorplan to 3D" || activeSubTab === "Render Nội Thất" ? (
                       <>
-                        <option>Góc chụp từ trên cao nhìn xuống toàn bộ không gian phòng</option>
                         <option>Góc chụp góc 3/4 bên trái bao quát cả căn phòng</option>
                         <option>Góc chụp góc 3/4 bên phải bao quát cả căn phòng</option>
                         <option>Góc chụp góc chính diện thẳng vào trung tâm phòng</option>
                         <option>Góc chụp góc chéo từ cửa ra vào nhìn vào trong phòng</option>
-                        <option>Góc chụp từ phía sau sofa nhìn về hướng cửa sổ</option>
                         <option>Góc chụp từ trong phòng nhìn ngược ra cửa chính</option>
                         <option>Góc chụp từ trần nhà thấp xuống tạo chiều sâu không gian</option>
                         <option>Góc chụp đối xứng cân bằng toàn bộ phòng</option>
-                        <option>Góc chụp từ một góc tường chéo tạo cảm giác rộng</option>
                         <option>Góc chụp khu vực sofa và bàn trà từ góc nhìn ngang</option>
                         <option>Góc chụp khu vực kệ tivi và tường trang trí từ góc nhìn chính diện</option>
                         <option>Góc chụp bàn ăn và ghế từ góc nghiêng 45 độ</option>
@@ -1605,7 +1602,6 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                         <option>Góc chụp góc tường trang trí với tranh nghệ thuật và đèn hắt sáng</option>
                         <option>Góc chụp góc nhìn về khu vực bếp liên thông với phòng khách</option>
                         <option>Góc chụp khu vực đọc sách với kệ sách và ghế đơn</option>
-                        <option>Góc chụp thảm trải sàn bao quanh bàn trà</option>
                         <option>Góc chụp khu vực treo rèm cửa và ánh sáng chiếu vào</option>
                       </>
                     ) : (
@@ -1723,7 +1719,7 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                   >
                     {MODELS.map((model) => (
                       <option key={model.id} value={model.id}>
-                        {model.name} {model.isPro ? "(Pro)" : ""}
+                        {model.name}
                       </option>
                     ))}
                   </select>

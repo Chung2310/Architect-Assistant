@@ -149,14 +149,14 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentScreen: _curren
       {/* TopAppBar */}
       <header className="fixed top-0 w-full z-50 bg-white/60 backdrop-blur-xl shadow-sm shadow-[#0f172a]/5 flex justify-between items-center px-6 py-4">
         <div className="flex items-center gap-3">
-          <h1 className="cursor-pointer flex items-center" onClick={() => onNavigate('home')}>
+          <button type="button" className="cursor-pointer flex items-center" onClick={() => navigate('/home')}>
             <img 
               src="https://res.cloudinary.com/dgaofuhmv/image/upload/v1775301001/unnamed_tcmlmp.png" 
               alt="iGen Logo" 
               className="h-12 object-contain" 
               referrerPolicy="no-referrer" 
             />
-          </h1>
+          </button>
           <span className="text-on-surface font-manrope text-sm font-semibold tracking-tight">- Trợ lý AI cho Kiến trúc sư</span>
         </div>
         <div className="flex items-center gap-4 relative">
@@ -231,7 +231,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentScreen: _curren
         </div>
       </header>
 
-      <div className="flex flex-1 pt-16">
+      <div className="flex flex-1 pt-16 overflow-hidden max-w-full">
         {/* Main Content */}
         <main className="flex-1 overflow-auto">
           {children}

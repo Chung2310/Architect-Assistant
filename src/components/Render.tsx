@@ -41,25 +41,25 @@ const LOCKED_TABS = new Set(["Cải thiện Render", "Tiện ích khác"]);
 const MODELS = [
   {
     id: "nano-banana-2",
-    name: "Nano Banana 2 (Gemini 3.1 Flash Image)",
+    name: "Igen gemini Image Flash",
     isPro: false,
   },
   {
     id: "nano-banana-pro",
-    name: "Nano Banana Pro (Gemini 3 Pro Image)",
+    name: "Igen gemini Image Pro",
     isPro: true,
   },
 ];
 
 const GEMINI_MODELS = [
   {
-    id: "nano-banana-2",
-    name: "Nano Banana 2 (Gemini 3.1 Flash Image)",
+    id: "gemini-3.1-flash-image",
+    name: "Igen gemini Image Flash",
     isPro: false,
   },
   {
-    id: "nano-banana-pro",
-    name: "Nano Banana Pro (Gemini 3 Pro Image)",
+    id: "gemini-3-pro-image",
+    name: "Igen gemini Image Pro",
     isPro: true,
   },
 ];
@@ -228,7 +228,7 @@ const EditTabContent: React.FC = () => {
   // States for "Sửa Tổng Thể"
   const [prompt, setPrompt] = useState("");
   const [selectedModel, setSelectedModel] = useState(
-    "nano-banana-pro",
+    "gemini-3-pro-image",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
   const [numImages, setNumImages] = useState(1);
@@ -362,6 +362,7 @@ const EditTabContent: React.FC = () => {
     const startTime = Date.now();
     const expectedDuration = 8000; // 8 seconds expected for prompt generation
 
+    let success = false;
     const progressInterval = setInterval(() => {
       const elapsed = Date.now() - startTime;
       const progress = Math.min(90, (elapsed / expectedDuration) * 90);
@@ -474,7 +475,6 @@ ${cropInfo}
 
       if (textPrompt) parts.push({ text: textPrompt });
 
-
       const response = await generateContentWithRetry(ai, {
         model: promptModel,
         promptTemplateKey: "render_edit_prompt",
@@ -507,7 +507,6 @@ ${cropInfo}
       ) {
         try {
           const parsed = safeJsonParse(finalPromptText);
-          // If it's valid JSON from our Surgeon, we keep it as JSON string so handleRender can parse it
           setPrompt(JSON.stringify(parsed, null, 2));
         } catch (e) {
           console.error("Failed to parse JSON prompt", e);
@@ -521,9 +520,35 @@ ${cropInfo}
         );
       }
 
-      setSmoothPromptProgress(100);
-      setPromptStatus("Hoàn tất!");
-      toast.success("Đã tạo prompt thành công!");
+      success = true;
+
+      // Animate progress to 100% smoothly
+      let currentProgress = smoothPromptProgress;
+      const targetProgress = 100;
+      const duration = 600;
+      const steps = 30;
+      const stepTime = duration / steps;
+      const increment = (targetProgress - currentProgress) / steps;
+
+      let step = 0;
+      const animInterval = setInterval(() => {
+        step++;
+        if (step >= steps) {
+          setSmoothPromptProgress(100);
+          clearInterval(animInterval);
+          setPromptStatus("Hoàn tất!");
+          toast.success("Đã tạo prompt thành công!");
+          setTimeout(() => {
+            setIsGeneratingPrompt(false);
+            setPromptStatus("");
+            setSmoothPromptProgress(0);
+          }, 1000);
+        } else {
+          currentProgress += increment;
+          setSmoothPromptProgress(Math.floor(currentProgress));
+        }
+      }, stepTime);
+
     } catch (error) {
       console.error("Error generating prompt:", error);
       const err = error as Error;
@@ -532,11 +557,11 @@ ${cropInfo}
       }
     } finally {
       clearInterval(progressInterval);
-      setTimeout(() => {
+      if (!success) {
         setIsGeneratingPrompt(false);
         setPromptStatus("");
         setSmoothPromptProgress(0);
-      }, 1000);
+      }
     }
   };
 
@@ -561,6 +586,48 @@ ${cropInfo}
       setIsRendering(false);
       return;
     }
+
+    let success = false;
+
+    const animateProgressAndComplete = (currentProgressVal: number, finalImgUrl: string) => {
+      success = true;
+      let currentProgress = currentProgressVal;
+      const targetProgress = 100;
+      const duration = 600;
+      const steps = 30;
+      const stepTime = duration / steps;
+      const increment = (targetProgress - currentProgress) / steps;
+
+      let step = 0;
+      const animInterval = setInterval(() => {
+        step++;
+        if (step >= steps) {
+          setSmoothRenderProgress(100);
+          clearInterval(animInterval);
+          setResultImage(finalImgUrl);
+
+          setEditHistory((prev) => [
+            {
+              id: Date.now().toString(),
+              original: inputImage!,
+              edited: finalImgUrl,
+              type: activeSubTab,
+              timestamp: new Date().toLocaleString(),
+            },
+            ...prev,
+          ]);
+
+          toast.success("Đã thực hiện thay đổi thành công!");
+          setTimeout(() => {
+            setIsRendering(false);
+            setSmoothRenderProgress(0);
+          }, 1000);
+        } else {
+          currentProgress += increment;
+          setSmoothRenderProgress(Math.floor(currentProgress));
+        }
+      }, stepTime);
+    };
 
     try {
       setSmoothRenderProgress(10); // Khởi tạo AI Client
@@ -590,7 +657,7 @@ ${cropInfo}
           waitInterval = setInterval(() => {
             const elapsed = Date.now() - startTime;
             const progress =
-              startProgress + Math.min(60, (elapsed / expectedDuration) * 60);
+              startProgress + Math.min(60, (elapsed / expectedDuration) * 60); // Go from 30 to 90
             setSmoothRenderProgress(progress);
           }, 100);
 
@@ -728,21 +795,7 @@ ${cropInfo}
               console.error("Error uploading edited image:", uploadError);
             }
 
-            setResultImage(finalImageUrl);
-            setSmoothRenderProgress(100);
-
-            setEditHistory((prev) => [
-              {
-                id: Date.now().toString(),
-                original: inputImage,
-                edited: finalImageUrl,
-                type: activeSubTab,
-                timestamp: new Date().toLocaleString(),
-              },
-              ...prev,
-            ]);
-
-            toast.success("Đã thực hiện thay đổi thành công!");
+            animateProgressAndComplete(95, finalImageUrl);
           }
         } finally {
           if (waitInterval) clearInterval(waitInterval);
@@ -921,9 +974,6 @@ ${cropInfo}
         config.imageConfig = imageConfig;
       }
 
-      // If crop logic is active, the mask is already added as the second image part in `parts`
-      // We don't set INPAINT_REPLACE here because gemini-3.1-flash-image / gemini-3-pro-image might handle it via masks directly.
-
       let waitInterval: NodeJS.Timeout | undefined;
 
       try {
@@ -985,21 +1035,7 @@ ${cropInfo}
             console.error("Error uploading edited image:", uploadError);
           }
 
-          setResultImage(finalImageUrl);
-          setSmoothRenderProgress(100); // Hoàn tất
-
-          setEditHistory((prev) => [
-            {
-              id: Date.now().toString(),
-              original: inputImage,
-              edited: finalImageUrl,
-              type: activeSubTab,
-              timestamp: new Date().toLocaleString(),
-            },
-            ...prev,
-          ]);
-
-          toast.success("Đã thực hiện thay đổi thành công!");
+          animateProgressAndComplete(95, finalImageUrl);
         } else {
           console.error(
             "AI response did not contain an image. Raw response:",
@@ -1025,10 +1061,12 @@ ${cropInfo}
         err.message || "Lỗi khi thực hiện thay đổi. Vui lòng thử lại.",
       );
     } finally {
-      setTimeout(() => {
-        setIsRendering(false);
-        setSmoothRenderProgress(0);
-      }, 500);
+      if (!success) {
+        setTimeout(() => {
+          setIsRendering(false);
+          setSmoothRenderProgress(0);
+        }, 500);
+      }
     }
   };
 
@@ -1451,7 +1489,7 @@ ${cropInfo}
                     >
                       {GEMINI_MODELS.map((model) => (
                         <option key={model.id} value={model.id}>
-                          {model.name} {model.isPro ? "(Pro)" : ""}
+                          {model.name}
                         </option>
                       ))}
                     </select>
@@ -1864,7 +1902,7 @@ ${cropInfo}
                     >
                       {GEMINI_MODELS.map((model) => (
                         <option key={model.id} value={model.id}>
-                          {model.name} {model.isPro ? "(Pro)" : ""}
+                          {model.name}
                         </option>
                       ))}
                     </select>
@@ -2351,7 +2389,7 @@ ${cropInfo}
                     >
                       {GEMINI_MODELS.map((model) => (
                         <option key={model.id} value={model.id}>
-                          {model.name} {model.isPro ? "(Pro)" : ""}
+                          {model.name}
                         </option>
                       ))}
                     </select>
@@ -2859,7 +2897,7 @@ ${cropInfo}
                     >
                       {GEMINI_MODELS.map((model) => (
                         <option key={model.id} value={model.id}>
-                          {model.name} {model.isPro ? "(Pro)" : ""}
+                          {model.name}
                         </option>
                       ))}
                     </select>
@@ -3337,7 +3375,7 @@ ${cropInfo}
                     >
                       {GEMINI_MODELS.map((model) => (
                         <option key={model.id} value={model.id}>
-                          {model.name} {model.isPro ? "(Pro)" : ""}
+                          {model.name}
                         </option>
                       ))}
                     </select>
@@ -3643,7 +3681,7 @@ ${cropInfo}
                     >
                       {GEMINI_MODELS.map((model) => (
                         <option key={model.id} value={model.id}>
-                          {model.name} {model.isPro ? "(Pro)" : ""}
+                          {model.name}
                         </option>
                       ))}
                     </select>
@@ -4501,7 +4539,7 @@ const LayoutTabContent: React.FC = () => {
                 >
                   {GEMINI_MODELS.map((model) => (
                     <option key={model.id} value={model.id}>
-                      {model.name} {model.isPro ? "(Pro)" : ""}
+                      {model.name}
                     </option>
                   ))}
                 </select>
@@ -4843,7 +4881,7 @@ const UtilitiesTabContent: React.FC = () => {
   const [inputImage, setInputImage] = useState<string | null>(null);
   const [inputImage2, setInputImage2] = useState<string | null>(null);
   const [utilityModel, setUtilityModel] = useState(
-    "nano-banana-2",
+    "gemini-3.1-flash-image",
   );
   const [utilityResolution, setUtilityResolution] = useState("1K");
   const [isProcessing, setIsProcessing] = useState(false);
