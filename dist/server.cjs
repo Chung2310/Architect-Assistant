@@ -2360,8 +2360,25 @@ Quy t\u1EAFc tr\u1EA3 l\u1EDDi:
       { role: "system", content: systemInstruction },
       ...messages
     ];
-    const { textResult } = await callOpenRouterChat(finalMessages, model, openRouterKey, false);
-    return { text: textResult };
+    const FALLBACK_MODEL = "qwen/qwen3.6-flash";
+    try {
+      const { textResult } = await callOpenRouterChat(finalMessages, model, openRouterKey, false);
+      return { text: textResult };
+    } catch (primaryErr) {
+      if (model === FALLBACK_MODEL) {
+        throw primaryErr;
+      }
+      logger.warn(
+        `[Chatbot] Model "${model}" l\u1ED7i: ${primaryErr?.message || primaryErr}. T\u1EF1 \u0111\u1ED9ng chuy\u1EC3n sang fallback: "${FALLBACK_MODEL}".`
+      );
+      try {
+        const { textResult } = await callOpenRouterChat(finalMessages, FALLBACK_MODEL, openRouterKey, false);
+        return { text: textResult };
+      } catch (fallbackErr) {
+        logger.error(`[Chatbot] Fallback model "${FALLBACK_MODEL}" c\u0169ng l\u1ED7i: ${fallbackErr?.message || fallbackErr}.`);
+        throw primaryErr;
+      }
+    }
   }
 };
 
@@ -2424,7 +2441,7 @@ var createJobSchema = import_joi3.default.object({
     aspectRatio: import_joi3.default.string().allow("").optional(),
     model: import_joi3.default.string().allow("").optional(),
     resolution: import_joi3.default.string().valid("1K", "2K", "4K").optional()
-  }).optional()
+  }).unknown().optional()
 }).unknown();
 var idParamSchema2 = import_joi3.default.object({
   id: import_joi3.default.string().regex(/^[0-9a-fA-F]{24}$/).required().messages({
@@ -2494,6 +2511,18 @@ function appendFloorplanCameraDirective(type, prompt) {
   if (prompt.includes("eye-level") || prompt.includes("ngang tam mat")) {
     return prompt;
   }
+  return `${prompt}${cameraDirective}`;
+}
+function appendFloorplan3DFloorplanCameraDirective(type, prompt, cameraAngleStyle) {
+  const normalizedType = String(type || "").toLowerCase().trim();
+  if (normalizedType !== "floorplan to 3d floorplan") {
+    return prompt;
+  }
+  if (prompt.includes("Camera angle:") || prompt.includes("camera angle:")) {
+    return prompt;
+  }
+  const normalizedAngle = String(cameraAngleStyle || "").toLowerCase().trim();
+  const cameraDirective = normalizedAngle.includes("top down") || normalizedAngle.includes("top-down") ? " Camera angle: pure flat 3D top-down view, orthographic projection, looking straight down from 90 degrees above, bird's eye view, layout plan view, flat 3D floor plan layout, no perspective wall distortion." : " Camera angle: 3D isometric cutaway view, axonometric cutaway view, 45-degree tilted perspective view, 3D floorplan model visualization.";
   return `${prompt}${cameraDirective}`;
 }
 function extractPromptPayload(rawPrompt) {
@@ -2675,6 +2704,8 @@ Negative prompt: ${parsedNegativePrompt}`;
       finalPrompt = appendFloorplanCleanupDirective(req.body.type, finalPrompt);
       finalPrompt = appendFloorplanNegativePrompt(req.body.type, finalPrompt);
       finalPrompt = appendFloorplanCameraDirective(req.body.type, finalPrompt);
+      const cameraAngleStyle = req.body.settings?.cameraAngleStyle;
+      finalPrompt = appendFloorplan3DFloorplanCameraDirective(req.body.type, finalPrompt, cameraAngleStyle);
       const aspect = aspectRatio || "1:1";
       const isGeminiModel = isGeminiNativeModel;
       if (isGeminiModel) {
@@ -3471,7 +3502,7 @@ Style c\xF4ng tr\xECnh: ${buildingStyle}
 Phong c\xE1ch: ${interiorStyle}
 Kh\xF4ng \u0111\u01B0\u1EE3c bi\u1EBFn floorplan th\xE0nh \u1EA3nh n\u1ED9i th\u1EA5t th\xF4ng th\u01B0\u1EDDng.
 Y\xEAu c\u1EA7u l\xE0m s\u1EA1ch b\u1EA3n v\u1EBD: ${floorplanAxonometricCleanupDirective}
-Y\xEAu c\u1EA7u m\xE0u s\u1EAFc: M\xF4 h\xECnh ph\u1ED1i c\u1EA3nh 3D axonometric ph\u1EA3i c\xF3 m\xE0u s\u1EAFc sinh \u0111\u1ED9ng, \u0111\u1EA7y \u0111\u1EE7 v\u1EADt li\u1EC7u (v\xED d\u1EE5: s\xE0n g\u1ED7 ho\u1EB7c g\u1EA1ch m\xE0u, t\u01B0\u1EDDng s\u01A1n m\xE0u \u1EA5m/s\xE1ng/kem, \u0111\u1ED3 n\u1ED9i th\u1EA5t c\xF3 m\xE0u s\u1EAFc v\xE0 ch\u1EA5t li\u1EC7u r\xF5 r\xE0ng nh\u01B0 g\u1ED7, v\u1EA3i, da), tuy\u1EC7t \u0111\u1ED1i kh\xF4ng \u0111\u1EC3 m\xE0u tr\u1EAFng to\xE0n b\u1ED9 (clay model) hay \u0111\u01A1n s\u1EAFc monochrome.
+Y\xEAu c\u1EA7u m\xE0u s\u1EAFc: M\xF4 h\xECnh ph\u1ED1i c\u1EA3nh 3D axonometric ph\u1EA3i c\xF3 m\xE0u s\u1EAFc ch\xE2n th\u1EF1c, t\u1EF1 nhi\xEAn v\xE0 h\xE0i h\xF2a, \u0111\u1EA7y \u0111\u1EE7 v\u1EADt li\u1EC7u v\u1EDBi b\u1EC1 m\u1EB7t v\u1EADt l\xFD th\u1EF1c t\u1EBF (nh\u01B0 g\u1ED7 t\u1EF1 nhi\xEAn v\xE2n m\u1ECBn, v\u1EA3i d\u1EC7t, da th\u1EADt, \u0111\xE1 t\u1EF1 nhi\xEAn, g\u1EA1ch l\xE1t c\xF3 v\xE2n, t\u01B0\u1EDDng s\u01A1n m\xE0u pastel \u1EA5m/s\xE1ng/kem d\u1ECBu m\xE1t), tuy\u1EC7t \u0111\u1ED1i kh\xF4ng d\xF9ng m\xE0u s\u1EAFc qu\xE1 r\u1EF1c r\u1EE1 hay s\u1EB7c s\u1EE1 gi\u1EA3 t\u1EA1o, v\xE0 tuy\u1EC7t \u0111\u1ED1i kh\xF4ng \u0111\u1EC3 m\xE0u tr\u1EAFng to\xE0n b\u1ED9 (clay model) hay \u0111\u01A1n s\u1EAFc monochrome.
 Y\xEAu c\u1EA7u ph\xE2n t\xEDch: B\u1EAET BU\u1ED8C nh\u1EADn di\u1EC7n t\u1EA5t c\u1EA3 c\xE1c nh\xE3n ch\u1EEF ch\u1EC9 t\xEAn ph\xF2ng ho\u1EB7c c\xF4ng n\u0103ng vi\u1EBFt tr\xEAn b\u1EA3n v\u1EBD (v\xED d\u1EE5: Ph\xF2ng kh\xE1ch, Ph\xF2ng ng\u1EE7, WC, B\u1EBFp, Thang...). H\xE3y m\xF4 t\u1EA3 r\xF5 b\u1ED1 c\u1EE5c v\xE0 v\u1ECB tr\xED c\xE1c ph\xF2ng n\xE0y trong prompt \u0111\u1EC3 m\xF4 h\xECnh sinh \u1EA3nh d\u1EF1ng \u0111\xFAng c\xF4ng n\u0103ng ph\xF2ng.
 `;
     if (referenceImages.length > 0) {
@@ -3486,11 +3517,12 @@ Y\xEAu c\u1EA7u ph\xE2n t\xEDch: B\u1EAET BU\u1ED8C nh\u1EADn di\u1EC7n t\u1EA5t
 `;
     systemInstruction = [
       "B\u1EA1n l\xE0 chuy\xEAn gia ph\xE2n t\xEDch floorplan 2D v\xE0 t\xE1i d\u1EF1ng th\xE0nh kh\xF4ng gian 3D ch\xEDnh x\xE1c.",
+      "B\u1EAET BU\u1ED8C: B\u1EA1n PH\u1EA2I tu\xE2n th\u1EE7 tuy\u1EC7t \u0111\u1ED1i 'Style g\xF3c ch\u1EE5p' (cameraAngleStyle) \u0111\u01B0\u1EE3c ch\u1EC9 \u0111\u1ECBnh trong y\xEAu c\u1EA7u \u0111\u1EC3 m\xF4 t\u1EA3 g\xF3c nh\xECn trong prompt cu\u1ED1i c\xF9ng. N\u1EBFu l\xE0 'Top-down View', prompt B\u1EAET BU\u1ED8C ph\u1EA3i m\xF4 t\u1EA3 g\xF3c nh\xECn th\u1EB3ng \u0111\u1EE9ng tr\u1EF1c di\u1EC7n t\u1EEB tr\xEAn xu\u1ED1ng (flat 3D floor plan layout, straight top-down view, 90-degree bird's-eye view, no perspective distortion of walls, looking directly down at the floor, orthographic layout view). N\u1EBFu l\xE0 'Ph\u1ED1i c\u1EA3nh Tr\u1EF1c \u0111o (Isometric)', prompt B\u1EAET BU\u1ED8C ph\u1EA3i m\xF4 t\u1EA3 ph\u1ED1i c\u1EA3nh tr\u1EE5c \u0111o 3D (3D isometric cutaway perspective, axonometric cutaway view, tilted angle view). Tuy\u1EC7t \u0111\u1ED1i kh\xF4ng \u0111\u01B0\u1EE3c nh\u1EA7m l\u1EABn gi\u1EEFa hai g\xF3c nh\xECn n\xE0y.",
       "B\u1EAET BU\u1ED8C: H\xE3y \u0111\u1ECDc k\u1EF9 \u1EA3nh m\u1EB7t b\u1EB1ng \u0111\u1EA7u v\xE0o, t\xECm v\xE0 nh\u1EADn di\u1EC7n \u0111\xFAng t\u1EA5t c\u1EA3 c\xE1c nh\xE3n ch\u1EEF ch\u1EC9 t\xEAn/c\xF4ng n\u0103ng ph\xF2ng (v\xED d\u1EE5: Ph\xF2ng kh\xE1ch, Ph\xF2ng ng\u1EE7, WC, B\u1EBFp, C\u1EA7u thang...). B\u1EA1n ph\u1EA3i m\xF4 t\u1EA3 chi ti\u1EBFt v\u1ECB tr\xED c\u1EE7a t\u1EEBng khu v\u1EF1c ch\u1EE9c n\u0103ng n\xE0y trong prompt cu\u1ED1i c\xF9ng \u0111\u1EC3 m\xF4 h\xECnh sinh \u1EA3nh x\u1EBFp \u0111\xFAng v\u1ECB tr\xED, tuy\u1EC7t \u0111\u1ED1i kh\xF4ng \u0111\u01B0\u1EE3c t\u1EF1 \xFD \u0111\u1ED5i c\xF4ng n\u0103ng ph\xF2ng (kh\xF4ng bi\u1EBFn WC th\xE0nh ph\xF2ng ng\u1EE7, kh\xF4ng v\u1EBD nh\u1EA7m ph\xF2ng ng\u1EE7 th\xE0nh ph\xF2ng kh\xE1ch).",
       "M\u1EB7t b\u1EB1ng l\xE0 s\u1EF1 th\u1EADt tuy\u1EC7t \u0111\u1ED1i: t\u01B0\u1EDDng, c\u1EEDa, thang, v\xE1ch v\xE0 nh\xE3n ph\xF2ng ph\u1EA3i \u0111\u01B0\u1EE3c t\xF4n tr\u1ECDng.",
       "Nh\xE3n ph\xF2ng v\xE0 k\xFD hi\u1EC7u ch\u1EC9 d\xF9ng \u0111\u1EC3 suy lu\u1EADn b\u1ED1 tr\xED, kh\xF4ng \u0111\u01B0\u1EE3c xu\u1EA5t hi\u1EC7n l\u1EA1i trong \u1EA3nh k\u1EBFt qu\u1EA3.",
       "Kh\xF4ng \u0111\u01B0\u1EE3c ph\xE9p b\u1ED5 sung, x\xF3a b\u1ECF ho\u1EB7c s\u1EEDa \u0111\u1ED5i b\u1EA5t k\u1EF3 th\xE0nh ph\u1EA7n ki\u1EBFn tr\xFAc n\xE0o kh\xF4ng c\xF3 trong b\u1EA3n v\u1EBD; n\u1EBFu kh\xF4ng ch\u1EAFc, ph\u1EA3i gi\u1EEF nguy\xEAn thay v\xEC t\u1EF1 b\u1ECBa.",
-      "M\xF4 h\xECnh 3D axonometric ph\u1EA3i \u0111\u01B0\u1EE3c t\xF4 m\xE0u \u0111\u1EA7y \u0111\u1EE7, sinh \u0111\u1ED9ng cho s\xE0n, t\u01B0\u1EDDng, v\xE0 \u0111\u1ED3 n\u1ED9i th\u1EA5t theo phong c\xE1ch thi\u1EBFt k\u1EBF \u0111\xE3 ch\u1ECDn. KH\xD4NG \u0111\u01B0\u1EE3c t\u1EA1o m\xF4 h\xECnh \u0111\u1EA5t s\xE9t tr\u1EAFng (white clay model) hay \u0111\u01A1n s\u1EAFc tr\u1EAFng.",
+      "M\xF4 h\xECnh 3D axonometric ph\u1EA3i \u0111\u01B0\u1EE3c t\xF4 m\xE0u ch\xE2n th\u1EF1c, t\u1EF1 nhi\xEAn v\xE0 ch\xEDnh x\xE1c cho s\xE0n, t\u01B0\u1EDDng, v\xE0 \u0111\u1ED3 n\u1ED9i th\u1EA5t theo phong c\xE1ch thi\u1EBFt k\u1EBF \u0111\xE3 ch\u1ECDn, s\u1EED d\u1EE5ng c\xE1c gam m\xE0u trung t\xEDnh nh\xE3 nh\u1EB7n v\xE0 ch\u1EA5t li\u1EC7u v\u1EADt l\xFD c\xF3 chi\u1EC1u s\xE2u th\u1EF1c t\u1EBF. KH\xD4NG \u0111\u01B0\u1EE3c t\u1EA1o m\xF4 h\xECnh \u0111\u1EA5t s\xE9t tr\u1EAFng (white clay model) hay \u0111\u01A1n s\u1EAFc tr\u1EAFng.",
       referenceImages.length > 0 ? "Khi c\xF3 \u1EA3nh tham kh\u1EA3o n\u1ED9i th\u1EA5t: t\u1EEBng m\xF3n \u0111\u1ED3 tham kh\u1EA3o ch\u1EC9 \u0111\u01B0\u1EE3c d\xF9ng \u0111\u1EC3 kh\xF3a \u0111\xFAng ch\u1EE7ng lo\u1EA1i, h\u01B0\u1EDBng v\xE0 v\u1ECB tr\xED t\u01B0\u01A1ng \u1EE9ng theo m\u1EB7t b\u1EB1ng; kh\xF4ng t\u1EF1 \xFD th\xEAm b\u1EDBt hay di chuy\u1EC3n." : "N\u1EBFu kh\xF4ng c\xF3 \u1EA3nh tham kh\u1EA3o n\u1ED9i th\u1EA5t, b\u1ED1 tr\xED \u0111\u1ED3 \u0111\u1EA1c ph\u1EA3i b\xE1m logic m\u1EB7t b\u1EB1ng v\xE0 ch\u1EC9 d\u1EF1ng nh\u1EEFng g\xEC suy ra ch\u1EAFc ch\u1EAFn t\u1EEB b\u1EA3n v\u1EBD.",
       "T\u1EA5t c\u1EA3 \u0111\u1EA7u ra b\u1EB1ng ti\u1EBFng Vi\u1EC7t, \u01B0u ti\xEAn prompt cu\u1ED1i d\xF9ng \u0111\u01B0\u1EE3c ngay."
     ].join(" ");

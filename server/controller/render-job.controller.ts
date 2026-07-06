@@ -28,7 +28,7 @@ const createJobSchema = Joi.object({
     aspectRatio: Joi.string().allow("").optional(),
     model: Joi.string().allow("").optional(),
     resolution: Joi.string().valid("1K", "2K", "4K").optional(),
-  }).optional(),
+  }).unknown().optional(),
 }).unknown();
 
 const idParamSchema = Joi.object({
@@ -125,6 +125,25 @@ function appendFloorplanCameraDirective(type: string, prompt: string) {
 
   return `${prompt}${cameraDirective}`;
 }
+
+function appendFloorplan3DFloorplanCameraDirective(type: string, prompt: string, cameraAngleStyle?: string) {
+  const normalizedType = String(type || "").toLowerCase().trim();
+  if (normalizedType !== "floorplan to 3d floorplan") {
+    return prompt;
+  }
+
+  if (prompt.includes("Camera angle:") || prompt.includes("camera angle:")) {
+    return prompt;
+  }
+
+  const normalizedAngle = String(cameraAngleStyle || "").toLowerCase().trim();
+  const cameraDirective = (normalizedAngle.includes("top down") || normalizedAngle.includes("top-down"))
+    ? " Camera angle: pure flat 3D top-down view, orthographic projection, looking straight down from 90 degrees above, bird's eye view, layout plan view, flat 3D floor plan layout, no perspective wall distortion."
+    : " Camera angle: 3D isometric cutaway view, axonometric cutaway view, 45-degree tilted perspective view, 3D floorplan model visualization.";
+
+  return `${prompt}${cameraDirective}`;
+}
+
 
 function extractPromptPayload(rawPrompt: string) {
   const fallback = {
@@ -341,6 +360,8 @@ export const renderJobController = {
       finalPrompt = appendFloorplanCleanupDirective(req.body.type, finalPrompt);
       finalPrompt = appendFloorplanNegativePrompt(req.body.type, finalPrompt);
       finalPrompt = appendFloorplanCameraDirective(req.body.type, finalPrompt);
+      const cameraAngleStyle = req.body.settings?.cameraAngleStyle;
+      finalPrompt = appendFloorplan3DFloorplanCameraDirective(req.body.type, finalPrompt, cameraAngleStyle);
 
       const aspect = aspectRatio || "1:1";
 
