@@ -1783,7 +1783,6 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
         // Show shape picker bubble
         addMessage("assistant", "__SHAPE_PICKER__");
         setCurrentStep("shape");
-        setShowShapeModal(true);
       } else if (readyToGenerate) {
         // Show final message then generate
         const cleanReply = replyText.replace("__SHAPE_PICKER__", "").trim();
@@ -1811,7 +1810,7 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
           } else if (action.type === "render_3d") {
             handleRender3D();
           } else if (action.type === "show_shape_picker") {
-            setShowShapeModal(true);
+            // Show shape picker in chat instead
           } else if (action.type === "show_room_picker") {
             setShowRoomsModal(true);
           }
