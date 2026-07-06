@@ -92,4 +92,25 @@ export const geminiController = {
       });
     }
   },
+  async openrouterChat(req: Request, res: Response) {
+    const { messages, model } = req.body;
+    if (!messages || !Array.isArray(messages)) {
+      res.status(400).json({ success: false, message: "Danh sách tin nhắn không hợp lệ." });
+      return;
+    }
+    try {
+      const response = await geminiService.chatOpenRouter(messages, model || "google/gemini-2.5-flash");
+      res.status(200).json({
+        success: true,
+        data: response,
+      });
+    } catch (err: unknown) {
+      const errorObj = err as Error;
+      logger.error(`[Gemini Controller - OpenRouter Chat] Error: ${errorObj.message}`);
+      res.status(500).json({
+        success: false,
+        message: errorObj.message || "Lỗi xử lý OpenRouter Chat.",
+      });
+    }
+  },
 };

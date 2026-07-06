@@ -193,6 +193,96 @@ function createGrassTexture(): THREE.Texture {
   return texture;
 }
 
+// ── Finish Name → THREE.js Colour / Material type resolver ─────────────────
+// Maps human-readable finish names (from ROOM_FLOORINGS / ROOM_WALLS etc.)
+// to usable THREE.js hex colour strings or material-type keywords.
+const FINISH_COLOR_MAP: Record<string, string> = {
+  // Walls
+  "white plaster":   "#ffffff",
+  "soft white":      "#f5f5f0",
+  "terracotta fan tile": "#c2410c",
+  "exposed brick":   "#b91c1c",
+  "concrete render": "#cbd5e1",
+  "concrete - light": "#e2e8f0",
+  "concrete - dark": "#475569",
+  // Flooring (colour-fallback — procedural textures override where needed)
+  "white wood panelling": "#f8fafc",
+  "terrazzo":        "tile",      // → tile texture
+  "natural_oak":     "wood",      // → wood texture
+  "beige square tile": "tile",
+  "seafoam square tile": "#a7f3d0",
+  "mint hexagonal tile": "tile",
+  "blue square tile": "#bfdbfe",
+  "white square tile": "tile",
+  "red oak":         "#b45309",
+  "white herringbone": "wood",    // → wood texture
+  "white oak":       "wood",
+  "ash":             "wood",
+  "birch":           "wood",
+  "beech":           "wood",
+  // Ceilings
+  "paint white":     "#ffffff",
+  "paint off white":  "#f9fafb",
+  "tray ceiling":    "#e5e7eb",
+  "exposed concrete": "#94a3b8",
+  "timber slats":    "wood",
+  // Doors
+  "timber natural":  "#d0a97a",
+  "timber white":    "#fafafa",
+  "timber dark":     "#78350f",
+  "matte black":     "#111827",
+  // Windows
+  "aluminium black": "#1f2937",
+  "aluminium white": "#f9fafb",
+  "timber frame":    "#d0a97a",
+  "clear glass":     "#38bdf8",
+};
+
+/**
+ * Given a finish name string (or a hex colour), return a resolved colour/keyword
+ * that the 3DViewer can use. Returns:
+ *   - A hex string like "#b91c1c" for direct THREE.Color use
+ *   - One of "wood" | "tile" | "carpet" as texture-type keywords
+ */
+function resolveFinishValue(raw: string | undefined | null, fallback: string): string {
+  if (!raw) return fallback;
+  // Already a hex colour?
+  if (raw.startsWith("#")) return raw;
+  const key = raw.toLowerCase().trim();
+  if (FINISH_COLOR_MAP[key]) return FINISH_COLOR_MAP[key];
+  // Keyword heuristics
+  if (key.includes("oak") || key.includes("wood") || key.includes("birch") || key.includes("ash") || key.includes("beech") || key.includes("timber") || key.includes("herringbone")) return "wood";
+  if (key.includes("tile") || key.includes("terrazzo") || key.includes("marble") || key.includes("hexagonal")) return "tile";
+  if (key.includes("carpet")) return "carpet";
+  if (key.includes("concrete") || key.includes("plaster")) return "#cbd5e1";
+  if (key.includes("brick")) return "#b91c1c";
+  if (key.includes("white")) return "#ffffff";
+  return fallback;
+}
+
+/** Build a THREE.Material from a resolved finish value string */
+function buildFlooringMat(resolved: string): THREE.Material {
+  if (resolved === "wood") {
+    return new THREE.MeshStandardMaterial({ map: createWoodTexture(), roughness: 0.6 });
+  } else if (resolved === "tile") {
+    return new THREE.MeshStandardMaterial({ map: createTileTexture(), roughness: 0.3 });
+  } else if (resolved === "carpet") {
+    return new THREE.MeshStandardMaterial({ map: createCarpetTexture(), roughness: 0.9 });
+  } else {
+    return new THREE.MeshStandardMaterial({ color: resolved.startsWith("#") ? resolved : "#e2e8f0", roughness: 0.7 });
+  }
+}
+
+/** Build a wall material – if the resolved value is a texture keyword fall back to a neutral tone */
+function buildWallMat(resolved: string): THREE.MeshStandardMaterial {
+  if (resolved === "wood" || resolved === "tile" || resolved === "carpet") {
+    // For walls: wood → warm tan, tile → slate grey, carpet → medium grey
+    const fallbackColors: Record<string, string> = { wood: "#d0a97a", tile: "#e2e8f0", carpet: "#94a3b8" };
+    return new THREE.MeshStandardMaterial({ color: fallbackColors[resolved], roughness: 0.8 });
+  }
+  return new THREE.MeshStandardMaterial({ color: resolved.startsWith("#") ? resolved : "#ffffff", roughness: 0.8 });
+}
+
 export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
   floorPlan,
   wallThickness = 100,
@@ -265,29 +355,14 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     grass.receiveShadow = true;
     scene.add(grass);
 
-    // Materials setup from Finishes
-    let flooringMat: THREE.Material;
-    const flooringVal = (finishes?.flooring?.value || "natural_oak").toLowerCase();
-    if (flooringVal.includes("oak") || flooringVal.includes("wood") || flooringVal.includes("birch") || flooringVal.includes("ash") || flooringVal.includes("beech")) {
-      const woodTex = createWoodTexture();
-      flooringMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.6 });
-    } else if (flooringVal.includes("tile") || flooringVal.includes("marble") || flooringVal.includes("terrazzo") || flooringVal.includes("herringbone")) {
-      const tileTex = createTileTexture();
-      flooringMat = new THREE.MeshStandardMaterial({ map: tileTex, roughness: 0.3 });
-    } else if (flooringVal.includes("carpet")) {
-      const carpetTex = createCarpetTexture();
-      flooringMat = new THREE.MeshStandardMaterial({ map: carpetTex, roughness: 0.9 });
-    } else {
-      flooringMat = new THREE.MeshStandardMaterial({ color: flooringVal.startsWith("#") ? flooringVal : "#e2e8f0", roughness: 0.7 });
-    }
+    // ── Global (fallback) materials from Finishes prop ──────────────────────
+    const globalFlooringResolved = resolveFinishValue(finishes?.flooring?.value, "wood");
+    const flooringMat: THREE.Material = buildFlooringMat(globalFlooringResolved);
 
-    const wallColor = finishes?.walls?.value || "#ffffff";
-    const wallMat = new THREE.MeshStandardMaterial({
-      color: wallColor,
-      roughness: 0.8,
-    });
+    const globalWallResolved = resolveFinishValue(finishes?.walls?.value, "#ffffff");
+    const wallMat: THREE.MeshStandardMaterial = buildWallMat(globalWallResolved);
 
-    const windowColor = finishes?.windows?.value || "#1c1c1e";
+    const windowColor = resolveFinishValue(finishes?.windows?.value, "#1c1c1e");
     const glassMat = new THREE.MeshStandardMaterial({
       color: "#38bdf8",
       roughness: 0.05,
@@ -298,13 +373,13 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
       envMapIntensity: 1.5,
     });
     const frameMat = new THREE.MeshStandardMaterial({
-      color: windowColor,
+      color: windowColor.startsWith("#") ? windowColor : "#1c1c1e",
       roughness: 0.5,
     });
 
-    const doorColor = finishes?.doors?.value || "#d0a97a";
+    const doorColor = resolveFinishValue(finishes?.doors?.value, "#d0a97a");
     const doorMat = new THREE.MeshStandardMaterial({
-      color: doorColor.startsWith("#") ? doorColor : "#854d0e", // wood brown fallback
+      color: doorColor.startsWith("#") ? doorColor : "#854d0e",
       roughness: 0.6,
     });
 
@@ -316,28 +391,20 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
       const rx = room.x + room.w / 2 - centerX;
       const rz = room.y + room.h / 2 - centerY;
 
-      // Room-specific materials setup
-      let roomFlooringMat: THREE.Material;
-      const rawRoomFlooringVal = (typeof room.finishes?.flooring === "object" ? (room.finishes?.flooring as { value?: string })?.value : room.finishes?.flooring) || finishes?.flooring?.value || "natural_oak";
-      const roomFlooringVal = rawRoomFlooringVal.toLowerCase();
-      if (roomFlooringVal.includes("oak") || roomFlooringVal.includes("wood") || roomFlooringVal.includes("birch") || roomFlooringVal.includes("ash") || roomFlooringVal.includes("beech")) {
-        const woodTex = createWoodTexture();
-        roomFlooringMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.6 });
-      } else if (roomFlooringVal.includes("tile") || roomFlooringVal.includes("marble") || roomFlooringVal.includes("terrazzo") || roomFlooringVal.includes("herringbone")) {
-        const tileTex = createTileTexture();
-        roomFlooringMat = new THREE.MeshStandardMaterial({ map: tileTex, roughness: 0.3 });
-      } else if (roomFlooringVal.includes("carpet")) {
-        const carpetTex = createCarpetTexture();
-        roomFlooringMat = new THREE.MeshStandardMaterial({ map: carpetTex, roughness: 0.9 });
-      } else {
-        roomFlooringMat = new THREE.MeshStandardMaterial({ color: roomFlooringVal.startsWith("#") ? roomFlooringVal : "#e2e8f0", roughness: 0.7 });
-      }
+      // ── Per-room materials (from Design References) ──────────────────────
+      // room.finishes.flooring is stored as a plain string like "Terrazzo", "Ash", "natural_oak"
+      const rawRoomFlooring = (typeof room.finishes?.flooring === "object"
+        ? (room.finishes?.flooring as { value?: string })?.value
+        : room.finishes?.flooring) || finishes?.flooring?.value || "natural_oak";
+      const roomFlooringResolved = resolveFinishValue(rawRoomFlooring, "wood");
+      const roomFlooringMat: THREE.Material = buildFlooringMat(roomFlooringResolved);
 
-      const roomWallColor = (typeof room.finishes?.walls === "object" ? (room.finishes?.walls as { value?: string })?.value : room.finishes?.walls) || finishes?.walls?.value || "#ffffff";
-      const roomWallMat = new THREE.MeshStandardMaterial({
-        color: roomWallColor,
-        roughness: 0.8,
-      });
+      // room.finishes.walls is stored as a plain string like "Exposed Brick", "White Plaster"
+      const rawRoomWall = (typeof room.finishes?.walls === "object"
+        ? (room.finishes?.walls as { value?: string })?.value
+        : room.finishes?.walls) || finishes?.walls?.value || "#ffffff";
+      const roomWallResolved = resolveFinishValue(rawRoomWall, "#ffffff");
+      const roomWallMat: THREE.MeshStandardMaterial = buildWallMat(roomWallResolved);
 
       // 1. Draw Room Sàn (Floor)
       const floorGeo = new THREE.BoxGeometry(room.w, 0.04, room.h);
