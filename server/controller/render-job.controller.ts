@@ -132,19 +132,14 @@ function appendFloorplan3DFloorplanCameraDirective(type: string, prompt: string,
     return prompt;
   }
 
-  const normalizedAngle = String(cameraAngleStyle || "").toLowerCase().trim();
-  let cameraDirective = "";
-
-  if (normalizedAngle.includes("top down") || normalizedAngle.includes("top-down")) {
-    cameraDirective = " Camera angle: pure flat 3D top-down view, orthographic projection, looking straight down from 90 degrees above, bird's eye view, layout plan view, flat 3D floor plan layout, no perspective wall distortion.";
-  } else {
-    // Default or Isometric
-    cameraDirective = " Camera angle: 3D isometric cutaway view, axonometric cutaway view, 45-degree tilted perspective view, 3D floorplan model visualization.";
-  }
-
   if (prompt.includes("Camera angle:") || prompt.includes("camera angle:")) {
     return prompt;
   }
+
+  const normalizedAngle = String(cameraAngleStyle || "").toLowerCase().trim();
+  const cameraDirective = (normalizedAngle.includes("top down") || normalizedAngle.includes("top-down"))
+    ? " Camera angle: pure flat 3D top-down view, orthographic projection, looking straight down from 90 degrees above, bird's eye view, layout plan view, flat 3D floor plan layout, no perspective wall distortion."
+    : " Camera angle: 3D isometric cutaway view, axonometric cutaway view, 45-degree tilted perspective view, 3D floorplan model visualization.";
 
   return `${prompt}${cameraDirective}`;
 }
