@@ -663,6 +663,7 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
           aspectRatio,
           model: selectedModel,
           resolution: selectedResolution,
+          cameraAngleStyle,
         },
       };
 

@@ -1608,12 +1608,15 @@ export const FloorPlanEditor: React.FC = () => {
     addMessage("user", text);
     setIsTyping(true);
 
+    // Enforce a minimum 3-second "thinking" delay before showing AI reply
+    const minDelay = new Promise<void>((resolve) => setTimeout(resolve, 3000));
+
     try {
       const ai = await getAIClient("gemini-2.5-flash");
 
       // Build conversation history for Gemini
       const conversationHistory = messages
-        .filter((m) => m.content !== "__SHAPE_PICKER__")
+        .filter((m) => m.content !== "__SHAPE_PICKER__" && m.content !== "__ROOM_PICKER__" && !m.content.startsWith("__2D_PREVIEW__"))
         .map((m) => ({
           role: m.role === "user" ? "user" : "model",
           parts: [{ text: m.content.replace(/__SHAPE_PICKER__/g, "[Người dùng đã chọn hình dạng mặt bằng]") }],
@@ -1719,6 +1722,7 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
       const parsed = safeJsonParse(rawText) as Record<string, any> | null;
 
       if (!parsed) {
+        await minDelay;
         addMessage("assistant", "Xin lỗi, có lỗi xảy ra. Vui lòng thử lại!");
         return;
       }
@@ -1772,11 +1776,13 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
         return next;
       });
 
+      // Wait for the minimum 3-second thinking delay before showing the reply
+      await minDelay;
+
       if (needsShapePicker) {
         // Show shape picker bubble
         addMessage("assistant", "__SHAPE_PICKER__");
         setCurrentStep("shape");
-        setShowShapeModal(true);
       } else if (readyToGenerate) {
         // Show final message then generate
         const cleanReply = replyText.replace("__SHAPE_PICKER__", "").trim();
@@ -1804,7 +1810,7 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
           } else if (action.type === "render_3d") {
             handleRender3D();
           } else if (action.type === "show_shape_picker") {
-            setShowShapeModal(true);
+            // Show shape picker in chat instead
           } else if (action.type === "show_room_picker") {
             setShowRoomsModal(true);
           }
@@ -2117,6 +2123,20 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
       );
 
       toast.success("Đã tạo mặt bằng thành công!");
+
+      // Auto-generate 2D floor plan preview after 5 seconds and show in chat
+      setTimeout(() => {
+        try {
+          if (stageRef.current) {
+            const dataURL = stageRef.current.toDataURL({ pixelRatio: 2, mimeType: "image/png" });
+            if (dataURL && dataURL.length > 100) {
+              addMessage("assistant", `__2D_PREVIEW__${dataURL}`);
+            }
+          }
+        } catch (_err) {
+          // silent – preview is optional
+        }
+      }, 5000);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       console.error("FloorPlan AI error:", e);
@@ -5652,6 +5672,44 @@ Requirements:
                               <Plus className="w-4 h-4" />
                               Chọn phòng mong muốn
                             </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  }
+
+                  // Special 2D floor plan auto-preview bubble
+                  if (msg.role === "assistant" && msg.content.startsWith("__2D_PREVIEW__")) {
+                    const previewDataUrl = msg.content.replace("__2D_PREVIEW__", "");
+                    return (
+                      <motion.div
+                        key={msg.id}
+                        initial={{ opacity: 0, y: 10, scale: 0.97 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ duration: 0.35, ease: "easeOut" }}
+                        className="flex justify-start"
+                      >
+                        <div className="max-w-[92%] rounded-2xl rounded-bl-md bg-white shadow-sm border border-slate-100 overflow-hidden">
+                          <div className="px-3.5 pt-2.5 pb-1.5 text-xs text-slate-500 font-medium flex items-center gap-1.5">
+                            <svg className="w-3.5 h-3.5 text-[#00b5cd]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+                            Bản vẽ 2D tự động tạo
+                          </div>
+                          <div className="px-2 pb-1">
+                            <img
+                              src={previewDataUrl}
+                              alt="2D Floor Plan Preview"
+                              className="w-full rounded-xl border border-slate-100 object-contain"
+                              style={{ maxHeight: "180px" }}
+                            />
+                          </div>
+                          <div className="px-3 pb-2.5">
+                            <a
+                              href={previewDataUrl}
+                              download={`${projectName.replace(/\s+/g, "_")}_floorplan_2d.png`}
+                              className="w-full mt-1 py-1.5 px-3 bg-slate-50 hover:bg-slate-100 text-slate-600 text-[11px] font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all border border-slate-200"
+                            >
+                              <Download className="w-3 h-3" /> Tải bản vẽ 2D
+                            </a>
                           </div>
                         </div>
                       </motion.div>
