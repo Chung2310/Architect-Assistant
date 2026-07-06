@@ -37,8 +37,6 @@ const TABS = [
   "Tiện ích khác",
 ];
 
-const LOCKED_TABS = new Set(["Cải thiện Render", "Tiện ích khác"]);
-
 const MODELS = [
   {
     id: "nano-banana-2",
@@ -92,6 +90,7 @@ export const Render: React.FC = () => {
   const isAdmin = user ? (user.role === "admin" || user.role === "superadmin") : false;
 
   // ── Chatbot State ──────────────────────────────────────────────────────────
+  const idCounter = useRef(0);
   const [isChatbotOpen, setIsChatbotOpen] = useState(false);
   const [chatbotMessages, setChatbotMessages] = useState<Array<{ id: string; role: "user" | "assistant"; content: string }>>([
     {
@@ -120,7 +119,7 @@ Bạn cần tôi hỗ trợ thông tin gì hôm nay?`
     if (!trimmed || isChatbotTyping) return;
 
     setChatbotInput("");
-    const userMsg = { id: `user-${Date.now()}`, role: "user" as const, content: trimmed };
+    const userMsg = { id: `user-${++idCounter.current}`, role: "user" as const, content: trimmed };
     const nextMessages = [...chatbotMessages, userMsg];
     setChatbotMessages(nextMessages);
     setIsChatbotTyping(true);
@@ -144,7 +143,7 @@ Bạn cần tôi hỗ trợ thông tin gì hôm nay?`
 
       if (res.success && res.data?.text) {
         setChatbotMessages(prev => [...prev, {
-          id: `assistant-${Date.now()}`,
+          id: `assistant-${++idCounter.current}`,
           role: "assistant" as const,
           content: res.data.text
         }]);
@@ -155,7 +154,7 @@ Bạn cần tôi hỗ trợ thông tin gì hôm nay?`
       await minDelay; // ensure minimum delay even on error
       console.error("Chatbot API error:", err);
       setChatbotMessages(prev => [...prev, {
-        id: `err-${Date.now()}`,
+        id: `err-${++idCounter.current}`,
         role: "assistant" as const,
         content: "Xin lỗi, hiện tại tôi đang gặp khó khăn khi kết nối với máy chủ AI. Vui lòng thử lại sau."
       }]);
@@ -979,7 +978,6 @@ ${cropInfo}
 
             responseJson = await rawResponse.json();
           } else {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const backendRes = await apiClient.post<ApiResponse<any>>("/api/v1/gemini/generate", {
               params: {
                 model: selectedModel,
