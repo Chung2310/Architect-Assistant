@@ -664,6 +664,8 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
           model: selectedModel,
           resolution: selectedResolution,
           cameraAngleStyle,
+          cameraAngle,
+          customCameraAngle,
         },
       };
 
