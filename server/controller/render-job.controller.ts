@@ -110,20 +110,24 @@ function appendFloorplanNegativePrompt(type: string, prompt: string) {
   return `${prompt}${negativePrompt}`;
 }
 
-function appendFloorplanCameraDirective(type: string, prompt: string) {
+function appendFloorplanCameraDirective(type: string, prompt: string, cameraAngle?: string, customCameraAngle?: string) {
   const normalizedType = String(type || "").toLowerCase().trim();
   if (normalizedType !== "floorplan to 3d") {
     return prompt;
   }
 
-  const cameraDirective =
-    " Camera angle: eye-level (ngang tam mat), shot from room entrance, no bird's eye view, no top-down, no panorama from above. All furniture must remain in exact positions from the floorplan.";
-
-  if (prompt.includes("eye-level") || prompt.includes("ngang tam mat")) {
-    return prompt;
+  // Ưu tiên dùng góc chụp người dùng đã chọn
+  const selectedAngle = (customCameraAngle || cameraAngle || "").trim();
+  if (selectedAngle) {
+    // Nếu prompt đã có camera angle rồi thì không thêm nữa
+    if (prompt.toLowerCase().includes("camera angle:")) {
+      return prompt;
+    }
+    return `${prompt} Camera angle: ${selectedAngle}. All furniture must remain in exact positions from the floorplan.`;
   }
 
-  return `${prompt}${cameraDirective}`;
+  // Không có góc chụp nào được chọn — không can thiệp, để AI tự quyết định
+  return prompt;
 }
 
 function appendFloorplan3DFloorplanCameraDirective(type: string, prompt: string, cameraAngleStyle?: string) {
@@ -359,8 +363,10 @@ export const renderJobController = {
       }
       finalPrompt = appendFloorplanCleanupDirective(req.body.type, finalPrompt);
       finalPrompt = appendFloorplanNegativePrompt(req.body.type, finalPrompt);
-      finalPrompt = appendFloorplanCameraDirective(req.body.type, finalPrompt);
+      const cameraAngle = req.body.settings?.cameraAngle;
+      const customCameraAngle = req.body.settings?.customCameraAngle;
       const cameraAngleStyle = req.body.settings?.cameraAngleStyle;
+      finalPrompt = appendFloorplanCameraDirective(req.body.type, finalPrompt, cameraAngle, customCameraAngle);
       finalPrompt = appendFloorplan3DFloorplanCameraDirective(req.body.type, finalPrompt, cameraAngleStyle);
 
       const aspect = aspectRatio || "1:1";

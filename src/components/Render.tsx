@@ -205,7 +205,7 @@ Bạn cần tôi hỗ trợ thông tin gì hôm nay?`
         {/* Main Tabs Navigation */}
         <div className="flex items-center justify-center gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
           {TABS.map((tab) => {
-            const isLocked = (tab === "Cải thiện Render" || tab === "Tiện ích khác") && !isAdmin;
+            const isLocked = tab === "Cải thiện Render" || tab === "Tiện ích khác";
             return (
               <button
                 key={tab}
@@ -253,6 +253,7 @@ Bạn cần tôi hỗ trợ thông tin gì hôm nay?`
                   }}
                   className="absolute top-4 right-4 w-8 h-8 rounded-full hover:bg-surface-container-low text-on-surface-variant hover:text-on-surface flex items-center justify-center transition-all bg-transparent"
                   aria-label="Đóng thông báo"
+                  id="btn-close-vr-modal"
                 >
                   <Icon name="close" className="text-lg" />
                 </button>
@@ -272,6 +273,7 @@ Bạn cần tôi hỗ trợ thông tin gì hôm nay?`
                       setShowFeatureModal(false);
                     }}
                     className="w-full py-2.5 px-6 bg-primary hover:bg-primary/90 text-white rounded-xl font-semibold shadow-md transition-all text-xs uppercase tracking-wider"
+                    id="btn-confirm-vr-modal"
                   >
                     Đồng ý
                   </button>
