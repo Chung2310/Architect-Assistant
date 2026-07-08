@@ -992,7 +992,7 @@ export const geminiService = {
                   throw nativeErr;
                 }
               } else {
-                throw new Error("Tất cả các mô hình OpenRouter và Gemini Native đều thất bại hoặc thiếu API Key.");
+                throw new Error("Tất cả các mô hình OpenRouter và Gemini Native đều thất bại hoặc thiếu API Key.", { cause: orQwenErr });
               }
             }
           }
