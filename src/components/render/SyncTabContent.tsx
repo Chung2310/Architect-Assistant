@@ -1165,62 +1165,88 @@ export const SyncTabContent: React.FC = () => {
           const jsonString = (rawText || "")
             .replace(/```json\n?|\n?```/g, "")
             .trim();
-          const parsed = safeJsonParse(jsonString);
+          const parsed = safeJsonParse(jsonString) as any;
 
-          let categories = (parsed as Record<string, unknown> | null)?.categories;
-          if (!categories && Array.isArray(parsed)) {
-            categories = parsed;
+          let rawCategories = parsed?.categories;
+          let rawShots = parsed?.shots || parsed?.suggestions;
+
+          if (!rawCategories && parsed?.mental_blueprint) {
+            rawCategories = parsed.mental_blueprint.categories;
+            if (!rawShots) {
+              rawShots = parsed.mental_blueprint.shots || parsed.mental_blueprint.suggestions;
+            }
           }
 
-          if (categories && Array.isArray(categories) && categories.length > 0) {
+          if (!rawCategories && Array.isArray(parsed)) {
+            rawCategories = parsed;
+          }
+
+          if (rawCategories && Array.isArray(rawCategories) && rawCategories.length > 0) {
             interface ParsedShot {
               display_title_vi?: string;
               hidden_api_prompt_en?: string;
               text?: string;
+              title?: string;
             }
 
-            interface ParsedCategory {
-              name?: string;
-              category_name?: string;
-              suggestions?: (ParsedShot | string)[];
-              shots?: ParsedShot[];
-            }
+            // Tên cố định cho 3 nhóm theo thứ tự (phòng trường hợp AI trả về tên không đúng)
+            const FIXED_CATEGORY_NAMES = [
+              "Góc Trung Cảnh",
+              "Góc Cận Cảnh Nghệ Thuật",
+              "Góc Nội Thất",
+            ];
 
-            const formattedCategories: AngleCategory[] = (categories as ParsedCategory[]).map(
-              (cat) => ({
-                name: cat.name || cat.category_name || "Goc chup",
+            const formattedCategories: AngleCategory[] = rawCategories.map((cat: any, idx: number) => {
+              const catId = cat.id || cat.category_id || cat.category_name || "";
+              // Ưu tiên tên từ AI nếu hợp lý, fallback về tên cố định theo index
+              const aiName = cat.display_title_vi || cat.name || cat.category_name || "";
+              const isGenericName = !aiName || aiName.toLowerCase().startsWith("góc chụp") || aiName.toLowerCase() === "category" || aiName.trim().length < 5;
+              const catName = isGenericName ? (FIXED_CATEGORY_NAMES[idx] || aiName || "Góc chụp") : aiName;
+              
+              // Get shots from nested structure if available
+              let catShots = cat.suggestions || cat.shots || [];
+              
+              // If not nested, filter from rawShots array
+              if ((!catShots || catShots.length === 0) && Array.isArray(rawShots)) {
+                catShots = rawShots.filter((shot: any) => {
+                  const shotCatId = shot.category_id || shot.category || "";
+                  return String(shotCatId).toLowerCase() === String(catId).toLowerCase() || 
+                         String(shotCatId).toLowerCase() === String(catName).toLowerCase();
+                });
+              }
+
+              return {
+                name: catName,
                 isExpanded: true,
-                suggestions: ((cat.suggestions || cat.shots || []) as (ParsedShot | string)[]).map(
-                  (sug) => {
-                    const isStr = typeof sug === "string";
-                    const displayTitle = isStr ? "" : (sug.display_title_vi || "");
-                    const hiddenPrompt = isStr ? sug : (sug.hidden_api_prompt_en || sug.text || "");
-                    return {
-                      id: Math.random().toString(36).substring(7),
-                      title: displayTitle,
-                      _lastTranslatedTitle: displayTitle,
-                      text: JSON.stringify(
-                        {
-                          display_title_vi: displayTitle,
-                          hidden_api_prompt_en: hiddenPrompt,
-                        },
-                        null,
-                        2,
-                      ),
-                      selectedModel: "nano-banana-pro",
-                    };
-                  },
-                ),
-              }),
-            );
+                suggestions: ((catShots || []) as (ParsedShot | string)[]).map((sug) => {
+                  const isStr = typeof sug === "string";
+                  const displayTitle = isStr ? "" : (sug.display_title_vi || sug.title || "");
+                  const hiddenPrompt = isStr ? sug : (sug.hidden_api_prompt_en || sug.text || "");
+                  return {
+                    id: Math.random().toString(36).substring(7),
+                    title: displayTitle,
+                    _lastTranslatedTitle: displayTitle,
+                    text: JSON.stringify(
+                      {
+                        display_title_vi: displayTitle,
+                        hidden_api_prompt_en: hiddenPrompt,
+                      },
+                      null,
+                      2,
+                    ),
+                    selectedModel: "nano-banana-pro",
+                  };
+                }),
+              };
+            });
 
             setAnalysisCategories(formattedCategories);
             setAnalyzeProgress(100);
-            setAnalyzeStatus("Hoan tat!");
+            setAnalyzeStatus("Hoàn tất!");
           } else {
             console.error("Invalid JSON structure or empty categories", parsed);
             setAnalysisResult(result.text);
-            setAnalyzeStatus("Loi dinh dang du lieu");
+            setAnalyzeStatus("Lỗi định dạng dữ liệu");
           }
         } catch (e) {
           console.error("Failed to parse JSON", e);
@@ -1487,9 +1513,10 @@ export const SyncTabContent: React.FC = () => {
                                   className="bg-surface-container-low rounded-xl border border-outline-variant/20 overflow-hidden"
                                 >
                                   <div className="p-4 flex flex-col gap-3">
-                                    <div className="flex items-center gap-2 relative">
-                                      <input
-                                        className="font-bold text-sm text-on-surface bg-transparent border border-transparent hover:border-outline-variant/30 focus:border-primary/50 focus:bg-surface-container-highest outline-none rounded-md px-2 py-1 -ml-2 transition-all flex-1"
+                                    <div className="flex items-start gap-2 relative">
+                                      <textarea
+                                        rows={2}
+                                        className="font-bold text-xs text-on-surface bg-transparent border border-transparent hover:border-outline-variant/30 focus:border-primary/50 focus:bg-surface-container-highest outline-none rounded-md px-2 py-1 -ml-2 transition-all flex-1 resize-none leading-relaxed"
                                         value={suggestion.title}
                                         onChange={(e) => {
                                           const newCats = [
