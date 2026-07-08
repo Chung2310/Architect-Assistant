@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { FloorPlanData, Room, Opening, FurnitureItem } from "./FloorPlanEditor";
+import { FloorPlanData, Room as _Room, Opening as _Opening, FurnitureItem as _FurnitureItem } from "./FloorPlanEditor";
 
 interface FloorPlan3DViewerProps {
   floorPlan: FloorPlanData;
@@ -22,7 +22,7 @@ interface FloorPlan3DViewerProps {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const WALL_HEIGHT = 2.7; // Height of walls in meters
-const CEILING_HEIGHT = 2.75;
+const _CEILING_HEIGHT = 2.75;
 
 // ── Helpers for Procedural Canvas Textures ──────────────────────────────────
 function createWoodTexture(): THREE.Texture {
@@ -289,7 +289,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
   finishes,
   activeCamera,
   onCaptureRef,
-  onChangeCamera
+  _onChangeCamera
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -357,10 +357,10 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
 
     // ── Global (fallback) materials from Finishes prop ──────────────────────
     const globalFlooringResolved = resolveFinishValue(finishes?.flooring?.value, "wood");
-    const flooringMat: THREE.Material = buildFlooringMat(globalFlooringResolved);
+    const _flooringMat: THREE.Material = buildFlooringMat(globalFlooringResolved);
 
     const globalWallResolved = resolveFinishValue(finishes?.walls?.value, "#ffffff");
-    const wallMat: THREE.MeshStandardMaterial = buildWallMat(globalWallResolved);
+    const _wallMat: THREE.MeshStandardMaterial = buildWallMat(globalWallResolved);
 
     const windowColor = resolveFinishValue(finishes?.windows?.value, "#1c1c1e");
     const glassMat = new THREE.MeshStandardMaterial({

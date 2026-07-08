@@ -86,7 +86,7 @@ function mapToOpenRouterModel(modelName: string): string {
 }
 
 async function callOpenRouterChat(
-  messages: Array<{ role: string; content: string }>,
+  messages: Array<{ role: string; content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> }>,
   model: string,
   openRouterKey: string,
   isJsonRequested: boolean
@@ -94,7 +94,7 @@ async function callOpenRouterChat(
   const finalMessages = [...messages];
 
   if (isJsonRequested) {
-    const hasJsonWord = finalMessages.some(m => m.content.toLowerCase().includes("json"));
+    const hasJsonWord = finalMessages.some(m => typeof m.content === "string" && m.content.toLowerCase().includes("json"));
     if (!hasJsonWord) {
       finalMessages.push({ role: "system", content: "You must return a valid JSON object." });
     }
@@ -844,8 +844,9 @@ export const geminiService = {
 
     // ── 3. TEXT MODEL ──
     if (!isImageModel && !isVideoModel) {
-      // Chuyển đổi định dạng contents của Gemini sang messages của OpenAI/OpenRouter
-      type OAIMessage = { role: string; content: string };
+      // Chuyển đổi định dạng contents của Gemini sang messages của OpenAI/OpenRouter (multimodal)
+      type OAIContentPart = { type: string; text?: string; image_url?: { url: string } };
+      type OAIMessage = { role: string; content: string | OAIContentPart[] };
       const messages: OAIMessage[] = [];
 
       // System instruction
@@ -861,9 +862,25 @@ export const geminiService = {
       for (const item of contentsArr) {
         if (!item || typeof item !== "object") continue;
         const role = (item as { role?: string }).role === "model" ? "assistant" : "user";
-        const parts = (item as { parts?: Array<{ text?: string }> }).parts || [];
-        const text = parts.map(p => p.text || "").join("");
-        if (text.trim()) messages.push({ role, content: text.trim() });
+        const parts = (item as { parts?: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }).parts || [];
+        
+        // Build multimodal content array if image parts exist
+        const contentParts: OAIContentPart[] = [];
+        for (const p of parts) {
+          if (p.inlineData?.data) {
+            contentParts.push({
+              type: "image_url",
+              image_url: { url: `data:${p.inlineData.mimeType || "image/jpeg"};base64,${p.inlineData.data}` }
+            });
+          } else if (p.text?.trim()) {
+            contentParts.push({ type: "text", text: p.text.trim() });
+          }
+        }
+
+        if (contentParts.length === 0) continue;
+        // If only text parts, send as plain string for compatibility
+        const onlyText = contentParts.every(p => p.type === "text");
+        messages.push({ role, content: onlyText ? contentParts.map(p => p.text || "").join("") : contentParts });
       }
 
       if (messages.length === 0) {
@@ -905,6 +922,104 @@ export const geminiService = {
           throw primaryError; // Throw the original error so we know the root cause
         }
       };
+
+      // Đối với các yêu cầu đồng bộ ảnh (sync text requests):
+      // Sử dụng OpenRouter google/gemini-2.5-flash làm chính -> fallback sang Qwen -> fallback sang Gemini Native SDK.
+      const isSyncTextRequest =
+        params.promptTemplateKey === "sync_analyze_prompt" ||
+        params.promptTemplateKey === "sync_suggestion_update_prompt";
+
+      if (isSyncTextRequest) {
+        logger.info(`[Gemini Service] Sync text request detected. Running custom fallback flow.`);
+        
+        // 1. Dùng OpenRouter google/gemini-2.5-flash
+        if (openRouterKey) {
+          try {
+            logger.info(`[Gemini Service] Sync text: calling google/gemini-2.5-flash via OpenRouter...`);
+            const { textResult } = await callOpenRouterChat(messages, "google/gemini-2.5-flash", openRouterKey, isJsonRequested);
+            logger.info(`[Gemini Service] Sync text: google/gemini-2.5-flash via OpenRouter successful.`);
+            return {
+              candidates: [{
+                content: {
+                  parts: [{ text: textResult }],
+                  role: "model",
+                },
+                finishReason: "STOP",
+              }],
+              text: textResult,
+            };
+          } catch (orGeminiErr: any) {
+            logger.warn(`[Gemini Service] Sync text: google/gemini-2.5-flash via OpenRouter failed: ${orGeminiErr.message || orGeminiErr}. Falling back to Qwen...`);
+            
+            // 2. Fallback sang OpenRouter Qwen
+            try {
+              const { textResult } = await callOpenRouterChat(messages, fallbackQwenModel, openRouterKey, isJsonRequested);
+              logger.info(`[Gemini Service] Sync text: Qwen via OpenRouter successful.`);
+              return {
+                candidates: [{
+                  content: {
+                    parts: [{ text: textResult }],
+                    role: "model",
+                  },
+                  finishReason: "STOP",
+                }],
+                text: textResult,
+              };
+            } catch (orQwenErr: any) {
+              logger.warn(`[Gemini Service] Sync text: Qwen via OpenRouter failed: ${orQwenErr.message || orQwenErr}. Falling back to Gemini Native SDK...`);
+              
+              // 3. Fallback sang Gemini Native SDK
+              if (apiKey && isValidGeminiKey(apiKey)) {
+                try {
+                  const ai = new GoogleGenAI({ apiKey: apiKey as string });
+                  logger.info(`[Gemini Service] Sync text: calling Native Gemini SDK (${modelName})...`);
+                  const rawConfig = params.config || params.generationConfig || {};
+                  const sanitizedConfig = { ...rawConfig };
+                  if (!modelName.toLowerCase().includes("thinking")) {
+                    delete sanitizedConfig.thinkingConfig;
+                    delete sanitizedConfig.thinking_config;
+                  }
+                  if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
+                    sanitizedConfig.systemInstruction = systemInstruction;
+                  }
+                  return await ai.models.generateContent({
+                    model: modelName,
+                    contents: params.contents,
+                    config: sanitizedConfig,
+                  });
+                } catch (nativeErr: any) {
+                  logger.error(`[Gemini Service] Sync text: Native Gemini SDK also failed: ${nativeErr.message || nativeErr}`);
+                  throw nativeErr;
+                }
+              } else {
+                throw new Error("Tất cả các mô hình OpenRouter và Gemini Native đều thất bại hoặc thiếu API Key.", { cause: orQwenErr });
+              }
+            }
+          }
+        } else {
+          // Không có OpenRouter Key -> chuyển thẳng sang Gemini Native SDK
+          logger.info(`[Gemini Service] Sync text: No OpenRouter key found. Trying Gemini Native SDK...`);
+          if (apiKey && isValidGeminiKey(apiKey)) {
+            const ai = new GoogleGenAI({ apiKey: apiKey as string });
+            const rawConfig = params.config || params.generationConfig || {};
+            const sanitizedConfig = { ...rawConfig };
+            if (!modelName.toLowerCase().includes("thinking")) {
+              delete sanitizedConfig.thinkingConfig;
+              delete sanitizedConfig.thinking_config;
+            }
+            if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
+              sanitizedConfig.systemInstruction = systemInstruction;
+            }
+            return await ai.models.generateContent({
+              model: modelName,
+              contents: params.contents,
+              config: sanitizedConfig,
+            });
+          } else {
+            throw new Error("Không tìm thấy API Key hợp lệ cho Gemini Native hoặc OpenRouter.");
+          }
+        }
+      }
 
       // Quyết định provider chính:
       // Nếu có GEMINI_API_KEY hợp lệ -> dùng Gemini Native SDK làm phương án chính.
