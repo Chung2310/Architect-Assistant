@@ -689,15 +689,19 @@ function buildSyncAnalyzePrompt(input: Record<string, unknown>): PromptTemplateP
           role: "user",
           parts: [
             ...imageParts(images),
-            { text: "Vui lòng phân tích không gian và tạo 30 góc chụp theo cấu trúc JSON đã quy định." },
+            { text: "Vui lòng phân tích không gian trong ảnh kiến trúc và tạo đúng 30 gợi ý góc chụp phân bộ vào 3 nhóm: Góc Trung Cảnh (5 góc), Góc Cận Cảnh Nghệ Thuật (15 góc), và Góc Nội Thất (10 góc) theo cấu trúc JSON đã quy định." },
           ],
         },
       ],
       systemInstruction: [
-        "Bạn là tổng đạo diễn nghệ thuật và kiến trúc sư không gian của iGen.",
-        "Hãy phân tích 1 ảnh kiến trúc tham khảo và tạo chính xác 30 góc chụp đồng bộ với nhau.",
-        "Tất cả đầu ra phải bằng tiếng Việt rõ ràng, nhất quán, hữu dụng.",
-        "Phải trả về JSON với mental_blueprint và categories/shots.",
+        "Bạn là đạo diễn nhiếp ảnh kiến trúc chuyên nghiệp của iGen.",
+        "BƯỚC 1 - PHÂN TÍCH ẢNH ĐẦU VÀO: Trước tiên hãy quan sát kỹ ảnh công trình được cung cấp và xác định: phong cách kiến trúc (tân cổ điển, hiện đại, tropical...), vật liệu bề mặt thực tế (stucco, ngói đỏ, đá, gỗ, kính...), màu sắc chủ đạo, đặc điểm nổi bật của công trình (mái hiên, cột, ban công, cửa sổ, mảng tường...), ánh sáng hiện tại và bối cảnh xung quanh (cây cối, đường xá, hàng rào...).",
+        "BƯỚC 2 - TẠO GỢI Ý THEO 3 NHÓM CỐ ĐỊNH (tổng 30 gợi ý):",
+        "NHÓM 1 'Góc Trung Cảnh' (5 gợi ý): Góc chụp từ khoảng cách vừa phải, ống kính 35-50mm, thấy được 1/2 đến toàn bộ mặt tiền công trình, vẫn còn thấy một phần bối cảnh xung quanh thực tế (cây, đường, hàng xóm). Mỗi gợi ý phải chỉ rõ: hướng máy ảnh đứng ở đâu, góc nghiêng bao nhiêu độ, thấy phần nào của công trình.",
+        "NHÓM 2 'Góc Cận Cảnh Nghệ Thuật' (15 gợi ý): Zoom sát vào MỘT chi tiết kiến trúc cụ thể của công trình trong ảnh. Đây KHÔNG phải là ảnh toàn cảnh — chỉ thấy 1 bộ phận nhỏ: ví dụ kết cấu tường stucco dưới ánh nắng xiên, viên ngói đỏ sau mưa, tay nắm cửa gỗ nâu, chi tiết phào chỉ thạch cao, bóng đổ của mái hiên lên tường... Ống kính 85-200mm macro. Mỗi gợi ý phải gắn với VẬT LIỆU/CHI TIẾT CỤ THỂ quan sát được từ ảnh gốc.",
+        "NHÓM 3 'Góc Nội Thất' (10 gợi ý): Tưởng tượng không gian BÊN TRONG công trình dựa trên phong cách kiến trúc đã quan sát. Mô tả góc chụp từ bên trong: ánh sáng tự nhiên qua cửa sổ, vật liệu sàn/tường/trần, sự kết nối các không gian, đồ nội thất phù hợp phong cách kiến trúc. Mỗi gợi ý phải chỉ rõ tên phòng và chi tiết không gian cụ thể.",
+        "QUY TẮC BẮT BUỘC: (1) TUYỆT ĐỐI không thay đổi background/bối cảnh xung quanh công trình. Chỉ thay đổi góc máy ảnh, tiêu cự, vùng focus. (2) Mỗi display_title_vi phải là câu tiếng Việt đầy đủ 25-45 từ, mô tả cụ thể vật liệu/ánh sáng/không khí thực tế thấy trong ảnh, không được chung chung. (3) Mỗi hidden_api_prompt_en phải mô tả kỹ thuật nhiếp ảnh chuyên nghiệp: focal length, f-stop, lighting direction, material texture, composition rule.",
+        "Phải trả về JSON với cấu trúc mental_blueprint và categories/shots."
       ].join(" "),
       config: {
         temperature: 0.7,
@@ -752,6 +756,38 @@ function buildSyncAnalyzePrompt(input: Record<string, unknown>): PromptTemplateP
   };
 }
 
+function buildSyncSuggestionUpdatePrompt(input: Record<string, unknown>): PromptTemplateParams {
+  const currentTitle = String(input.currentTitle || "");
+  const previousPrompt = String(input.previousPrompt || "");
+
+  return {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            text: `Bạn là chuyên gia biên soạn prompt render kiến trúc.
+Hãy dịch/tối ưu hóa tiêu đề góc chụp dưới đây thành prompt render tiếng Anh chi tiết, bám sát ý tưởng của góc chụp và hình ảnh trước đó.
+
+Tiêu đề tiếng Việt: "${currentTitle}"
+Prompt tiếng Anh cũ (nếu có): "${previousPrompt}"
+
+Yêu cầu trả về định dạng JSON duy nhất như sau:
+{
+  "display_title_vi": "Tiêu đề tiếng Việt",
+  "hidden_api_prompt_en": "Detailed English rendering prompt"
+}`,
+          },
+        ],
+      },
+    ],
+    config: {
+      temperature: 0.5,
+      responseMimeType: "application/json",
+    },
+  };
+}
+
 function buildSyncVariationGeneratePrompt(input: Record<string, unknown>): PromptTemplateParams {
   const promptInstruction = String(input.promptInstruction || "");
   const aspectRatio = String(input.aspectRatio || "16:9");
@@ -771,7 +807,8 @@ function buildSyncVariationGeneratePrompt(input: Record<string, unknown>): Promp
       "Bạn là một chuyên gia kết xuất kiến trúc chân thực.",
       "Hãy sinh ảnh biến thể mới dựa trên ảnh kiến trúc gốc và chỉ dẫn mô tả của người dùng.",
       "Giữ nguyên 100% hình khối kiến trúc, tỉ lệ và cấu trúc chính của công trình gốc.",
-      "Thay đổi bối cảnh xung quanh, thời tiết, góc chụp nhẹ, ánh sáng hoặc vật liệu theo đúng mô tả của người dùng.",
+      "BẮT BUỘC giữ nguyên 100% bối cảnh xung quanh (background), cảnh quan và môi trường của ảnh gốc. TUYỆT ĐỐI không thay đổi hay chỉnh sửa background hoặc bối cảnh xung quanh.",
+      "Chỉ thay đổi góc máy, zoom, tiêu cự hoặc hướng camera để chụp cận cảnh/trung cảnh hoặc đặc tả các chi tiết/khu vực theo đúng mô tả của người dùng.",
     ].join(" "),
     config: {
       imageConfig: {
@@ -832,6 +869,8 @@ export function resolvePromptTemplate(
       return buildUpscalePrompt(input);
     case "sync_analyze_prompt":
       return buildSyncAnalyzePrompt(input);
+    case "sync_suggestion_update_prompt":
+      return buildSyncSuggestionUpdatePrompt(input);
     case "sync_character_composite_prompt": {
       const imgArray = (input.images as InlineImageInput[] | undefined) || [];
       const parts: Array<Record<string, unknown>> = [];

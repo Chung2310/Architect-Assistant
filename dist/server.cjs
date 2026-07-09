@@ -2262,6 +2262,91 @@ ${promptText}`.trim();
           throw primaryError;
         }
       };
+      const isSyncTextRequest = params.promptTemplateKey === "sync_analyze_prompt" || params.promptTemplateKey === "sync_suggestion_update_prompt";
+      if (isSyncTextRequest) {
+        logger.info(`[Gemini Service] Sync text request detected. Running custom fallback flow.`);
+        if (openRouterKey) {
+          try {
+            logger.info(`[Gemini Service] Sync text: calling google/gemini-2.5-flash via OpenRouter...`);
+            const { textResult } = await callOpenRouterChat(messages, "google/gemini-2.5-flash", openRouterKey, isJsonRequested);
+            logger.info(`[Gemini Service] Sync text: google/gemini-2.5-flash via OpenRouter successful.`);
+            return {
+              candidates: [{
+                content: {
+                  parts: [{ text: textResult }],
+                  role: "model"
+                },
+                finishReason: "STOP"
+              }],
+              text: textResult
+            };
+          } catch (orGeminiErr) {
+            logger.warn(`[Gemini Service] Sync text: google/gemini-2.5-flash via OpenRouter failed: ${orGeminiErr.message || orGeminiErr}. Falling back to Qwen...`);
+            try {
+              const { textResult } = await callOpenRouterChat(messages, fallbackQwenModel, openRouterKey, isJsonRequested);
+              logger.info(`[Gemini Service] Sync text: Qwen via OpenRouter successful.`);
+              return {
+                candidates: [{
+                  content: {
+                    parts: [{ text: textResult }],
+                    role: "model"
+                  },
+                  finishReason: "STOP"
+                }],
+                text: textResult
+              };
+            } catch (orQwenErr) {
+              logger.warn(`[Gemini Service] Sync text: Qwen via OpenRouter failed: ${orQwenErr.message || orQwenErr}. Falling back to Gemini Native SDK...`);
+              if (apiKey && isValidGeminiKey(apiKey)) {
+                try {
+                  const ai = new import_genai.GoogleGenAI({ apiKey });
+                  logger.info(`[Gemini Service] Sync text: calling Native Gemini SDK (${modelName})...`);
+                  const rawConfig = params.config || params.generationConfig || {};
+                  const sanitizedConfig = { ...rawConfig };
+                  if (!modelName.toLowerCase().includes("thinking")) {
+                    delete sanitizedConfig.thinkingConfig;
+                    delete sanitizedConfig.thinking_config;
+                  }
+                  if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
+                    sanitizedConfig.systemInstruction = systemInstruction;
+                  }
+                  return await ai.models.generateContent({
+                    model: modelName,
+                    contents: params.contents,
+                    config: sanitizedConfig
+                  });
+                } catch (nativeErr) {
+                  logger.error(`[Gemini Service] Sync text: Native Gemini SDK also failed: ${nativeErr.message || nativeErr}`);
+                  throw nativeErr;
+                }
+              } else {
+                throw new Error("T\u1EA5t c\u1EA3 c\xE1c m\xF4 h\xECnh OpenRouter v\xE0 Gemini Native \u0111\u1EC1u th\u1EA5t b\u1EA1i ho\u1EB7c thi\u1EBFu API Key.");
+              }
+            }
+          }
+        } else {
+          logger.info(`[Gemini Service] Sync text: No OpenRouter key found. Trying Gemini Native SDK...`);
+          if (apiKey && isValidGeminiKey(apiKey)) {
+            const ai = new import_genai.GoogleGenAI({ apiKey });
+            const rawConfig = params.config || params.generationConfig || {};
+            const sanitizedConfig = { ...rawConfig };
+            if (!modelName.toLowerCase().includes("thinking")) {
+              delete sanitizedConfig.thinkingConfig;
+              delete sanitizedConfig.thinking_config;
+            }
+            if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
+              sanitizedConfig.systemInstruction = systemInstruction;
+            }
+            return await ai.models.generateContent({
+              model: modelName,
+              contents: params.contents,
+              config: sanitizedConfig
+            });
+          } else {
+            throw new Error("Kh\xF4ng t\xECm th\u1EA5y API Key h\u1EE3p l\u1EC7 cho Gemini Native ho\u1EB7c OpenRouter.");
+          }
+        }
+      }
       const hasValidNativeKey = apiKey && isValidGeminiKey(apiKey);
       if (hasValidNativeKey) {
         const ai = new import_genai.GoogleGenAI({ apiKey });
@@ -2354,8 +2439,8 @@ C\xE1c t\xEDnh n\u0103ng ch\xEDnh c\u1EE7a ph\u1EA7n m\u1EC1m iGen \u0111\u1EC3 
 
 Quy t\u1EAFc tr\u1EA3 l\u1EDDi:
 - Lu\xF4n th\xE2n thi\u1EC7n, chuy\xEAn nghi\u1EC7p, tr\u1EA3 l\u1EDDi b\u1EB1ng ti\u1EBFng Vi\u1EC7t.
-- Tr\xECnh b\xE0y r\xF5 r\xE0ng, xu\u1ED1ng d\xF2ng ho\u1EB7c d\xF9ng g\u1EA1ch \u0111\u1EA7u d\xF2ng cho c\xE1c b\u01B0\u1EDBc h\u01B0\u1EDBng d\u1EABn \u0111\u1EC3 ng\u01B0\u1EDDi d\xF9ng d\u1EC5 theo d\xF5i.
-- Gi\u1EEF c\xE2u tr\u1EA3 l\u1EDDi ng\u1EAFn g\u1ECDn, \u0111i th\u1EB3ng v\xE0o gi\u1EA3i ph\xE1p v\xE0 c\xE1c b\u01B0\u1EDBc th\u1EF1c hi\u1EC7n c\u1EE5 th\u1EC3 tr\xEAn giao di\u1EC7n.`;
+- B\u1EAET BU\u1ED8C: C\xE2u tr\u1EA3 l\u1EDDi ph\u1EA3i c\u1EF1c k\u1EF3 ng\u1EAFn g\u1ECDn, s\xFAc t\xEDch (t\u1ED1i \u0111a 2-3 c\xE2u ho\u1EB7c 50-70 t\u1EEB). Tuy\u1EC7t \u0111\u1ED1i kh\xF4ng gi\u1EA3i th\xEDch d\xE0i d\xF2ng hay lan man, \u0111i th\u1EB3ng v\xE0o c\xE2u tr\u1EA3 l\u1EDDi ho\u1EB7c h\u01B0\u1EDBng d\u1EABn c\u1EE5 th\u1EC3.
+- Khi h\u01B0\u1EDBng d\u1EABn c\xE1c b\u01B0\u1EDBc th\u1EF1c hi\u1EC7n, h\xE3y t\xF3m t\u1EAFt c\xE1c b\u01B0\u1EDBc si\xEAu ng\u1EAFn g\u1ECDn, s\xFAc t\xEDch (v\xED d\u1EE5: "1. T\u1EA3i \u1EA3nh l\xEAn. 2. Nh\u1EADp m\xF4 t\u1EA3. 3. Nh\u1EA5n Render."), tuy\u1EC7t \u0111\u1ED1i kh\xF4ng vi\u1EBFt th\xEAm chi ti\u1EBFt m\xF4 t\u1EA3 d\xE0i d\xF2ng cho t\u1EEBng b\u01B0\u1EDBc.`;
     const finalMessages = [
       { role: "system", content: systemInstruction },
       ...messages
@@ -2502,16 +2587,19 @@ function appendFloorplanNegativePrompt(type, prompt) {
   }
   return `${prompt}${negativePrompt}`;
 }
-function appendFloorplanCameraDirective(type, prompt) {
+function appendFloorplanCameraDirective(type, prompt, cameraAngle, customCameraAngle) {
   const normalizedType = String(type || "").toLowerCase().trim();
   if (normalizedType !== "floorplan to 3d") {
     return prompt;
   }
-  const cameraDirective = " Camera angle: eye-level (ngang tam mat), shot from room entrance, no bird's eye view, no top-down, no panorama from above. All furniture must remain in exact positions from the floorplan.";
-  if (prompt.includes("eye-level") || prompt.includes("ngang tam mat")) {
-    return prompt;
+  const selectedAngle = (customCameraAngle || cameraAngle || "").trim();
+  if (selectedAngle) {
+    if (prompt.toLowerCase().includes("camera angle:")) {
+      return prompt;
+    }
+    return `${prompt} Camera angle: ${selectedAngle}. All furniture must remain in exact positions from the floorplan.`;
   }
-  return `${prompt}${cameraDirective}`;
+  return prompt;
 }
 function appendFloorplan3DFloorplanCameraDirective(type, prompt, cameraAngleStyle) {
   const normalizedType = String(type || "").toLowerCase().trim();
@@ -2703,8 +2791,10 @@ Negative prompt: ${parsedNegativePrompt}`;
       }
       finalPrompt = appendFloorplanCleanupDirective(req.body.type, finalPrompt);
       finalPrompt = appendFloorplanNegativePrompt(req.body.type, finalPrompt);
-      finalPrompt = appendFloorplanCameraDirective(req.body.type, finalPrompt);
+      const cameraAngle = req.body.settings?.cameraAngle;
+      const customCameraAngle = req.body.settings?.customCameraAngle;
       const cameraAngleStyle = req.body.settings?.cameraAngleStyle;
+      finalPrompt = appendFloorplanCameraDirective(req.body.type, finalPrompt, cameraAngle, customCameraAngle);
       finalPrompt = appendFloorplan3DFloorplanCameraDirective(req.body.type, finalPrompt, cameraAngleStyle);
       const aspect = aspectRatio || "1:1";
       const isGeminiModel = isGeminiNativeModel;
@@ -3845,15 +3935,21 @@ function buildSyncAnalyzePrompt(input) {
           role: "user",
           parts: [
             ...imageParts2(images),
-            { text: "Vui l\xF2ng ph\xE2n t\xEDch kh\xF4ng gian v\xE0 t\u1EA1o 30 g\xF3c ch\u1EE5p theo c\u1EA5u tr\xFAc JSON \u0111\xE3 quy \u0111\u1ECBnh." }
+            { text: "Vui l\xF2ng ph\xE2n t\xEDch kh\xF4ng gian trong \u1EA3nh ki\u1EBFn tr\xFAc v\xE0 t\u1EA1o \u0111\xFAng 30 g\u1EE3i \xFD g\xF3c ch\u1EE5p ph\xE2n b\u1ED9 v\xE0o 3 nh\xF3m: G\xF3c Trung C\u1EA3nh (5 g\xF3c), G\xF3c C\u1EADn C\u1EA3nh Ngh\u1EC7 Thu\u1EADt (15 g\xF3c), v\xE0 G\xF3c N\u1ED9i Th\u1EA5t (10 g\xF3c) theo c\u1EA5u tr\xFAc JSON \u0111\xE3 quy \u0111\u1ECBnh." }
           ]
         }
       ],
       systemInstruction: [
         "B\u1EA1n l\xE0 t\u1ED5ng \u0111\u1EA1o di\u1EC5n ngh\u1EC7 thu\u1EADt v\xE0 ki\u1EBFn tr\xFAc s\u01B0 kh\xF4ng gian c\u1EE7a iGen.",
-        "H\xE3y ph\xE2n t\xEDch 1 \u1EA3nh ki\u1EBFn tr\xFAc tham kh\u1EA3o v\xE0 t\u1EA1o ch\xEDnh x\xE1c 30 g\xF3c ch\u1EE5p \u0111\u1ED3ng b\u1ED9 v\u1EDBi nhau.",
-        "T\u1EA5t c\u1EA3 \u0111\u1EA7u ra ph\u1EA3i b\u1EB1ng ti\u1EBFng Vi\u1EC7t r\xF5 r\xE0ng, nh\u1EA5t qu\xE1n, h\u1EEFu d\u1EE5ng.",
-        "Ph\u1EA3i tr\u1EA3 v\u1EC1 JSON v\u1EDBi mental_blueprint v\xE0 categories/shots."
+        "H\xE3y ph\xE2n t\xEDch 1 \u1EA3nh ki\u1EBFn tr\xFAc tham kh\u1EA3o v\xE0 t\u1EA1o ch\xEDnh x\xE1c 30 g\u1EE3i \xFD g\xF3c ch\u1EE5p \u0111\u1ED3ng b\u1ED9 v\u1EDBi nhau theo \u0111\u1ECBnh d\u1EA1ng JSON.",
+        "Y\xEAu c\u1EA7u b\u1EAFt bu\u1ED9c t\u1EA1o \u0111\xFAng 3 nh\xF3m g\xF3c ch\u1EE5p (categories) sau:",
+        "- Nh\xF3m 1: 'G\xF3c Trung C\u1EA3nh' v\u1EDBi \u0111\xFAng 5 g\xF3c ch\u1EE5p (shots). C\xE1c g\xF3c ch\u1EE5p th\u1EC3 hi\u1EC7n c\xF4ng tr\xECnh \u1EDF g\xF3c nh\xECn trung c\u1EA3nh, bao qu\xE1t m\u1ED9t ph\u1EA7n kh\xF4ng gian ki\u1EBFn tr\xFAc.",
+        "- Nh\xF3m 2: 'G\xF3c C\u1EADn C\u1EA3nh Ngh\u1EC7 Thu\u1EADt' v\u1EDBi \u0111\xFAng 15 g\xF3c ch\u1EE5p (shots). C\xE1c g\xF3c ch\u1EE5p c\u1EADn c\u1EA3nh \u0111\u1EB7c t\u1EA3 c\xE1c chi ti\u1EBFt ki\u1EBFn tr\xFAc ngh\u1EC7 thu\u1EADt, k\u1EBFt c\u1EA5u v\u1EADt li\u1EC7u (stucco, ng\xF3i, g\u1ED7...), \xE1nh s\xE1ng tinh t\u1EBF c\u1EE7a c\xF4ng tr\xECnh.",
+        "- Nh\xF3m 3: 'G\xF3c N\u1ED9i Th\u1EA5t' v\u1EDBi \u0111\xFAng 10 g\xF3c ch\u1EE5p (shots). C\xE1c g\xF3c ch\u1EE5p th\u1EC3 hi\u1EC7n kh\xF4ng gian b\xEAn trong c\u1EE7a c\xF4ng tr\xECnh.",
+        "QUY T\u1EAEC C\u1EF0C K\u1EF2 QUAN TR\u1ECCNG: T\u1EA5t c\u1EA3 c\xE1c g\u1EE3i \xFD g\xF3c ch\u1EE5p n\xE0y B\u1EAET BU\u1ED8C ph\u1EA3i d\u1EF1a ho\xE0n to\xE0n v\xE0o \u0111\u1EB7c \u0111i\u1EC3m, phong c\xE1ch, chi ti\u1EBFt, v\u1EADt li\u1EC7u v\xE0 b\u1ED1i c\u1EA3nh (background) c\u1EE7a \u1EA3nh g\u1ED1c \u0111\u1EA7u v\xE0o. TUY\u1EC6T \u0110\u1ED0I kh\xF4ng thay \u0111\u1ED5i phong c\xE1ch ki\u1EBFn tr\xFAc, kh\xF4ng thay \u0111\u1ED5i hay ch\u1EC9nh s\u1EEDa background ho\u1EB7c b\u1ED1i c\u1EA3nh xung quanh c\u1EE7a \u1EA3nh g\u1ED1c. C\xE1c prompt m\xF4 t\u1EA3 (hidden_api_prompt_en) ch\u1EC9 l\xE0 s\u1EF1 thay \u0111\u1ED5i v\u1EC1 ti\xEAu c\u1EF1, zoom, h\u01B0\u1EDBng camera, t\u1EADp trung \u0111\u1EB7c t\u1EA3 c\xE1c g\xF3c ch\u1EE5p ho\u1EB7c chi ti\u1EBFt kh\xE1c nhau c\u1EE7a ch\xEDnh c\xF4ng tr\xECnh g\u1ED1c m\xE0 kh\xF4ng l\xE0m bi\u1EBFn \u0111\u1ED5i/thay \u0111\u1ED5i background xung quanh.",
+        "M\u1ED7i ti\xEAu \u0111\u1EC1 hi\u1EC3n th\u1ECB b\u1EB1ng ti\u1EBFng Vi\u1EC7t (display_title_vi) B\u1EAET BU\u1ED8C ph\u1EA3i vi\u1EBFt th\xE0nh m\u1ED9t c\xE2u mi\xEAu t\u1EA3 d\xE0i, gi\xE0u \xFD t\u01B0\u1EDFng \xFD th\u01A1, \u0111i s\xE2u v\xE0o m\xF4 t\u1EA3 chi ti\u1EBFt h\xECnh kh\u1ED1i ki\u1EBFn tr\xFAc, v\u1EADt li\u1EC7u c\u1EE5 th\u1EC3, hi\u1EC7u \u1EE9ng \xE1nh s\xE1ng (v\xED d\u1EE5: b\xF3ng \u0111\u1ED5 n\u1EAFng xi\xEAn, gi\u1ECDt n\u01B0\u1EDBc \u0111\u1ECDng, \xE1nh s\xE1ng \u1EA5m ban \u0111\xEAm) v\xE0 kh\xF4ng kh\xED kh\xF4ng gian (\u0111\u1ED9 d\xE0i kho\u1EA3ng 25-45 t\u1EEB). Tuy\u1EC7t \u0111\u1ED1i kh\xF4ng vi\u1EBFt ng\u1EAFn ng\u1EE7n, chung chung hay s\u01A1 s\xE0i.",
+        "T\u01B0\u01A1ng \u1EE9ng, m\u1ED7i prompt ti\u1EBFng Anh \u1EA9n (hidden_api_prompt_en) ph\u1EA3i \u0111\u01B0\u1EE3c vi\u1EBFt chi ti\u1EBFt, chuy\xEAn nghi\u1EC7p, m\xF4 t\u1EA3 c\u1EE5 th\u1EC3 v\u1EC1 b\u1ED1 c\u1EE5c \u1ED1ng k\xEDnh, ti\xEAu c\u1EF1, ch\u1EA5t li\u1EC7u v\u1EADt l\xFD th\u1EF1c t\u1EBF, \xE1nh s\xE1ng ngh\u1EC7 thu\u1EADt v\xE0 \u0111\u1ED9 s\u1EAFc n\xE9t cao \u0111\u1EC3 m\xF4 h\xECnh sinh \u1EA3nh ho\u1EA1t \u0111\u1ED9ng t\u1ED1i \u01B0u nh\u1EA5t.",
+        "Ph\u1EA3i tr\u1EA3 v\u1EC1 JSON v\u1EDBi c\u1EA5u tr\xFAc mental_blueprint v\xE0 categories/shots."
       ].join(" "),
       config: {
         temperature: 0.7,
@@ -3906,6 +4002,36 @@ function buildSyncAnalyzePrompt(input) {
     }
   };
 }
+function buildSyncSuggestionUpdatePrompt(input) {
+  const currentTitle = String(input.currentTitle || "");
+  const previousPrompt = String(input.previousPrompt || "");
+  return {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            text: `B\u1EA1n l\xE0 chuy\xEAn gia bi\xEAn so\u1EA1n prompt render ki\u1EBFn tr\xFAc.
+H\xE3y d\u1ECBch/t\u1ED1i \u01B0u h\xF3a ti\xEAu \u0111\u1EC1 g\xF3c ch\u1EE5p d\u01B0\u1EDBi \u0111\xE2y th\xE0nh prompt render ti\u1EBFng Anh chi ti\u1EBFt, b\xE1m s\xE1t \xFD t\u01B0\u1EDFng c\u1EE7a g\xF3c ch\u1EE5p v\xE0 h\xECnh \u1EA3nh tr\u01B0\u1EDBc \u0111\xF3.
+
+Ti\xEAu \u0111\u1EC1 ti\u1EBFng Vi\u1EC7t: "${currentTitle}"
+Prompt ti\u1EBFng Anh c\u0169 (n\u1EBFu c\xF3): "${previousPrompt}"
+
+Y\xEAu c\u1EA7u tr\u1EA3 v\u1EC1 \u0111\u1ECBnh d\u1EA1ng JSON duy nh\u1EA5t nh\u01B0 sau:
+{
+  "display_title_vi": "Ti\xEAu \u0111\u1EC1 ti\u1EBFng Vi\u1EC7t",
+  "hidden_api_prompt_en": "Detailed English rendering prompt"
+}`
+          }
+        ]
+      }
+    ],
+    config: {
+      temperature: 0.5,
+      responseMimeType: "application/json"
+    }
+  };
+}
 function buildSyncVariationGeneratePrompt(input) {
   const promptInstruction = String(input.promptInstruction || "");
   const aspectRatio = String(input.aspectRatio || "16:9");
@@ -3924,7 +4050,8 @@ function buildSyncVariationGeneratePrompt(input) {
       "B\u1EA1n l\xE0 m\u1ED9t chuy\xEAn gia k\u1EBFt xu\u1EA5t ki\u1EBFn tr\xFAc ch\xE2n th\u1EF1c.",
       "H\xE3y sinh \u1EA3nh bi\u1EBFn th\u1EC3 m\u1EDBi d\u1EF1a tr\xEAn \u1EA3nh ki\u1EBFn tr\xFAc g\u1ED1c v\xE0 ch\u1EC9 d\u1EABn m\xF4 t\u1EA3 c\u1EE7a ng\u01B0\u1EDDi d\xF9ng.",
       "Gi\u1EEF nguy\xEAn 100% h\xECnh kh\u1ED1i ki\u1EBFn tr\xFAc, t\u1EC9 l\u1EC7 v\xE0 c\u1EA5u tr\xFAc ch\xEDnh c\u1EE7a c\xF4ng tr\xECnh g\u1ED1c.",
-      "Thay \u0111\u1ED5i b\u1ED1i c\u1EA3nh xung quanh, th\u1EDDi ti\u1EBFt, g\xF3c ch\u1EE5p nh\u1EB9, \xE1nh s\xE1ng ho\u1EB7c v\u1EADt li\u1EC7u theo \u0111\xFAng m\xF4 t\u1EA3 c\u1EE7a ng\u01B0\u1EDDi d\xF9ng."
+      "B\u1EAET BU\u1ED8C gi\u1EEF nguy\xEAn 100% b\u1ED1i c\u1EA3nh xung quanh (background), c\u1EA3nh quan v\xE0 m\xF4i tr\u01B0\u1EDDng c\u1EE7a \u1EA3nh g\u1ED1c. TUY\u1EC6T \u0110\u1ED0I kh\xF4ng thay \u0111\u1ED5i hay ch\u1EC9nh s\u1EEDa background ho\u1EB7c b\u1ED1i c\u1EA3nh xung quanh.",
+      "Ch\u1EC9 thay \u0111\u1ED5i g\xF3c m\xE1y, zoom, ti\xEAu c\u1EF1 ho\u1EB7c h\u01B0\u1EDBng camera \u0111\u1EC3 ch\u1EE5p c\u1EADn c\u1EA3nh/trung c\u1EA3nh ho\u1EB7c \u0111\u1EB7c t\u1EA3 c\xE1c chi ti\u1EBFt/khu v\u1EF1c theo \u0111\xFAng m\xF4 t\u1EA3 c\u1EE7a ng\u01B0\u1EDDi d\xF9ng."
     ].join(" "),
     config: {
       imageConfig: {
@@ -3978,6 +4105,8 @@ function resolvePromptTemplate(templateKey, input) {
       return buildUpscalePrompt(input);
     case "sync_analyze_prompt":
       return buildSyncAnalyzePrompt(input);
+    case "sync_suggestion_update_prompt":
+      return buildSyncSuggestionUpdatePrompt(input);
     case "sync_character_composite_prompt": {
       const imgArray = input.images || [];
       const parts = [];
