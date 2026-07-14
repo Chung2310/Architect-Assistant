@@ -1604,7 +1604,7 @@ function mapToOpenRouterModel(modelName) {
 async function callOpenRouterChat(messages, model, openRouterKey, isJsonRequested) {
   const finalMessages = [...messages];
   if (isJsonRequested) {
-    const hasJsonWord = finalMessages.some((m) => m.content.toLowerCase().includes("json"));
+    const hasJsonWord = finalMessages.some((m) => typeof m.content === "string" && m.content.toLowerCase().includes("json"));
     if (!hasJsonWord) {
       finalMessages.push({ role: "system", content: "You must return a valid JSON object." });
     }
@@ -2227,8 +2227,20 @@ ${promptText}`.trim();
         if (!item || typeof item !== "object") continue;
         const role = item.role === "model" ? "assistant" : "user";
         const parts = item.parts || [];
-        const text = parts.map((p) => p.text || "").join("");
-        if (text.trim()) messages.push({ role, content: text.trim() });
+        const contentParts = [];
+        for (const p of parts) {
+          if (p.inlineData?.data) {
+            contentParts.push({
+              type: "image_url",
+              image_url: { url: `data:${p.inlineData.mimeType || "image/jpeg"};base64,${p.inlineData.data}` }
+            });
+          } else if (p.text?.trim()) {
+            contentParts.push({ type: "text", text: p.text.trim() });
+          }
+        }
+        if (contentParts.length === 0) continue;
+        const onlyText = contentParts.every((p) => p.type === "text");
+        messages.push({ role, content: onlyText ? contentParts.map((p) => p.text || "").join("") : contentParts });
       }
       if (messages.length === 0) {
         const rawText = extractTextFromContents(params.contents);
@@ -2236,32 +2248,6 @@ ${promptText}`.trim();
       }
       const isJsonRequested = params.config?.responseMimeType === "application/json" || params.generationConfig?.responseMimeType === "application/json" || params.config?.response_mime_type === "application/json";
       const fallbackQwenModel = process.env.OPENROUTER_FALLBACK_MODEL || "qwen/qwen3.6-flash";
-      const performQwenFallback = async (primaryError) => {
-        if (!openRouterKey) {
-          throw primaryError;
-        }
-        logger.warn(`[Gemini Service] Fallback: calling Qwen model (${fallbackQwenModel}) via OpenRouter API due to primary error: ${primaryError.message || primaryError}`);
-        try {
-          if (messages.length === 0) {
-            throw new Error("Kh\xF4ng c\xF3 n\u1ED9i dung \u0111\u1EC3 g\u1EEDi \u0111\u1EBFn OpenRouter.", { cause: primaryError });
-          }
-          const { textResult } = await callOpenRouterChat(messages, fallbackQwenModel, openRouterKey, isJsonRequested);
-          logger.info(`[Gemini Service] Fallback OpenRouter Qwen response received (${textResult.length} chars): ${textResult.slice(0, 100)}...`);
-          return {
-            candidates: [{
-              content: {
-                parts: [{ text: textResult }],
-                role: "model"
-              },
-              finishReason: "STOP"
-            }],
-            text: textResult
-          };
-        } catch (fallbackErr) {
-          logger.error(`[Gemini Service] Fallback to Qwen via OpenRouter also failed: ${fallbackErr.message || fallbackErr}`);
-          throw primaryError;
-        }
-      };
       const isSyncTextRequest = params.promptTemplateKey === "sync_analyze_prompt" || params.promptTemplateKey === "sync_suggestion_update_prompt";
       if (isSyncTextRequest) {
         logger.info(`[Gemini Service] Sync text request detected. Running custom fallback flow.`);
@@ -2280,9 +2266,10 @@ ${promptText}`.trim();
               }],
               text: textResult
             };
-          } catch (orGeminiErr) {
-            logger.warn(`[Gemini Service] Sync text: google/gemini-2.5-flash via OpenRouter failed: ${orGeminiErr.message || orGeminiErr}. Falling back to Qwen...`);
+          } catch (syncErr) {
+            logger.warn(`[Gemini Service] Sync text: OpenRouter Gemini failed: ${syncErr.message || syncErr}. Falling back to Qwen...`);
             try {
+              logger.info(`[Gemini Service] Sync text: calling Qwen model (${fallbackQwenModel}) via OpenRouter...`);
               const { textResult } = await callOpenRouterChat(messages, fallbackQwenModel, openRouterKey, isJsonRequested);
               logger.info(`[Gemini Service] Sync text: Qwen via OpenRouter successful.`);
               return {
@@ -2295,88 +2282,71 @@ ${promptText}`.trim();
                 }],
                 text: textResult
               };
-            } catch (orQwenErr) {
-              logger.warn(`[Gemini Service] Sync text: Qwen via OpenRouter failed: ${orQwenErr.message || orQwenErr}. Falling back to Gemini Native SDK...`);
-              if (apiKey && isValidGeminiKey(apiKey)) {
+            } catch (syncQwenErr) {
+              logger.warn(`[Gemini Service] Sync text: Qwen via OpenRouter failed: ${syncQwenErr.message || syncQwenErr}. Falling back to Native...`);
+              const hasValidNativeKey = apiKey && isValidGeminiKey(apiKey);
+              if (hasValidNativeKey) {
                 try {
                   const ai = new import_genai.GoogleGenAI({ apiKey });
-                  logger.info(`[Gemini Service] Sync text: calling Native Gemini SDK (${modelName})...`);
+                  logger.info(`[Gemini Service] Sync text: calling Gemini Native SDK...`);
                   const rawConfig = params.config || params.generationConfig || {};
                   const sanitizedConfig = { ...rawConfig };
-                  if (!modelName.toLowerCase().includes("thinking")) {
+                  const isThinkingModel = modelName.toLowerCase().includes("thinking");
+                  if (!isThinkingModel) {
                     delete sanitizedConfig.thinkingConfig;
                     delete sanitizedConfig.thinking_config;
                   }
                   if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
                     sanitizedConfig.systemInstruction = systemInstruction;
                   }
-                  return await ai.models.generateContent({
+                  const response = await ai.models.generateContent({
                     model: modelName,
                     contents: params.contents,
                     config: sanitizedConfig
                   });
-                } catch (nativeErr) {
-                  logger.error(`[Gemini Service] Sync text: Native Gemini SDK also failed: ${nativeErr.message || nativeErr}`);
-                  throw nativeErr;
+                  return response;
+                } catch (syncNativeErr) {
+                  logger.error(`[Gemini Service] Sync text: Gemini Native SDK failed: ${syncNativeErr.message || syncNativeErr}`);
+                  throw new Error(`T\u1EA5t c\u1EA3 c\xE1c d\u1ECBch v\u1EE5 cho Sync Text \u0111\u1EC1u th\u1EA5t b\u1EA1i. L\u1ED7i Native: ${syncNativeErr.message}`, { cause: syncNativeErr });
                 }
               } else {
-                throw new Error("T\u1EA5t c\u1EA3 c\xE1c m\xF4 h\xECnh OpenRouter v\xE0 Gemini Native \u0111\u1EC1u th\u1EA5t b\u1EA1i ho\u1EB7c thi\u1EBFu API Key.");
+                throw new Error(`OpenRouter Gemini v\xE0 Qwen \u0111\u1EC1u th\u1EA5t b\u1EA1i trong Sync Text, v\xE0 kh\xF4ng c\xF3 API Key h\u1EE3p l\u1EC7 cho Gemini Native.`, { cause: syncQwenErr });
               }
             }
           }
         } else {
           logger.info(`[Gemini Service] Sync text: No OpenRouter key found. Trying Gemini Native SDK...`);
-          if (apiKey && isValidGeminiKey(apiKey)) {
-            const ai = new import_genai.GoogleGenAI({ apiKey });
-            const rawConfig = params.config || params.generationConfig || {};
-            const sanitizedConfig = { ...rawConfig };
-            if (!modelName.toLowerCase().includes("thinking")) {
-              delete sanitizedConfig.thinkingConfig;
-              delete sanitizedConfig.thinking_config;
+          const hasValidNativeKey = apiKey && isValidGeminiKey(apiKey);
+          if (hasValidNativeKey) {
+            try {
+              const ai = new import_genai.GoogleGenAI({ apiKey });
+              logger.info(`[Gemini Service] Sync text: Provider: Gemini Native (No OpenRouter Key). Model: ${modelName}`);
+              const rawConfig = params.config || params.generationConfig || {};
+              const sanitizedConfig = { ...rawConfig };
+              const isThinkingModel = modelName.toLowerCase().includes("thinking");
+              if (!isThinkingModel) {
+                delete sanitizedConfig.thinkingConfig;
+                delete sanitizedConfig.thinking_config;
+              }
+              if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
+                sanitizedConfig.systemInstruction = systemInstruction;
+              }
+              const response = await ai.models.generateContent({
+                model: modelName,
+                contents: params.contents,
+                config: sanitizedConfig
+              });
+              return response;
+            } catch (syncNativeErr2) {
+              logger.error(`[Gemini Service] Sync text: Gemini Native SDK (No OpenRouter) failed: ${syncNativeErr2.message || syncNativeErr2}`);
+              throw syncNativeErr2;
             }
-            if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
-              sanitizedConfig.systemInstruction = systemInstruction;
-            }
-            return await ai.models.generateContent({
-              model: modelName,
-              contents: params.contents,
-              config: sanitizedConfig
-            });
           } else {
             throw new Error("Kh\xF4ng t\xECm th\u1EA5y API Key h\u1EE3p l\u1EC7 cho Gemini Native ho\u1EB7c OpenRouter.");
           }
         }
       }
-      const hasValidNativeKey = apiKey && isValidGeminiKey(apiKey);
-      if (hasValidNativeKey) {
-        const ai = new import_genai.GoogleGenAI({ apiKey });
-        logger.info(`[Gemini Service] Provider: Gemini Native. Model: ${modelName}`);
-        const rawConfig = params.config || params.generationConfig || {};
-        const sanitizedConfig = { ...rawConfig };
-        const isThinkingModel = modelName.toLowerCase().includes("thinking");
-        if (!isThinkingModel) {
-          if ("thinkingConfig" in sanitizedConfig) {
-            delete sanitizedConfig.thinkingConfig;
-          }
-          if ("thinking_config" in sanitizedConfig) {
-            delete sanitizedConfig.thinking_config;
-          }
-        }
-        if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
-          sanitizedConfig.systemInstruction = systemInstruction;
-        }
-        try {
-          const response = await ai.models.generateContent({
-            model: modelName,
-            contents: params.contents,
-            config: sanitizedConfig
-          });
-          return response;
-        } catch (err) {
-          logger.error(`[Gemini Service] Gemini Native API call failed: ${err.message || err}`);
-          return await performQwenFallback(err);
-        }
-      } else if (openRouterKey) {
+      if (openRouterKey) {
         const openRouterModel = mapToOpenRouterModel(modelName);
         logger.info(`[Gemini Service] Provider: OpenRouter (Primary). Model: ${openRouterModel}`);
         try {
@@ -2395,12 +2365,82 @@ ${promptText}`.trim();
             }],
             text: textResult
           };
-        } catch (err) {
-          logger.error(`[Gemini Service] Gemini via OpenRouter failed: ${err.message || err}`);
-          return await performQwenFallback(err);
+        } catch (openRouterErr) {
+          logger.warn(`[Gemini Service] Gemini via OpenRouter failed: ${openRouterErr.message || openRouterErr}. Falling back to Qwen...`);
+          try {
+            const { textResult } = await callOpenRouterChat(messages, fallbackQwenModel, openRouterKey, isJsonRequested);
+            logger.info(`[Gemini Service] Fallback OpenRouter Qwen response received (${textResult.length} chars)`);
+            return {
+              candidates: [{
+                content: {
+                  parts: [{ text: textResult }],
+                  role: "model"
+                },
+                finishReason: "STOP"
+              }],
+              text: textResult
+            };
+          } catch (qwenErr) {
+            logger.warn(`[Gemini Service] Qwen via OpenRouter failed: ${qwenErr.message || qwenErr}. Falling back to Gemini Native SDK...`);
+            const hasValidNativeKey = apiKey && isValidGeminiKey(apiKey);
+            if (hasValidNativeKey) {
+              try {
+                const ai = new import_genai.GoogleGenAI({ apiKey });
+                logger.info(`[Gemini Service] Fallback Provider: Gemini Native. Model: ${modelName}`);
+                const rawConfig = params.config || params.generationConfig || {};
+                const sanitizedConfig = { ...rawConfig };
+                const isThinkingModel = modelName.toLowerCase().includes("thinking");
+                if (!isThinkingModel) {
+                  delete sanitizedConfig.thinkingConfig;
+                  delete sanitizedConfig.thinking_config;
+                }
+                if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
+                  sanitizedConfig.systemInstruction = systemInstruction;
+                }
+                const response = await ai.models.generateContent({
+                  model: modelName,
+                  contents: params.contents,
+                  config: sanitizedConfig
+                });
+                return response;
+              } catch (nativeErr) {
+                logger.error(`[Gemini Service] Fallback Gemini Native SDK also failed: ${nativeErr.message || nativeErr}`);
+                throw new Error(`T\u1EA5t c\u1EA3 c\xE1c d\u1ECBch v\u1EE5 (OpenRouter Gemini, Qwen v\xE0 Gemini Native) \u0111\u1EC1u th\u1EA5t b\u1EA1i. L\u1ED7i Native: ${nativeErr.message}`, { cause: nativeErr });
+              }
+            } else {
+              throw new Error(`OpenRouter Gemini v\xE0 Qwen \u0111\u1EC1u th\u1EA5t b\u1EA1i, v\xE0 kh\xF4ng c\xF3 API Key h\u1EE3p l\u1EC7 cho Gemini Native.`, { cause: qwenErr });
+            }
+          }
         }
       } else {
-        throw new Error("Kh\xF4ng t\xECm th\u1EA5y API Key h\u1EE3p l\u1EC7 cho Gemini Native ho\u1EB7c OpenRouter.");
+        const hasValidNativeKey = apiKey && isValidGeminiKey(apiKey);
+        if (hasValidNativeKey) {
+          try {
+            const ai = new import_genai.GoogleGenAI({ apiKey });
+            logger.info(`[Gemini Service] Provider: Gemini Native (No OpenRouter Key). Model: ${modelName}`);
+            const rawConfig = params.config || params.generationConfig || {};
+            const sanitizedConfig = { ...rawConfig };
+            const isThinkingModel = modelName.toLowerCase().includes("thinking");
+            if (!isThinkingModel) {
+              delete sanitizedConfig.thinkingConfig;
+              delete sanitizedConfig.thinking_config;
+            }
+            if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
+              sanitizedConfig.systemInstruction = systemInstruction;
+            }
+            const response = await ai.models.generateContent({
+              model: modelName,
+              contents: params.contents,
+              config: sanitizedConfig
+            });
+            return response;
+          } catch (nativeErr) {
+            logger.error(`[Gemini Service] Gemini Native SDK failed: ${nativeErr.message || nativeErr}`);
+            throw nativeErr;
+          }
+        } else {
+          throw new Error("Kh\xF4ng t\xECm th\u1EA5y API Key h\u1EE3p l\u1EC7 cho OpenRouter ho\u1EB7c Gemini Native.");
+        }
       }
     }
   },
@@ -2438,7 +2478,8 @@ C\xE1c t\xEDnh n\u0103ng ch\xEDnh c\u1EE7a ph\u1EA7n m\u1EC1m iGen \u0111\u1EC3 
 - C\xF4ng c\u1EE5 [V\u1EBD M\u1EB7t B\u1EB1ng] (Floor Plan Editor - truy c\u1EADp t\u1EEB menu b\xEAn tr\xE1i): Thi\u1EBFt k\u1EBF b\u1EA3n v\u1EBD 2D, k\xE9o th\u1EA3 ph\xF2ng, \u0111\u1EB7t \u0111\u1ED3 \u0111\u1EA1c n\u1ED9i th\u1EA5t v\xE0 b\u1EADt ch\u1EBF \u0111\u1ED9 camera 3D (Visualize) \u0111\u1EC3 ng\u1EAFm nh\xECn tr\u1EF1c quan.
 
 Quy t\u1EAFc tr\u1EA3 l\u1EDDi:
-- Lu\xF4n th\xE2n thi\u1EC7n, chuy\xEAn nghi\u1EC7p, tr\u1EA3 l\u1EDDi b\u1EB1ng ti\u1EBFng Vi\u1EC7t.
+- B\u1EAET BU\u1ED8C: Ch\u1EC9 \u0111\u01B0\u1EE3c tr\u1EA3 l\u1EDDi b\u1EB1ng ti\u1EBFng Vi\u1EC7t chu\u1EA9n 100%, tuy\u1EC7t \u0111\u1ED1i kh\xF4ng s\u1EED d\u1EE5ng ng\xF4n ng\u1EEF kh\xE1c.
+- Lu\xF4n th\xE2n thi\u1EC7n, chuy\xEAn nghi\u1EC7p.
 - B\u1EAET BU\u1ED8C: C\xE2u tr\u1EA3 l\u1EDDi ph\u1EA3i c\u1EF1c k\u1EF3 ng\u1EAFn g\u1ECDn, s\xFAc t\xEDch (t\u1ED1i \u0111a 2-3 c\xE2u ho\u1EB7c 50-70 t\u1EEB). Tuy\u1EC7t \u0111\u1ED1i kh\xF4ng gi\u1EA3i th\xEDch d\xE0i d\xF2ng hay lan man, \u0111i th\u1EB3ng v\xE0o c\xE2u tr\u1EA3 l\u1EDDi ho\u1EB7c h\u01B0\u1EDBng d\u1EABn c\u1EE5 th\u1EC3.
 - Khi h\u01B0\u1EDBng d\u1EABn c\xE1c b\u01B0\u1EDBc th\u1EF1c hi\u1EC7n, h\xE3y t\xF3m t\u1EAFt c\xE1c b\u01B0\u1EDBc si\xEAu ng\u1EAFn g\u1ECDn, s\xFAc t\xEDch (v\xED d\u1EE5: "1. T\u1EA3i \u1EA3nh l\xEAn. 2. Nh\u1EADp m\xF4 t\u1EA3. 3. Nh\u1EA5n Render."), tuy\u1EC7t \u0111\u1ED1i kh\xF4ng vi\u1EBFt th\xEAm chi ti\u1EBFt m\xF4 t\u1EA3 d\xE0i d\xF2ng cho t\u1EEBng b\u01B0\u1EDBc.`;
     const finalMessages = [
@@ -3940,15 +3981,13 @@ function buildSyncAnalyzePrompt(input) {
         }
       ],
       systemInstruction: [
-        "B\u1EA1n l\xE0 t\u1ED5ng \u0111\u1EA1o di\u1EC5n ngh\u1EC7 thu\u1EADt v\xE0 ki\u1EBFn tr\xFAc s\u01B0 kh\xF4ng gian c\u1EE7a iGen.",
-        "H\xE3y ph\xE2n t\xEDch 1 \u1EA3nh ki\u1EBFn tr\xFAc tham kh\u1EA3o v\xE0 t\u1EA1o ch\xEDnh x\xE1c 30 g\u1EE3i \xFD g\xF3c ch\u1EE5p \u0111\u1ED3ng b\u1ED9 v\u1EDBi nhau theo \u0111\u1ECBnh d\u1EA1ng JSON.",
-        "Y\xEAu c\u1EA7u b\u1EAFt bu\u1ED9c t\u1EA1o \u0111\xFAng 3 nh\xF3m g\xF3c ch\u1EE5p (categories) sau:",
-        "- Nh\xF3m 1: 'G\xF3c Trung C\u1EA3nh' v\u1EDBi \u0111\xFAng 5 g\xF3c ch\u1EE5p (shots). C\xE1c g\xF3c ch\u1EE5p th\u1EC3 hi\u1EC7n c\xF4ng tr\xECnh \u1EDF g\xF3c nh\xECn trung c\u1EA3nh, bao qu\xE1t m\u1ED9t ph\u1EA7n kh\xF4ng gian ki\u1EBFn tr\xFAc.",
-        "- Nh\xF3m 2: 'G\xF3c C\u1EADn C\u1EA3nh Ngh\u1EC7 Thu\u1EADt' v\u1EDBi \u0111\xFAng 15 g\xF3c ch\u1EE5p (shots). C\xE1c g\xF3c ch\u1EE5p c\u1EADn c\u1EA3nh \u0111\u1EB7c t\u1EA3 c\xE1c chi ti\u1EBFt ki\u1EBFn tr\xFAc ngh\u1EC7 thu\u1EADt, k\u1EBFt c\u1EA5u v\u1EADt li\u1EC7u (stucco, ng\xF3i, g\u1ED7...), \xE1nh s\xE1ng tinh t\u1EBF c\u1EE7a c\xF4ng tr\xECnh.",
-        "- Nh\xF3m 3: 'G\xF3c N\u1ED9i Th\u1EA5t' v\u1EDBi \u0111\xFAng 10 g\xF3c ch\u1EE5p (shots). C\xE1c g\xF3c ch\u1EE5p th\u1EC3 hi\u1EC7n kh\xF4ng gian b\xEAn trong c\u1EE7a c\xF4ng tr\xECnh.",
-        "QUY T\u1EAEC C\u1EF0C K\u1EF2 QUAN TR\u1ECCNG: T\u1EA5t c\u1EA3 c\xE1c g\u1EE3i \xFD g\xF3c ch\u1EE5p n\xE0y B\u1EAET BU\u1ED8C ph\u1EA3i d\u1EF1a ho\xE0n to\xE0n v\xE0o \u0111\u1EB7c \u0111i\u1EC3m, phong c\xE1ch, chi ti\u1EBFt, v\u1EADt li\u1EC7u v\xE0 b\u1ED1i c\u1EA3nh (background) c\u1EE7a \u1EA3nh g\u1ED1c \u0111\u1EA7u v\xE0o. TUY\u1EC6T \u0110\u1ED0I kh\xF4ng thay \u0111\u1ED5i phong c\xE1ch ki\u1EBFn tr\xFAc, kh\xF4ng thay \u0111\u1ED5i hay ch\u1EC9nh s\u1EEDa background ho\u1EB7c b\u1ED1i c\u1EA3nh xung quanh c\u1EE7a \u1EA3nh g\u1ED1c. C\xE1c prompt m\xF4 t\u1EA3 (hidden_api_prompt_en) ch\u1EC9 l\xE0 s\u1EF1 thay \u0111\u1ED5i v\u1EC1 ti\xEAu c\u1EF1, zoom, h\u01B0\u1EDBng camera, t\u1EADp trung \u0111\u1EB7c t\u1EA3 c\xE1c g\xF3c ch\u1EE5p ho\u1EB7c chi ti\u1EBFt kh\xE1c nhau c\u1EE7a ch\xEDnh c\xF4ng tr\xECnh g\u1ED1c m\xE0 kh\xF4ng l\xE0m bi\u1EBFn \u0111\u1ED5i/thay \u0111\u1ED5i background xung quanh.",
-        "M\u1ED7i ti\xEAu \u0111\u1EC1 hi\u1EC3n th\u1ECB b\u1EB1ng ti\u1EBFng Vi\u1EC7t (display_title_vi) B\u1EAET BU\u1ED8C ph\u1EA3i vi\u1EBFt th\xE0nh m\u1ED9t c\xE2u mi\xEAu t\u1EA3 d\xE0i, gi\xE0u \xFD t\u01B0\u1EDFng \xFD th\u01A1, \u0111i s\xE2u v\xE0o m\xF4 t\u1EA3 chi ti\u1EBFt h\xECnh kh\u1ED1i ki\u1EBFn tr\xFAc, v\u1EADt li\u1EC7u c\u1EE5 th\u1EC3, hi\u1EC7u \u1EE9ng \xE1nh s\xE1ng (v\xED d\u1EE5: b\xF3ng \u0111\u1ED5 n\u1EAFng xi\xEAn, gi\u1ECDt n\u01B0\u1EDBc \u0111\u1ECDng, \xE1nh s\xE1ng \u1EA5m ban \u0111\xEAm) v\xE0 kh\xF4ng kh\xED kh\xF4ng gian (\u0111\u1ED9 d\xE0i kho\u1EA3ng 25-45 t\u1EEB). Tuy\u1EC7t \u0111\u1ED1i kh\xF4ng vi\u1EBFt ng\u1EAFn ng\u1EE7n, chung chung hay s\u01A1 s\xE0i.",
-        "T\u01B0\u01A1ng \u1EE9ng, m\u1ED7i prompt ti\u1EBFng Anh \u1EA9n (hidden_api_prompt_en) ph\u1EA3i \u0111\u01B0\u1EE3c vi\u1EBFt chi ti\u1EBFt, chuy\xEAn nghi\u1EC7p, m\xF4 t\u1EA3 c\u1EE5 th\u1EC3 v\u1EC1 b\u1ED1 c\u1EE5c \u1ED1ng k\xEDnh, ti\xEAu c\u1EF1, ch\u1EA5t li\u1EC7u v\u1EADt l\xFD th\u1EF1c t\u1EBF, \xE1nh s\xE1ng ngh\u1EC7 thu\u1EADt v\xE0 \u0111\u1ED9 s\u1EAFc n\xE9t cao \u0111\u1EC3 m\xF4 h\xECnh sinh \u1EA3nh ho\u1EA1t \u0111\u1ED9ng t\u1ED1i \u01B0u nh\u1EA5t.",
+        "B\u1EA1n l\xE0 \u0111\u1EA1o di\u1EC5n nhi\u1EBFp \u1EA3nh ki\u1EBFn tr\xFAc chuy\xEAn nghi\u1EC7p c\u1EE7a iGen.",
+        "B\u01AF\u1EDAC 1 - PH\xC2N T\xCDCH \u1EA2NH \u0110\u1EA6U V\xC0O: Tr\u01B0\u1EDBc ti\xEAn h\xE3y quan s\xE1t k\u1EF9 \u1EA3nh c\xF4ng tr\xECnh \u0111\u01B0\u1EE3c cung c\u1EA5p v\xE0 x\xE1c \u0111\u1ECBnh: phong c\xE1ch ki\u1EBFn tr\xFAc (t\xE2n c\u1ED5 \u0111i\u1EC3n, hi\u1EC7n \u0111\u1EA1i, tropical...), v\u1EADt li\u1EC7u b\u1EC1 m\u1EB7t th\u1EF1c t\u1EBF (stucco, ng\xF3i \u0111\u1ECF, \u0111\xE1, g\u1ED7, k\xEDnh...), m\xE0u s\u1EAFc ch\u1EE7 \u0111\u1EA1o, \u0111\u1EB7c \u0111i\u1EC3m n\u1ED5i b\u1EADt c\u1EE7a c\xF4ng tr\xECnh (m\xE1i hi\xEAn, c\u1ED9t, ban c\xF4ng, c\u1EEDa s\u1ED5, m\u1EA3ng t\u01B0\u1EDDng...), \xE1nh s\xE1ng hi\u1EC7n t\u1EA1i v\xE0 b\u1ED1i c\u1EA3nh xung quanh (c\xE2y c\u1ED1i, \u0111\u01B0\u1EDDng x\xE1, h\xE0ng r\xE0o...).",
+        "B\u01AF\u1EDAC 2 - T\u1EA0O G\u1EE2I \xDD THEO 3 NH\xD3M C\u1ED0 \u0110\u1ECANH (t\u1ED5ng 30 g\u1EE3i \xFD):",
+        "NH\xD3M 1 'G\xF3c Trung C\u1EA3nh' (5 g\u1EE3i \xFD): G\xF3c ch\u1EE5p t\u1EEB kho\u1EA3ng c\xE1ch v\u1EEBa ph\u1EA3i, \u1ED1ng k\xEDnh 35-50mm, th\u1EA5y \u0111\u01B0\u1EE3c 1/2 \u0111\u1EBFn to\xE0n b\u1ED9 m\u1EB7t ti\u1EC1n c\xF4ng tr\xECnh, v\u1EABn c\xF2n th\u1EA5y m\u1ED9t ph\u1EA7n b\u1ED1i c\u1EA3nh xung quanh th\u1EF1c t\u1EBF (c\xE2y, \u0111\u01B0\u1EDDng, h\xE0ng x\xF3m). M\u1ED7i g\u1EE3i \xFD ph\u1EA3i ch\u1EC9 r\xF5: h\u01B0\u1EDBng m\xE1y \u1EA3nh \u0111\u1EE9ng \u1EDF \u0111\xE2u, g\xF3c nghi\xEAng bao nhi\xEAu \u0111\u1ED9, th\u1EA5y ph\u1EA7n n\xE0o c\u1EE7a c\xF4ng tr\xECnh.",
+        "NH\xD3M 2 'G\xF3c C\u1EADn C\u1EA3nh Ngh\u1EC7 Thu\u1EADt' (15 g\u1EE3i \xFD): Zoom s\xE1t v\xE0o M\u1ED8T chi ti\u1EBFt ki\u1EBFn tr\xFAc c\u1EE5 th\u1EC3 c\u1EE7a c\xF4ng tr\xECnh trong \u1EA3nh. \u0110\xE2y KH\xD4NG ph\u1EA3i l\xE0 \u1EA3nh to\xE0n c\u1EA3nh \u2014 ch\u1EC9 th\u1EA5y 1 b\u1ED9 ph\u1EADn nh\u1ECF: v\xED d\u1EE5 k\u1EBFt c\u1EA5u t\u01B0\u1EDDng stucco d\u01B0\u1EDBi \xE1nh n\u1EAFng xi\xEAn, vi\xEAn ng\xF3i \u0111\u1ECF sau m\u01B0a, tay n\u1EAFm c\u1EEDa g\u1ED7 n\xE2u, chi ti\u1EBFt ph\xE0o ch\u1EC9 th\u1EA1ch cao, b\xF3ng \u0111\u1ED5 c\u1EE7a m\xE1i hi\xEAn l\xEAn t\u01B0\u1EDDng... \u1ED0ng k\xEDnh 85-200mm macro. M\u1ED7i g\u1EE3i \xFD ph\u1EA3i g\u1EAFn v\u1EDBi V\u1EACT LI\u1EC6U/CHI TI\u1EBET C\u1EE4 TH\u1EC2 quan s\xE1t \u0111\u01B0\u1EE3c t\u1EEB \u1EA3nh g\u1ED1c.",
+        "NH\xD3M 3 'G\xF3c N\u1ED9i Th\u1EA5t' (10 g\u1EE3i \xFD): T\u01B0\u1EDFng t\u01B0\u1EE3ng kh\xF4ng gian B\xCAN TRONG c\xF4ng tr\xECnh d\u1EF1a tr\xEAn phong c\xE1ch ki\u1EBFn tr\xFAc \u0111\xE3 quan s\xE1t. M\xF4 t\u1EA3 g\xF3c ch\u1EE5p t\u1EEB b\xEAn trong: \xE1nh s\xE1ng t\u1EF1 nhi\xEAn qua c\u1EEDa s\u1ED5, v\u1EADt li\u1EC7u s\xE0n/t\u01B0\u1EDDng/tr\u1EA7n, s\u1EF1 k\u1EBFt n\u1ED1i c\xE1c kh\xF4ng gian, \u0111\u1ED3 n\u1ED9i th\u1EA5t ph\xF9 h\u1EE3p phong c\xE1ch ki\u1EBFn tr\xFAc. M\u1ED7i g\u1EE3i \xFD ph\u1EA3i ch\u1EC9 r\xF5 t\xEAn ph\xF2ng v\xE0 chi ti\u1EBFt kh\xF4ng gian c\u1EE5 th\u1EC3.",
+        "QUY T\u1EAEC B\u1EAET BU\u1ED8C: (1) TUY\u1EC6T \u0110\u1ED0I kh\xF4ng thay \u0111\u1ED5i background/b\u1ED1i c\u1EA3nh xung quanh c\xF4ng tr\xECnh. Ch\u1EC9 thay \u0111\u1ED5i g\xF3c m\xE1y \u1EA3nh, ti\xEAu c\u1EF1, v\xF9ng focus. (2) M\u1ED7i display_title_vi ph\u1EA3i l\xE0 c\xE2u ti\u1EBFng Vi\u1EC7t \u0111\u1EA7y \u0111\u1EE7 25-45 t\u1EEB, m\xF4 t\u1EA3 c\u1EE5 th\u1EC3 v\u1EADt li\u1EC7u/\xE1nh s\xE1ng/kh\xF4ng kh\xED th\u1EF1c t\u1EBF th\u1EA5y trong \u1EA3nh, kh\xF4ng \u0111\u01B0\u1EE3c chung chung. (3) M\u1ED7i hidden_api_prompt_en ph\u1EA3i m\xF4 t\u1EA3 k\u1EF9 thu\u1EADt nhi\u1EBFp \u1EA3nh chuy\xEAn nghi\u1EC7p: focal length, f-stop, lighting direction, material texture, composition rule.",
         "Ph\u1EA3i tr\u1EA3 v\u1EC1 JSON v\u1EDBi c\u1EA5u tr\xFAc mental_blueprint v\xE0 categories/shots."
       ].join(" "),
       config: {
@@ -4844,16 +4883,26 @@ var swaggerDocument = {
 
 // server/service/polling.service.ts
 var pollingService = {
+  interval: void 0,
+  isPolling: false,
   /**
    * Khởi chạy Polling Worker quét các jobs đang xử lý định kỳ mỗi 15 giây
    */
   init() {
+    if (this.interval) {
+      console.log("[Polling Service] Worker already initialized; skipping duplicate start.");
+      return;
+    }
     console.log("[Polling Service] Initializing PiAPI background polling worker...");
-    setInterval(async () => {
+    this.interval = setInterval(async () => {
+      if (this.isPolling) return;
+      this.isPolling = true;
       try {
         await this.pollActiveJobs();
       } catch (err) {
         console.error("[Polling Service] Error in pollActiveJobs loop:", err);
+      } finally {
+        this.isPolling = false;
       }
     }, 15e3);
   },

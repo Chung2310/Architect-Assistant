@@ -289,7 +289,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
   finishes,
   activeCamera,
   onCaptureRef,
-  _onChangeCamera
+  onChangeCamera: _onChangeCamera
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);

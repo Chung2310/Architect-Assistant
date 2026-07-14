@@ -368,9 +368,11 @@ export const SyncTabContent: React.FC = () => {
 
     const startTime = Date.now();
     const expectedDuration = 15000;
+    let currentCharacterProgress = 0;
     const progressInterval = setInterval(() => {
       const elapsed = Date.now() - startTime;
-      setCharacterGenProgress(Math.min(90, (elapsed / expectedDuration) * 90));
+      currentCharacterProgress = Math.min(90, (elapsed / expectedDuration) * 90);
+      setCharacterGenProgress(currentCharacterProgress);
     }, 100);
 
     try {
@@ -400,7 +402,13 @@ export const SyncTabContent: React.FC = () => {
           const blob = new Blob([new Uint8Array(array)], { type: mimeType });
           const downloadURL = await uploadMedia(blob, "characters");
           
-          setCharacterGenProgress(100);
+          const characterProgressStart = Math.min(95, currentCharacterProgress);
+          for (let step = 1; step <= 10; step++) {
+            await new Promise((resolve) => setTimeout(resolve, 40));
+            setCharacterGenProgress(
+              characterProgressStart + ((100 - characterProgressStart) * step) / 10,
+            );
+          }
           setCharacterImage(downloadURL);
           setCharacterProvideType("prompt");
           break;
@@ -445,9 +453,11 @@ export const SyncTabContent: React.FC = () => {
     const numImages = characterContextImages.length;
     const startTime = Date.now();
     const expectedDuration = characterContextImages.length * 15000;
+    let currentSyncProgress = 0;
     const progressInterval = setInterval(() => {
       const elapsed = Date.now() - startTime;
-      setSyncProgress(Math.min(90, (elapsed / expectedDuration) * 90));
+      currentSyncProgress = Math.min(90, (elapsed / expectedDuration) * 90);
+      setSyncProgress(currentSyncProgress);
     }, 100);
 
     try {
@@ -671,7 +681,13 @@ export const SyncTabContent: React.FC = () => {
 
       if (finalUrls.length > 0) {
         clearInterval(progressInterval);
-        setSyncProgress(100);
+        const syncProgressStart = Math.min(95, currentSyncProgress);
+        for (let step = 1; step <= 10; step++) {
+          await new Promise((resolve) => setTimeout(resolve, 40));
+          setSyncProgress(
+            syncProgressStart + ((100 - syncProgressStart) * step) / 10,
+          );
+        }
         setSyncResults(finalUrls);
         toast.success("Đồng bộ nhân vật thành công!");
       } else {
@@ -1241,7 +1257,10 @@ export const SyncTabContent: React.FC = () => {
             });
 
             setAnalysisCategories(formattedCategories);
-            setAnalyzeProgress(100);
+            for (let step = 1; step <= 6; step++) {
+              await new Promise((resolve) => setTimeout(resolve, 40));
+              setAnalyzeProgress(97 + (3 * step) / 6);
+            }
             setAnalyzeStatus("Hoàn tất!");
           } else {
             console.error("Invalid JSON structure or empty categories", parsed);
