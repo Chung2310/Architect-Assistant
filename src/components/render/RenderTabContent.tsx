@@ -719,6 +719,7 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
 
     if (!(await checkUserCredits())) return;
     setIsUploading(true);
+    setSmoothUploadProgress(1);
     setUploadProgress(1);
     let progressVal = 1;
     const progressInterval = setInterval(() => {
@@ -833,6 +834,7 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
 
     if (!(await checkUserCredits())) return;
     setIsUploadingRef(true);
+    setSmoothUploadProgressRef(1);
     setUploadProgressRef(1);
     let progressVal = 1;
     const progressInterval = setInterval(() => {
