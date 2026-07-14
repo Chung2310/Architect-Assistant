@@ -5739,7 +5739,7 @@ Requirements:
 
             {/* Input */}
             <div className="p-3 border-t border-slate-200 bg-white shrink-0">
-              <div className="flex items-center gap-2 bg-white border border-slate-400 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#d4a853]/40 focus-within:border-[#d4a853] transition-all shadow-[0_1px_3px_rgba(15,23,42,0.12)]">
+              <div className="flex items-center gap-2 bg-white border border-slate-600 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#d4a853]/40 focus-within:border-[#d4a853] transition-all shadow-[0_1px_3px_rgba(15,23,42,0.12)]">
                 <input
                   ref={inputRef}
                   value={inputValue}
@@ -5756,7 +5756,7 @@ Requirements:
                 <button
                   onClick={handleSend}
                   disabled={!inputValue.trim() || isGenerating || isTyping}
-                  className="w-7 h-7 flex items-center justify-center rounded-lg bg-[#d4a853] hover:bg-[#c49843] disabled:opacity-30 disabled:cursor-not-allowed transition-all text-[#1a1612]"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#00b5cd] hover:bg-[#009cb0] active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-white shadow-md shadow-[#00b5cd]/30 shrink-0"
                 >
                   <Send className="w-3.5 h-3.5" />
                 </button>
