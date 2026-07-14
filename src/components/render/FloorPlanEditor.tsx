@@ -147,6 +147,17 @@ function getCompletedGatherSteps(info: GatherInfo): Set<GatherStep> {
   return new Set(GATHER_STEP_ORDER.filter((step) => hasGatherStepValue(info, step)));
 }
 
+function normalizeLegacyFloorLabels(value: string): string {
+  if (!/tầng\s*trệt/i.test(value)) return value;
+
+  // Dữ liệu cũ đánh số "Tầng trệt, Tầng 1, Tầng 2...". Khi phát hiện
+  // định dạng này, dịch toàn bộ sang "Tầng 1, Tầng 2, Tầng 3...".
+  return value.replace(/tầng\s*(trệt|\d+)/gi, (_match, floor: string) => {
+    const floorNumber = floor.toLowerCase() === "trệt" ? 1 : Number(floor) + 1;
+    return `Tầng ${floorNumber}`;
+  });
+}
+
 function getGatherStepPrompt(step: GatherStep, info: GatherInfo, needsClarification = false): string {
   const prefix = needsClarification ? "Mình chưa nhận ra thông tin này. " : "";
 
@@ -177,7 +188,9 @@ function mergeGatheredInput(info: GatherInfo, extracted: Record<string, unknown>
   if (Number.isFinite(landWidth) && landWidth > 0) next.landWidth = landWidth;
   if (Number.isFinite(landLength) && landLength > 0) next.landLength = landLength;
   if (extracted.shape != null && String(extracted.shape).trim()) next.shape = String(extracted.shape).trim();
-  if (extracted.rooms != null && String(extracted.rooms).trim()) next.rooms = String(extracted.rooms).trim();
+  if (extracted.rooms != null && String(extracted.rooms).trim()) {
+    next.rooms = normalizeLegacyFloorLabels(String(extracted.rooms).trim());
+  }
   if (extracted.extras != null && String(extracted.extras).trim()) next.extras = String(extracted.extras).trim();
 
   // Các câu trả lời ngắn, đúng bước vẫn được hiểu ngay cả khi model bỏ sót.
@@ -199,7 +212,7 @@ function mergeGatheredInput(info: GatherInfo, extracted: Record<string, unknown>
   }
 
   if (expectedStep === "rooms" && !hasGatherStepValue(next, "rooms") && text.trim().length >= 3) {
-    next.rooms = text.trim();
+    next.rooms = normalizeLegacyFloorLabels(text.trim());
   }
 
   if (expectedStep === "extras" && !hasGatherStepValue(next, "extras")) {
@@ -1177,7 +1190,12 @@ export const FloorPlanEditor: React.FC = () => {
   const [activeSidebarTab, setActiveSidebarTab] = useState<"chat" | "history">("chat");
 
   const handleLoadProject = useCallback((proj: any) => {
-    const loadedGatherInfo: GatherInfo = proj.gatherInfo || {};
+    const loadedGatherInfo: GatherInfo = {
+      ...(proj.gatherInfo || {}),
+      ...(proj.gatherInfo?.rooms
+        ? { rooms: normalizeLegacyFloorLabels(String(proj.gatherInfo.rooms)) }
+        : {}),
+    };
     setCurrentProjectId(proj.id);
     setProjectName(proj.name);
     setFloorPlans(proj.floorPlans || []);
@@ -1738,6 +1756,7 @@ Quy tắc bắt buộc:
 4. Dữ liệu dự án đã có: ${gatheredContext || "chưa có"}.
 5. Bước ứng dụng đang chờ: ${currentStep}. Chỉ trích xuất dữ liệu người dùng thực sự cung cấp; không tự suy đoán giá trị còn thiếu và không hỏi lại dữ liệu đã có. Ứng dụng sẽ tự quyết định câu hỏi tiếp theo theo thứ tự: số tầng → diện tích/kích thước → hình dạng → phòng → yêu cầu bổ sung.
 6. Nếu người dùng cung cấp nhiều thông tin trong một câu, hãy trích xuất đầy đủ tất cả các trường tương ứng.
+7. Quy ước tầng duy nhất của hệ thống là "Tầng 1, Tầng 2, Tầng 3...". Tuyệt đối không dùng "tầng trệt", "lầu 1" hoặc đánh số tầng bắt đầu từ 0 trong reply hay dữ liệu trích xuất.
 
 Danh sách các mã loại đồ nội thất (furniture_type) được hỗ trợ:
 - Sofa phòng khách: "living_sofa"
@@ -1970,7 +1989,7 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
     const landW = info.landWidth || 5;
     const landL = info.landLength || 15;
     const shape = info.shape || "hình chữ nhật";
-    const rooms = info.rooms || "2 phòng ngủ, 1 WC, phòng khách, bếp";
+    const rooms = normalizeLegacyFloorLabels(info.rooms || "2 phòng ngủ, 1 WC, phòng khách, bếp");
     const extras = info.extras || "phong cách hiện đại";
 
     const shapePoints = info.shapePoints || getDefaultPointsForShape(shape, landW, landL);
@@ -2022,11 +2041,7 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
       // Fallback: if totalFloors = 1 or no per-floor selection, use the full rooms string
       if (totalFloors === 1) return rooms;
       
-      // Determine if the rooms string uses "Tầng trệt" naming
-      const hasTrệt = /tầng trệt/i.test(rooms);
-      const floorLabel = hasTrệt
-        ? (floorIndex === 0 ? "Tầng trệt" : `Tầng ${floorIndex}`)
-        : `Tầng ${floorIndex + 1}`;
+      const floorLabel = `Tầng ${floorIndex + 1}`;
 
       const regex = new RegExp(`${floorLabel}:\\s*([^.]+)`, "i");
       const match = rooms.match(regex);

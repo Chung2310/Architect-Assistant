@@ -198,7 +198,7 @@ export const ChooseRoomsModal: React.FC<ChooseRoomsModalProps> = ({
     } else {
       compiledString = floors
         .map((f) => {
-          const floorLabel = f === 1 ? "Tầng trệt" : `Tầng ${f - 1}`;
+          const floorLabel = `Tầng ${f}`;
           const list = roomsByFloor[f] || [];
           const roomsStr = list.map((r) => `${r.count} ${r.name}`).join(", ");
           return `${floorLabel}: ${roomsStr}`;
@@ -237,7 +237,7 @@ export const ChooseRoomsModal: React.FC<ChooseRoomsModalProps> = ({
               >
                 {/* Floor Header */}
                 <div className="bg-[#1c1c1e] px-4 py-2.5 border-b border-[#2d2d30] text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  {floorNum === 1 ? "Tầng Trệt" : `Tầng ${floorNum - 1}`}
+                  {`Tầng ${floorNum}`}
                 </div>
 
                 {/* Rooms Rows */}
