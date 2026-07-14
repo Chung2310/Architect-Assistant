@@ -5620,7 +5620,8 @@ Requirements:
         {activeSidebarTab === "chat" ? (
           <>
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-300">
+                        <div className="flex-1 overflow-y-auto px-4 py-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-300 flex flex-col">
+              <div className="flex-1 flex flex-col justify-end space-y-3">
               <AnimatePresence initial={false}>
                 {messages.map((msg) => {
                   // Special shape-picker bubble
@@ -5735,6 +5736,7 @@ Requirements:
                 </motion.div>
               )}
               <div ref={chatEndRef} />
+              </div>
             </div>
 
             {/* Input */}
