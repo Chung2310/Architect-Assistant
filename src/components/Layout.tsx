@@ -151,7 +151,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentScreen: _curren
         <div className="flex items-center gap-3">
           <button type="button" className="cursor-pointer flex items-center" onClick={() => navigate('/home')}>
             <img 
-              src="https://res.cloudinary.com/dgaofuhmv/image/upload/v1775301001/unnamed_tcmlmp.png" 
+              src="https://res.cloudinary.com/dfbk14k5w/image/upload/v1783992125/igen_assets/brand-icon.png" 
               alt="iGen Logo" 
               className="h-12 object-contain" 
               referrerPolicy="no-referrer" 

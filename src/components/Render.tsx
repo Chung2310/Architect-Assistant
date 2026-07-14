@@ -189,7 +189,7 @@ Bạn cần tôi hỗ trợ thông tin gì hôm nay?`
           <div className="flex flex-col items-center text-center">
             <h1 className="text-3xl font-black tracking-tight text-on-surface flex items-center gap-3 uppercase justify-center">
               <img
-                src="https://res.cloudinary.com/dgaofuhmv/image/upload/v1775301001/unnamed_tcmlmp.png"
+                src="https://res.cloudinary.com/dfbk14k5w/image/upload/v1783992125/igen_assets/brand-icon.png"
                 alt="iGen Logo"
                 className="h-10 object-contain"
                 referrerPolicy="no-referrer"
