@@ -571,6 +571,10 @@ export const VirtualStaging: React.FC = () => {
       clearInterval(progressInterval);
 
       if (newResults.length > 0) {
+        for (let step = 1; step <= 10; step++) {
+          await new Promise((resolve) => setTimeout(resolve, 40));
+          setGenerationProgress(98 + (2 * step) / 10);
+        }
         setGeneratedResults(prev => [...newResults, ...prev]);
         setUploadedImage(newResults[0]);
         setViewMode('result');

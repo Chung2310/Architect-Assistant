@@ -5739,7 +5739,7 @@ Requirements:
 
             {/* Input */}
             <div className="p-3 border-t border-slate-200 bg-white shrink-0">
-              <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#d4a853]/40 focus-within:border-[#d4a853]/50 transition-all shadow-sm">
+              <div className="flex items-center gap-2 bg-white border border-slate-300 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#d4a853]/40 focus-within:border-[#d4a853] transition-all shadow-[0_1px_3px_rgba(15,23,42,0.12)]">
                 <input
                   ref={inputRef}
                   value={inputValue}

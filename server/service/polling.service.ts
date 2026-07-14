@@ -4,16 +4,28 @@ import { cloudinaryService } from "./cloudinary.service";
 import { emitToUser } from "../socket";
 
 export const pollingService = {
+  interval: undefined as NodeJS.Timeout | undefined,
+  isPolling: false,
+
   /**
    * Khởi chạy Polling Worker quét các jobs đang xử lý định kỳ mỗi 15 giây
    */
   init() {
+    if (this.interval) {
+      console.log("[Polling Service] Worker already initialized; skipping duplicate start.");
+      return;
+    }
+
     console.log("[Polling Service] Initializing PiAPI background polling worker...");
-    setInterval(async () => {
+    this.interval = setInterval(async () => {
+      if (this.isPolling) return;
+      this.isPolling = true;
       try {
         await this.pollActiveJobs();
       } catch (err) {
         console.error("[Polling Service] Error in pollActiveJobs loop:", err);
+      } finally {
+        this.isPolling = false;
       }
     }, 15000);
   },
