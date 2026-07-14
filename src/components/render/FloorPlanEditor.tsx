@@ -5446,26 +5446,7 @@ Requirements:
 
   // ── Dot grid background ────────────────────────────────────────────────
   const renderDotGrid = () => {
-    const dots = [];
-    const spacing = 28;
-    const cols = Math.ceil(stageSize.w / spacing) + 1;
-    const rows = Math.ceil(stageSize.h / spacing) + 1;
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        dots.push(
-          <Rect
-            key={`dot_${r}_${c}`}
-            x={c * spacing}
-            y={r * spacing}
-            width={2}
-            height={2}
-            fill="#e2e8f0"
-            cornerRadius={1}
-          />
-        );
-      }
-    }
-    return dots;
+    return null;
   };
 
   // ── Land boundary ──────────────────────────────────────────────────────
@@ -6083,6 +6064,8 @@ Requirements:
                 ? "grabbing"
                 : "default",
             background: "white",
+            backgroundImage: "radial-gradient(#e2e8f0 1.5px, transparent 1.5px)",
+            backgroundSize: "28px 28px",
           }}
         >
           <Stage
