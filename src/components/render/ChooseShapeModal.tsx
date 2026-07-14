@@ -298,7 +298,7 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div
-        className="bg-[#141415] border border-[#2d2d30] rounded-2xl w-full max-w-[700px] h-[92vh] max-h-[780px] flex flex-col shadow-2xl overflow-hidden text-slate-100 font-sans animate-in fade-in zoom-in duration-200"
+        className="bg-[#141415] border border-[#2d2d30] rounded-2xl w-full max-w-[700px] h-[95vh] max-h-[780px] flex flex-col shadow-2xl overflow-hidden text-slate-100 font-sans animate-in fade-in zoom-in duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -338,11 +338,11 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
-
+ 
         {/* Scrollable Content Body */}
-        <div className="flex-1 overflow-y-auto flex flex-col min-h-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-[#2d2d30]">
+        <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
           {/* Canvas */}
-          <div className="flex-1 min-h-[300px] bg-[#0b0b0c] relative flex items-center justify-center p-4 select-none">
+          <div className="flex-1 min-h-[220px] sm:min-h-[300px] bg-[#0b0b0c] relative flex items-center justify-center p-4 select-none">
             <svg
               ref={svgRef}
               viewBox="0 0 400 350"
@@ -507,7 +507,7 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
           {/* Shape grid */}
           <div className="p-4 bg-[#141415] space-y-2 shrink-0">
             <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px] px-2 block">Select Base Layout Shape</span>
-            <div className="flex gap-3 overflow-x-auto py-1 px-2 scrollbar-thin">
+            <div className="flex gap-3 overflow-x-auto py-1 px-2">
               {SHAPE_TEMPLATES.map((item, idx) => {
                 const isSelected = selectedIdx === idx;
                 return (
