@@ -74,19 +74,13 @@ export const piapiService = {
       const content: any[] = [{ type: "text", text: prompt }];
 
       if (options?.image) {
-        try {
-          console.log(`[OpenRouter Image Task] Converting image to base64 for OpenRouter: ${options.image}`);
-          const base64Image = await fetchImageAsBase64(options.image);
-          content.push({
-            type: "image_url",
-            image_url: {
-              url: base64Image
-            }
-          });
-        } catch (fetchErr) {
-          console.error(`[OpenRouter Image Task] Failed to convert image to base64:`, fetchErr);
-          throw fetchErr;
-        }
+        console.log(`[OpenRouter Image Task] Passing image URL directly to OpenRouter: ${options.image}`);
+        content.push({
+          type: "image_url",
+          image_url: {
+            url: options.image
+          }
+        });
       }
 
       const body: Record<string, any> = {
