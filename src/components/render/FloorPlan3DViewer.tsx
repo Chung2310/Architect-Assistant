@@ -18,6 +18,7 @@ interface FloorPlan3DViewerProps {
   } | null;
   onCaptureRef?: React.MutableRefObject<(() => string) | null>;
   onChangeCamera: (cam: { rotation: number }) => void;
+  renderMode?: string;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -289,7 +290,8 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
   finishes,
   activeCamera,
   onCaptureRef,
-  onChangeCamera: _onChangeCamera
+  onChangeCamera: _onChangeCamera,
+  renderMode
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -1850,7 +1852,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     const renderer = rendererRef.current;
     if (!scene || !camera || !floorPlan || !controls) return;
 
-    if (activeCamera) {
+    if (activeCamera && renderMode !== "Floorplan to 3D Floorplan") {
       // 1. Calculate center offset to map coordinates correctly
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
       floorPlan.rooms.forEach((r) => {
@@ -1867,6 +1869,9 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
       const rz = activeCamera.y - centerY;
       const height = 1.25;
       camera.position.set(rx, height, rz);
+
+      // Reset camera up vector to default before lookAt
+      camera.up.set(0, 1, 0);
 
       // 3. Aim camera in target direction (based on activeCamera.rotation angle)
       const rad = ((activeCamera.rotation - 90) * Math.PI) / 180;
@@ -1890,13 +1895,38 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
         renderer.render(scene, camera);
       }
     } else {
-      // Fallback to bird's eye dollhouse view
-      camera.position.set(9, 9, 9);
+      if (renderMode === "Floorplan to 3D Floorplan") {
+        // Calculate the bounding box of the floor plan to set the height dynamically
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        floorPlan.rooms.forEach((r) => {
+          minX = Math.min(minX, r.x);
+          maxX = Math.max(maxX, r.x + r.w);
+          minY = Math.min(minY, r.y);
+          maxY = Math.max(maxY, r.y + r.h);
+        });
+        const width = maxX - minX;
+        const length = maxY - minY;
+        const maxDim = Math.max(width, length, 5);
+        const height = maxDim * 1.3;
+
+        camera.position.set(0, height, 0);
+        camera.up.set(0, 0, -1); // Align orientation with 2D layout (North is up)
+        controls.target.set(0, 0, 0);
+      } else {
+        // Fallback to bird's eye dollhouse view
+        camera.position.set(9, 9, 9);
+        camera.up.set(0, 1, 0); // Restore default up vector
+        controls.target.set(0, 0, 0);
+      }
       controls.enabled = true;
-      controls.target.set(0, 0, 0);
       controls.update();
+
+      // Trigger redraw
+      if (renderer) {
+        renderer.render(scene, camera);
+      }
     }
-  }, [activeCamera, floorPlan]);
+  }, [activeCamera, floorPlan, renderMode]);
 
   const handleZoomIn = () => {
     const camera = cameraRef.current;
@@ -1922,7 +1952,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
-    if (activeCamera) {
+    if (activeCamera && renderMode !== "Floorplan to 3D Floorplan") {
       // Re-sync to activeCamera
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
       floorPlan.rooms.forEach((r) => {
@@ -1937,14 +1967,33 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
       const rz = activeCamera.y - centerY;
       const height = 1.25;
       camera.position.set(rx, height, rz);
+      camera.up.set(0, 1, 0);
       const rad = ((activeCamera.rotation - 90) * Math.PI) / 180;
       const targetX = rx + Math.cos(rad) * 10;
       const targetZ = rz + Math.sin(rad) * 10;
       camera.lookAt(new THREE.Vector3(targetX, height, targetZ));
       controls.target.set(targetX, height, targetZ);
     } else {
-      camera.position.set(9, 9, 9);
-      controls.target.set(0, 0, 0);
+      if (renderMode === "Floorplan to 3D Floorplan") {
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        floorPlan.rooms.forEach((r) => {
+          minX = Math.min(minX, r.x);
+          maxX = Math.max(maxX, r.x + r.w);
+          minY = Math.min(minY, r.y);
+          maxY = Math.max(maxY, r.y + r.h);
+        });
+        const width = maxX - minX;
+        const length = maxY - minY;
+        const maxDim = Math.max(width, length, 5);
+        const height = maxDim * 1.3;
+        camera.position.set(0, height, 0);
+        camera.up.set(0, 0, -1);
+        controls.target.set(0, 0, 0);
+      } else {
+        camera.position.set(9, 9, 9);
+        camera.up.set(0, 1, 0);
+        controls.target.set(0, 0, 0);
+      }
     }
     controls.update();
   };

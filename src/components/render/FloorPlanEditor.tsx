@@ -2642,7 +2642,7 @@ Requirements:
 - Crisp presentation with clean lines, subtle ambient lighting, and clear separation between floors, walls, and furniture.
 - Soft shadows that enhance depth without being overly photorealistic.
 - Avoid realistic photographic staging, people, or repeated interior decoration details.
-- Output should resemble a professional 3D floorplan/axonometric render, not a typical interior photograph. Negative prompt: white clay model, monochrome, grayscale, raw plaster, all-white rendering, untextured model.${cameraPrompt}${customRoomPrompt}${customFurniturePrompt}`
+- Output should resemble a professional 3D floorplan/axonometric render, not a typical interior photograph. Negative prompt: white clay model, monochrome, grayscale, raw plaster, all-white rendering, untextured model.`
         : `You are a professional 3D architectural visualizer.
 Your task is to transform the provided 3D spatial layout preview of the [${roomForRender}] into a hyper-realistic, photorealistic interior render.
 Style: ${currentRoom?.style || selectedStyle || gatherInfo.extras || "Modern Vietnamese contemporary"}.
@@ -6708,11 +6708,12 @@ Requirements:
                 {/* 3D Camera Preview Box */}
                 <div className="relative w-full aspect-square rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex flex-col items-center justify-center text-slate-400 group shadow-inner">
                   {sidebarTab === "scene" ? (
-                    selectedCameraRoomId ? (
+                    selectedCameraRoomId || renderMode === "Floorplan to 3D Floorplan" ? (
                       <FloorPlan3DViewer
                         floorPlan={floorPlan}
                         wallThickness={wallThickness}
                         finishes={finishes}
+                        renderMode={renderMode}
                         activeCamera={
                           selectedCam && selectedCameraRoomId ? {
                             id: selectedCameraRoomId,
@@ -6725,13 +6726,15 @@ Requirements:
                         }
                         onCaptureRef={capture3DRef}
                         onChangeCamera={(cam) => {
-                          setCameras((prev) => ({
-                            ...prev,
-                            [selectedCameraRoomId!]: {
-                              ...prev[selectedCameraRoomId!],
-                              rotation: cam.rotation,
-                            },
-                          }));
+                          if (selectedCameraRoomId) {
+                            setCameras((prev) => ({
+                              ...prev,
+                              [selectedCameraRoomId]: {
+                                ...prev[selectedCameraRoomId],
+                                rotation: cam.rotation,
+                              },
+                            }));
+                          }
                         }}
                       />
                     ) : (
@@ -6795,119 +6798,125 @@ Requirements:
                   </button>
                 </div>
 
-                {selectedCam ? (
+                {sidebarTab === "scene" ? (
+                  selectedCam ? (
+                    <div className="space-y-5">
+                      {/* CONFIGURATION Header */}
+                      <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">CONFIGURATION</span>
+
+                      {/* Field of View */}
+                      <div className="space-y-2">
+                        <span className="text-xs font-bold text-slate-700 block">Field of view</span>
+                        <div className="flex items-center justify-between border border-slate-200 bg-white rounded-xl p-1 shadow-sm">
+                          <button
+                            onClick={() => {
+                              setCameras(prev => ({
+                                ...prev,
+                                [selectedCameraRoomId!]: {
+                                  ...prev[selectedCameraRoomId!],
+                                  fov: Math.max(30, (prev[selectedCameraRoomId!]?.fov || 85) - 5)
+                                }
+                              }));
+                            }}
+                            className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-slate-100 flex items-center justify-center font-bold text-slate-700 cursor-pointer transition-all"
+                          >
+                            -
+                          </button>
+                          <span className="text-xs font-bold text-slate-800">{selectedCam.fov || 85}°</span>
+                          <button
+                            onClick={() => {
+                              setCameras(prev => ({
+                                ...prev,
+                                [selectedCameraRoomId!]: {
+                                  ...prev[selectedCameraRoomId!],
+                                  fov: Math.min(120, (prev[selectedCameraRoomId!]?.fov || 85) + 5)
+                                }
+                              }));
+                            }}
+                            className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-slate-100 flex items-center justify-center font-bold text-slate-700 cursor-pointer transition-all"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Aspect Ratio */}
+                      <div className="space-y-1.5">
+                        <span className="text-xs font-bold text-slate-700 block">Aspect ratio</span>
+                        <div className="relative">
+                          <select
+                            value={selectedCam.aspectRatio}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCameras(prev => ({
+                                ...prev,
+                                [selectedCameraRoomId!]: {
+                                  ...prev[selectedCameraRoomId!],
+                                  aspectRatio: val
+                                }
+                              }));
+                            }}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-[#00b5cd]/50 cursor-pointer appearance-none pr-8"
+                          >
+                            <option value="Landscape (4:3)">Landscape (4:3)</option>
+                            <option value="Widescreen (16:9)">Widescreen (16:9)</option>
+                            <option value="Square (1:1)">Square (1:1)</option>
+                          </select>
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <ChevronDown className="w-4 h-4" />
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-xs text-slate-400 font-medium">
+                      Hãy nhấp chọn một camera trên bản vẽ để bắt đầu thiết kế góc nhìn.
+                    </div>
+                  )
+                ) : (
+                  // Renders tab
                   <div className="space-y-5">
                     {/* CONFIGURATION Header */}
-                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
-                      {sidebarTab === "scene" ? "CONFIGURATION" : "RENDER OPTIONS"}
-                    </span>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">RENDER OPTIONS</span>
 
-                    {sidebarTab === "scene" ? (
-                      <>
-                        {/* Field of View */}
-                        <div className="space-y-2">
-                          <span className="text-xs font-bold text-slate-700 block">Field of view</span>
-                          <div className="flex items-center justify-between border border-slate-200 bg-white rounded-xl p-1 shadow-sm">
-                            <button
-                              onClick={() => {
-                                setCameras(prev => ({
-                                  ...prev,
-                                  [selectedCameraRoomId!]: {
-                                    ...prev[selectedCameraRoomId!],
-                                    fov: Math.max(30, (prev[selectedCameraRoomId!]?.fov || 85) - 5)
-                                  }
-                                }));
-                              }}
-                              className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-slate-100 flex items-center justify-center font-bold text-slate-700 cursor-pointer transition-all"
-                            >
-                              -
-                            </button>
-                            <span className="text-xs font-bold text-slate-800">{selectedCam.fov || 85}°</span>
-                            <button
-                              onClick={() => {
-                                setCameras(prev => ({
-                                  ...prev,
-                                  [selectedCameraRoomId!]: {
-                                    ...prev[selectedCameraRoomId!],
-                                    fov: Math.min(120, (prev[selectedCameraRoomId!]?.fov || 85) + 5)
-                                  }
-                                }));
-                              }}
-                              className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-slate-100 flex items-center justify-center font-bold text-slate-700 cursor-pointer transition-all"
-                            >
-                              +
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Aspect Ratio */}
-                        <div className="space-y-1.5">
-                          <span className="text-xs font-bold text-slate-700 block">Aspect ratio</span>
-                          <div className="relative">
-                            <select
-                              value={selectedCam.aspectRatio}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setCameras(prev => ({
-                                  ...prev,
-                                  [selectedCameraRoomId!]: {
-                                    ...prev[selectedCameraRoomId!],
-                                    aspectRatio: val
-                                  }
-                                }));
-                              }}
-                              className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-[#00b5cd]/50 cursor-pointer appearance-none pr-8"
-                            >
-                              <option value="Landscape (4:3)">Landscape (4:3)</option>
-                              <option value="Widescreen (16:9)">Widescreen (16:9)</option>
-                              <option value="Square (1:1)">Square (1:1)</option>
-                            </select>
-                            <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                              <ChevronDown className="w-4 h-4" />
-                            </span>
-                          </div>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        {/* Render Mode */}
-                        <div className="space-y-1.5">
-                          <span className="text-xs font-bold text-slate-700 block">Chế độ render</span>
-                          <div className="relative">
-                            <select
-                              value={renderMode}
-                              onChange={(e) => setRenderMode(e.target.value as "Floorplan to 3D" | "Floorplan to 3D Floorplan")}
-                              className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-[#00b5cd]/50 cursor-pointer appearance-none pr-8"
-                            >
-                              <option value="Floorplan to 3D">Floorplan to 3D</option>
-                              <option value="Floorplan to 3D Floorplan">Floorplan to 3D Floorplan</option>
-                            </select>
-                            <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                              <ChevronDown className="w-4 h-4" />
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Render Scene Button */}
-                        <button
-                          onClick={async () => {
-                            setSelectedRoomId(selectedCameraRoomId);
-                            setTimeout(() => {
-                              handleRender3D();
-                            }, 100);
-                          }}
-                          disabled={isRendering3D}
-                          className="w-full py-3 bg-[#00b5cd] hover:bg-[#00a3b8] text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    {/* Render Mode */}
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-bold text-slate-700 block">Chế độ render</span>
+                      <div className="relative">
+                        <select
+                          value={renderMode}
+                          onChange={(e) => setRenderMode(e.target.value as "Floorplan to 3D" | "Floorplan to 3D Floorplan")}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-[#00b5cd]/50 cursor-pointer appearance-none pr-8"
                         >
-                          <Sparkles className="w-4 h-4" />
-                          {isRendering3D ? "Rendering..." : "Render scene"}
-                        </button>
-                      </>
+                          <option value="Floorplan to 3D">Floorplan to 3D</option>
+                          <option value="Floorplan to 3D Floorplan">Floorplan to 3D Floorplan</option>
+                        </select>
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                          <ChevronDown className="w-4 h-4" />
+                        </span>
+                      </div>
+                    </div>
+
+                    {renderMode === "Floorplan to 3D Floorplan" || selectedCam ? (
+                      /* Render Scene Button */
+                      <button
+                        onClick={async () => {
+                          setSelectedRoomId(selectedCameraRoomId);
+                          setTimeout(() => {
+                            handleRender3D();
+                          }, 100);
+                        }}
+                        disabled={isRendering3D}
+                        className="w-full py-3 bg-[#00b5cd] hover:bg-[#00a3b8] text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        {isRendering3D ? "Rendering..." : "Render scene"}
+                      </button>
+                    ) : (
+                      <div className="text-center py-4 px-2 border border-dashed border-slate-200 rounded-xl text-xs text-slate-400 font-medium">
+                        Vui lòng chọn một camera trên bản vẽ để thực hiện render phối cảnh phòng.
+                      </div>
                     )}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-xs text-slate-400 font-medium">
-                    Hãy nhấp chọn một camera trên bản vẽ để bắt đầu thiết kế góc nhìn.
                   </div>
                 )}
               </div>
