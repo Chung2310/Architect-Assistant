@@ -199,6 +199,46 @@ Bạn cần tôi hỗ trợ thông tin gì hôm nay?`
             <p className="text-xs font-bold text-on-surface-variant/60 tracking-widest uppercase mt-1 text-center">
               Powered by iGen Vision Engine
             </p>
+            {/* Social links */}
+            <div className="flex items-center gap-3 mt-2">
+              {/* Website */}
+              <a
+                href="https://io.igentechsolutions.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Website iGen"
+                className="w-7 h-7 flex items-center justify-center rounded-full text-on-surface-variant/50 hover:text-primary hover:bg-surface-container-low transition-all"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                </svg>
+              </a>
+              {/* Facebook */}
+              <a
+                href="https://www.facebook.com/profile.php?id=61576982896992"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Facebook iGen"
+                className="w-7 h-7 flex items-center justify-center rounded-full text-on-surface-variant/50 hover:text-[#1877f2] hover:bg-surface-container-low transition-all"
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                </svg>
+              </a>
+              {/* TikTok */}
+              <a
+                href="https://www.tiktok.com/@igen.technology.99"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="TikTok iGen"
+                className="w-7 h-7 flex items-center justify-center rounded-full text-on-surface-variant/50 hover:text-on-surface hover:bg-surface-container-low transition-all"
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                  <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.32 6.32 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V9.02a8.17 8.17 0 0 0 4.78 1.52V7.09a4.85 4.85 0 0 1-1.01-.4z"/>
+                </svg>
+              </a>
+            </div>
           </div>
         </div>
 
