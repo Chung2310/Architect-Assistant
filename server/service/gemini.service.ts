@@ -878,7 +878,6 @@ export const geminiService = {
         }
 
         if (contentParts.length === 0) continue;
-        // If only text parts, send as plain string for compatibility
         const onlyText = contentParts.every(p => p.type === "text");
         messages.push({ role, content: onlyText ? contentParts.map(p => p.text || "").join("") : contentParts });
       }
@@ -895,36 +894,6 @@ export const geminiService = {
 
       const fallbackQwenModel = process.env.OPENROUTER_FALLBACK_MODEL || "qwen/qwen3.6-flash";
 
-      // Trình thực thi OpenRouter Qwen fallback
-      const performQwenFallback = async (primaryError: any): Promise<any> => {
-        if (!openRouterKey) {
-          throw primaryError;
-        }
-        logger.warn(`[Gemini Service] Fallback: calling Qwen model (${fallbackQwenModel}) via OpenRouter API due to primary error: ${primaryError.message || primaryError}`);
-        try {
-          if (messages.length === 0) {
-            throw new Error("Không có nội dung để gửi đến OpenRouter.", { cause: primaryError });
-          }
-          const { textResult } = await callOpenRouterChat(messages, fallbackQwenModel, openRouterKey, isJsonRequested);
-          logger.info(`[Gemini Service] Fallback OpenRouter Qwen response received (${textResult.length} chars): ${textResult.slice(0, 100)}...`);
-          return {
-            candidates: [{
-              content: {
-                parts: [{ text: textResult }],
-                role: "model",
-              },
-              finishReason: "STOP",
-            }],
-            text: textResult,
-          };
-        } catch (fallbackErr: any) {
-          logger.error(`[Gemini Service] Fallback to Qwen via OpenRouter also failed: ${fallbackErr.message || fallbackErr}`);
-          throw primaryError; // Throw the original error so we know the root cause
-        }
-      };
-
-      // Đối với các yêu cầu đồng bộ ảnh (sync text requests):
-      // Sử dụng OpenRouter google/gemini-2.5-flash làm chính -> fallback sang Qwen -> fallback sang Gemini Native SDK.
       const isSyncTextRequest =
         params.promptTemplateKey === "sync_analyze_prompt" ||
         params.promptTemplateKey === "sync_suggestion_update_prompt";
@@ -932,7 +901,6 @@ export const geminiService = {
       if (isSyncTextRequest) {
         logger.info(`[Gemini Service] Sync text request detected. Running custom fallback flow.`);
         
-        // 1. Dùng OpenRouter google/gemini-2.5-flash
         if (openRouterKey) {
           try {
             logger.info(`[Gemini Service] Sync text: calling google/gemini-2.5-flash via OpenRouter...`);
@@ -948,11 +916,11 @@ export const geminiService = {
               }],
               text: textResult,
             };
-          } catch (orGeminiErr: any) {
-            logger.warn(`[Gemini Service] Sync text: google/gemini-2.5-flash via OpenRouter failed: ${orGeminiErr.message || orGeminiErr}. Falling back to Qwen...`);
+          } catch (syncErr: any) {
+            logger.warn(`[Gemini Service] Sync text: OpenRouter Gemini failed: ${syncErr.message || syncErr}. Falling back to Qwen...`);
             
-            // 2. Fallback sang OpenRouter Qwen
             try {
+              logger.info(`[Gemini Service] Sync text: calling Qwen model (${fallbackQwenModel}) via OpenRouter...`);
               const { textResult } = await callOpenRouterChat(messages, fallbackQwenModel, openRouterKey, isJsonRequested);
               logger.info(`[Gemini Service] Sync text: Qwen via OpenRouter successful.`);
               return {
@@ -965,66 +933,76 @@ export const geminiService = {
                 }],
                 text: textResult,
               };
-            } catch (orQwenErr: any) {
-              logger.warn(`[Gemini Service] Sync text: Qwen via OpenRouter failed: ${orQwenErr.message || orQwenErr}. Falling back to Gemini Native SDK...`);
+            } catch (syncQwenErr: any) {
+              logger.warn(`[Gemini Service] Sync text: Qwen via OpenRouter failed: ${syncQwenErr.message || syncQwenErr}. Falling back to Native...`);
               
-              // 3. Fallback sang Gemini Native SDK
-              if (apiKey && isValidGeminiKey(apiKey)) {
+              const hasValidNativeKey = apiKey && isValidGeminiKey(apiKey);
+              if (hasValidNativeKey) {
                 try {
                   const ai = new GoogleGenAI({ apiKey: apiKey as string });
-                  logger.info(`[Gemini Service] Sync text: calling Native Gemini SDK (${modelName})...`);
+                  logger.info(`[Gemini Service] Sync text: calling Gemini Native SDK...`);
+                  
                   const rawConfig = params.config || params.generationConfig || {};
                   const sanitizedConfig = { ...rawConfig };
-                  if (!modelName.toLowerCase().includes("thinking")) {
+                  const isThinkingModel = modelName.toLowerCase().includes("thinking");
+                  if (!isThinkingModel) {
                     delete sanitizedConfig.thinkingConfig;
                     delete sanitizedConfig.thinking_config;
                   }
                   if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
                     sanitizedConfig.systemInstruction = systemInstruction;
                   }
-                  return await ai.models.generateContent({
+                  
+                  const response = await ai.models.generateContent({
                     model: modelName,
                     contents: params.contents,
                     config: sanitizedConfig,
                   });
-                } catch (nativeErr: any) {
-                  logger.error(`[Gemini Service] Sync text: Native Gemini SDK also failed: ${nativeErr.message || nativeErr}`);
-                  throw nativeErr;
+                  return response;
+                } catch (syncNativeErr: any) {
+                  logger.error(`[Gemini Service] Sync text: Gemini Native SDK failed: ${syncNativeErr.message || syncNativeErr}`);
+                  throw new Error(`Tất cả các dịch vụ cho Sync Text đều thất bại. Lỗi Native: ${syncNativeErr.message}`, { cause: syncNativeErr });
                 }
               } else {
-                throw new Error("Tất cả các mô hình OpenRouter và Gemini Native đều thất bại hoặc thiếu API Key.", { cause: orQwenErr });
+                throw new Error(`OpenRouter Gemini và Qwen đều thất bại trong Sync Text, và không có API Key hợp lệ cho Gemini Native.`, { cause: syncQwenErr });
               }
             }
           }
         } else {
-          // Không có OpenRouter Key -> chuyển thẳng sang Gemini Native SDK
           logger.info(`[Gemini Service] Sync text: No OpenRouter key found. Trying Gemini Native SDK...`);
-          if (apiKey && isValidGeminiKey(apiKey)) {
-            const ai = new GoogleGenAI({ apiKey: apiKey as string });
-            const rawConfig = params.config || params.generationConfig || {};
-            const sanitizedConfig = { ...rawConfig };
-            if (!modelName.toLowerCase().includes("thinking")) {
-              delete sanitizedConfig.thinkingConfig;
-              delete sanitizedConfig.thinking_config;
+          const hasValidNativeKey = apiKey && isValidGeminiKey(apiKey);
+          if (hasValidNativeKey) {
+            try {
+              const ai = new GoogleGenAI({ apiKey: apiKey as string });
+              logger.info(`[Gemini Service] Sync text: Provider: Gemini Native (No OpenRouter Key). Model: ${modelName}`);
+              
+              const rawConfig = params.config || params.generationConfig || {};
+              const sanitizedConfig = { ...rawConfig };
+              const isThinkingModel = modelName.toLowerCase().includes("thinking");
+              if (!isThinkingModel) {
+                delete sanitizedConfig.thinkingConfig;
+                delete sanitizedConfig.thinking_config;
+              }
+              if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
+                sanitizedConfig.systemInstruction = systemInstruction;
+              }
+              
+              const response = await ai.models.generateContent({
+                model: modelName,
+                contents: params.contents,
+                config: sanitizedConfig,
+              });
+              return response;
+            } catch (syncNativeErr2: any) {
+              logger.error(`[Gemini Service] Sync text: Gemini Native SDK (No OpenRouter) failed: ${syncNativeErr2.message || syncNativeErr2}`);
+              throw syncNativeErr2;
             }
-            if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
-              sanitizedConfig.systemInstruction = systemInstruction;
-            }
-            return await ai.models.generateContent({
-              model: modelName,
-              contents: params.contents,
-              config: sanitizedConfig,
-            });
           } else {
             throw new Error("Không tìm thấy API Key hợp lệ cho Gemini Native hoặc OpenRouter.");
           }
         }
       }
 
-      // Quyết định provider chính:
-      // 1. Đầu tiên đi qua API của OpenRouter Gemini.
-      // 2. Sau đó dự phòng sang Qwen.
-      // 3. Cuối cùng mới dự phòng sang Gemini Native SDK (API).
       if (openRouterKey) {
         const openRouterModel = mapToOpenRouterModel(modelName);
         logger.info(`[Gemini Service] Provider: OpenRouter (Primary). Model: ${openRouterModel}`);
@@ -1048,7 +1026,6 @@ export const geminiService = {
         } catch (openRouterErr: any) {
           logger.warn(`[Gemini Service] Gemini via OpenRouter failed: ${openRouterErr.message || openRouterErr}. Falling back to Qwen...`);
           
-          // 2. Dự phòng sang OpenRouter Qwen
           try {
             const { textResult } = await callOpenRouterChat(messages, fallbackQwenModel, openRouterKey, isJsonRequested);
             logger.info(`[Gemini Service] Fallback OpenRouter Qwen response received (${textResult.length} chars)`);
@@ -1065,7 +1042,6 @@ export const geminiService = {
           } catch (qwenErr: any) {
             logger.warn(`[Gemini Service] Qwen via OpenRouter failed: ${qwenErr.message || qwenErr}. Falling back to Gemini Native SDK...`);
             
-            // 3. Dự phòng cuối cùng sang Gemini Native API
             const hasValidNativeKey = apiKey && isValidGeminiKey(apiKey);
             if (hasValidNativeKey) {
               try {
@@ -1091,10 +1067,10 @@ export const geminiService = {
                 return response;
               } catch (nativeErr: any) {
                 logger.error(`[Gemini Service] Fallback Gemini Native SDK also failed: ${nativeErr.message || nativeErr}`);
-                throw new Error(`Tất cả các dịch vụ (OpenRouter Gemini, Qwen và Gemini Native) đều thất bại. Lỗi Native: ${nativeErr.message}`);
+                throw new Error(`Tất cả các dịch vụ (OpenRouter Gemini, Qwen và Gemini Native) đều thất bại. Lỗi Native: ${nativeErr.message}`, { cause: nativeErr });
               }
             } else {
-              throw new Error(`OpenRouter Gemini và Qwen đều thất bại, và không có API Key hợp lệ cho Gemini Native.`);
+              throw new Error(`OpenRouter Gemini và Qwen đều thất bại, và không có API Key hợp lệ cho Gemini Native.`, { cause: qwenErr });
             }
           }
         }
