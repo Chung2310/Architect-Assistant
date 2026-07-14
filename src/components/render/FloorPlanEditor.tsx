@@ -1878,6 +1878,19 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
         }
       }
 
+      // Kiểm tra giới hạn kích thước (từ 2m đến 80m)
+      const invalidWidth = newInfo.landWidth !== undefined && (newInfo.landWidth < 2 || newInfo.landWidth > 80);
+      const invalidLength = newInfo.landLength !== undefined && (newInfo.landLength < 2 || newInfo.landLength > 80);
+      if (invalidWidth || invalidLength) {
+        await minDelay;
+        addMessage(
+          "assistant",
+          `Kích thước chiều rộng hoặc chiều dài bạn cung cấp không hợp lệ (${newInfo.landWidth ? `${newInfo.landWidth}m` : 'chưa rõ'} × ${newInfo.landLength ? `${newInfo.landLength}m` : 'chưa rõ'}). Kích thước đất được hỗ trợ phải nằm trong khoảng từ **2m đến 80m**. Vui lòng nhập lại kích thước phù hợp.`
+        );
+        setIsTyping(false);
+        return;
+      }
+
       setGatherInfo(newInfo);
       setCompletedSteps(getCompletedGatherSteps(newInfo));
 
