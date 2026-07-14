@@ -28,6 +28,9 @@ import { FloorPlan3DViewer } from "./FloorPlan3DViewer";
 const METER_TO_PX = 48;
 const _GRID_SIZE = 0.5;
 const PEN_CURSOR = "crosshair";
+const MIN_STAGE_WIDTH = 320;
+const MIN_STAGE_HEIGHT = 240;
+const SMALL_STAGE_TOAST_ID = "floor-plan-stage-too-small";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 export interface FurnitureItem {
@@ -1309,6 +1312,7 @@ export const FloorPlanEditor: React.FC = () => {
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0 });
   const stageContainerRef = useRef<HTMLDivElement>(null);
+  const hasWarnedSmallStageRef = useRef(false);
   const [stageSize, setStageSize] = useState({ w: 800, h: 600 });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stageRef = useRef<any>(null);
@@ -1394,11 +1398,44 @@ export const FloorPlanEditor: React.FC = () => {
   useEffect(() => {
     const el = stageContainerRef.current;
     if (!el) return;
+
+    const updateStageSize = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      const isTooSmall = w < MIN_STAGE_WIDTH || h < MIN_STAGE_HEIGHT;
+      const shouldWarn = isTooSmall && el.getClientRects().length > 0;
+
+      if (shouldWarn && !hasWarnedSmallStageRef.current) {
+        hasWarnedSmallStageRef.current = true;
+        toast.warning(
+          `Khu vực bản vẽ quá nhỏ (${w} × ${h}px). Vui lòng mở rộng cửa sổ hoặc thu gọn thanh bên.`,
+          { id: SMALL_STAGE_TOAST_ID }
+        );
+      } else if (!shouldWarn && hasWarnedSmallStageRef.current) {
+        hasWarnedSmallStageRef.current = false;
+        toast.dismiss(SMALL_STAGE_TOAST_ID);
+      }
+
+      // ResizeObserver can report 0 while a panel is hidden or its flex layout
+      // is transitioning. Keep the last valid size so Konva never creates a
+      // zero-sized layer canvas and later passes it to drawImage().
+      if (w <= 0 || h <= 0) return;
+
+      setStageSize((current) =>
+        current.w === w && current.h === h ? current : { w, h }
+      );
+    };
+
     const obs = new ResizeObserver(() => {
-      setStageSize({ w: el.clientWidth, h: el.clientHeight });
+      updateStageSize();
     });
+
+    updateStageSize();
     obs.observe(el);
-    return () => obs.disconnect();
+    return () => {
+      obs.disconnect();
+      toast.dismiss(SMALL_STAGE_TOAST_ID);
+    };
   }, []);
 
   // ── Sync cameras for rooms ─────────────────────────────────────────
@@ -1839,6 +1876,19 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
           newInfo.landWidth = Math.round(Math.sqrt(sqm / 2) * 10) / 10;
           newInfo.landLength = Math.round((sqm / newInfo.landWidth) * 10) / 10;
         }
+      }
+
+      // Kiểm tra giới hạn kích thước (từ 2m đến 80m)
+      const invalidWidth = newInfo.landWidth !== undefined && (newInfo.landWidth < 2 || newInfo.landWidth > 80);
+      const invalidLength = newInfo.landLength !== undefined && (newInfo.landLength < 2 || newInfo.landLength > 80);
+      if (invalidWidth || invalidLength) {
+        await minDelay;
+        addMessage(
+          "assistant",
+          `Kích thước chiều rộng hoặc chiều dài bạn cung cấp không hợp lệ (${newInfo.landWidth ? `${newInfo.landWidth}m` : 'chưa rõ'} × ${newInfo.landLength ? `${newInfo.landLength}m` : 'chưa rõ'}). Kích thước đất được hỗ trợ phải nằm trong khoảng từ **2m đến 80m**. Vui lòng nhập lại kích thước phù hợp.`
+        );
+        setIsTyping(false);
+        return;
       }
 
       setGatherInfo(newInfo);
@@ -5512,7 +5562,7 @@ Requirements:
 
   // ════════════════════════════════════════════════════════════════════════
   return (
-    <div className="flex h-[calc(100vh-64px)] bg-white text-slate-900 font-sans overflow-hidden">
+    <div className="flex h-full w-full bg-white text-slate-900 font-sans overflow-hidden">
       {/* ── TOP BAR ─────────────────────────────────────────────────────── */}
       <div className="absolute top-0 inset-x-0 h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4 z-30">
         <div className="flex items-center gap-3">
@@ -5796,8 +5846,8 @@ Requirements:
             </div>
 
             {/* Input */}
-            <div className="p-3 border-t border-slate-200 bg-white shrink-0">
-              <div className="flex items-center gap-2 bg-white border border-slate-600 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#d4a853]/40 focus-within:border-[#d4a853] transition-all shadow-[0_1px_3px_rgba(15,23,42,0.12)]">
+            <div className="px-4 pb-12 pt-2 bg-transparent shrink-0">
+              <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-3.5 py-2.5 focus-within:ring-2 focus-within:ring-[#00b5cd]/20 focus-within:border-[#00b5cd] transition-all shadow-[0_1px_3px_rgba(15,23,42,0.08)]">
                 <input
                   ref={inputRef}
                   value={inputValue}
@@ -5816,7 +5866,7 @@ Requirements:
                 <button
                   onClick={handleSend}
                   disabled={!inputValue.trim() || isGenerating || isTyping}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#00b5cd] hover:bg-[#009cb0] active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-white shadow-md shadow-[#00b5cd]/30 shrink-0"
+                  className="w-8 h-8 flex items-center justify-center rounded-xl bg-[#00b5cd] hover:bg-[#009cb0] active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-white shadow-md shadow-[#00b5cd]/30 shrink-0"
                 >
                   <Send className="w-3.5 h-3.5" />
                 </button>

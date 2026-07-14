@@ -233,7 +233,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentScreen: _curren
 
       <div className="flex flex-1 pt-16 overflow-hidden max-w-full">
         {/* Main Content */}
-        <main className="flex-1 overflow-auto">
+        <main className={`flex-1 ${_currentScreen === '/tools/floor-plan' ? 'overflow-hidden' : 'overflow-auto'}`}>
           {children}
         </main>
       </div>
