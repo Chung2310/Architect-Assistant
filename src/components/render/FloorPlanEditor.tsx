@@ -1145,10 +1145,16 @@ export const FloorPlanEditor: React.FC = () => {
   // ── Chat state ──────────────────────────────────────────────────────────
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
+      id: "welcome_user",
+      role: "user",
+      content: "Tạo mặt bằng mới",
+      timestamp: new Date(Date.now() - 1000),
+    },
+    {
       id: "welcome",
       role: "assistant",
       content:
-        "Xin chào! Tôi sẽ giúp bạn tạo bản vẽ mặt bằng với AI.\nHãy bắt đầu — **Công trình của bạn có bao nhiêu tầng?**",
+        "Tôi rất vui được giúp bạn tạo bản vẽ! Hãy bắt đầu với một số thông tin cơ bản. Ngôi nhà này nên có bao nhiêu tầng?",
       timestamp: new Date(),
     },
   ]);
@@ -1181,6 +1187,7 @@ export const FloorPlanEditor: React.FC = () => {
   });
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [activeSidebarTab, setActiveSidebarTab] = useState<"chat" | "history">("chat");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 60, y: 60 });
@@ -1243,9 +1250,15 @@ export const FloorPlanEditor: React.FC = () => {
       completedSteps: [],
       messages: [
         {
+          id: "msg_user_" + Date.now(),
+          role: "user" as const,
+          content: "Tạo mặt bằng mới",
+          timestamp: new Date(Date.now() - 1000),
+        },
+        {
           id: "msg_" + Date.now(),
           role: "assistant" as const,
-          content: "Xin chào! Tôi sẽ giúp bạn tạo bản vẽ mặt bằng với AI.\nHãy bắt đầu — **Công trình của bạn có bao nhiêu tầng?**",
+          content: "Tôi rất vui được giúp bạn tạo bản vẽ! Hãy bắt đầu với một số thông tin cơ bản. Ngôi nhà này nên có bao nhiêu tầng?",
           timestamp: new Date(),
         }
       ],
@@ -1533,9 +1546,15 @@ export const FloorPlanEditor: React.FC = () => {
         setCompletedSteps(new Set());
         setMessages([
           {
+            id: "msg_init_user_" + newId,
+            role: "user" as const,
+            content: "Tạo mặt bằng mới",
+            timestamp: new Date(Date.now() - 1000),
+          },
+          {
             id: "msg_init_" + newId,
             role: "assistant" as const,
-            content: "Xin chào! Tôi sẽ giúp bạn tạo bản vẽ mặt bằng với AI.\nHãy bắt đầu — **Công trình của bạn có bao nhiêu tầng?**",
+            content: "Tôi rất vui được giúp bạn tạo bản vẽ! Hãy bắt đầu với một số thông tin cơ bản. Ngôi nhà này nên có bao nhiêu tầng?",
             timestamp: new Date(),
           }
         ]);
@@ -1556,8 +1575,8 @@ export const FloorPlanEditor: React.FC = () => {
       projectName === "Untitled Project" &&
       floorPlans.length === 0 &&
       Object.keys(gatherInfo).length === 0 &&
-      messages.length === 1 &&
-      messages[0]?.content.includes("Xin chào! Tôi sẽ giúp bạn tạo bản vẽ mặt bằng");
+      messages.length === 2 &&
+      messages[1]?.content.includes("Tôi rất vui được giúp bạn tạo bản vẽ");
       
     if (isEmpty) return; // Do not auto-save a blank, untouched project
     
@@ -1756,11 +1775,11 @@ export const FloorPlanEditor: React.FC = () => {
   }, [activeJobId, addMessage]);
 
   // ── Gemini 2.5 Flash Conversational Handler ────────────────────────
-  const handleSend = async () => {
-    const text = inputValue.trim();
+  const handleSend = async (overrideText?: string) => {
+    const text = (overrideText ?? inputValue).trim();
     if (!text || isGenerating || isTyping) return;
 
-    setInputValue("");
+    if (!overrideText) setInputValue("");
     addMessage("user", text);
     setIsTyping(true);
 
@@ -1937,7 +1956,7 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
           systemInstruction,
           responseMimeType: "application/json",
         },
-      });
+      }, 3, 1000, 15000);
 
       const rawText =
         (typeof response.text === "function" ? response.text() : response.text) || "{}";
@@ -2288,7 +2307,7 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
           model: promptModel,
           contents: [{ role: "user", parts: [{ text: aiPrompt }] }],
           config: { responseMimeType: "application/json" },
-        });
+        }, 3, 1000, 30000);
 
         const textResult =
           (typeof response.text === "function"
@@ -5829,9 +5848,14 @@ Requirements:
       </div>
 
       {/* ── CHAT SIDEBAR ─────────────────────────────────────────────────── */}
-      <div className="w-[380px] h-full flex-shrink-0 flex flex-col bg-slate-50 border-r border-slate-200 pt-12 z-20">
+      <motion.div
+        animate={{ width: isSidebarCollapsed ? 0 : 380 }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        className="h-full flex-shrink-0 flex flex-col bg-slate-50 border-r border-slate-200 pt-12 z-20 overflow-hidden"
+        style={{ minWidth: 0 }}
+      >
         {/* Sidebar Tab Switcher */}
-        <div className="flex border-b border-slate-200 bg-white shrink-0">
+        <div className="flex border-b border-slate-200 bg-white shrink-0" style={{ minWidth: 380 }}>
           <button
             onClick={() => setActiveSidebarTab("chat")}
             className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-colors border-b-2 ${
@@ -5976,6 +6000,34 @@ Requirements:
               </div>
             </div>
 
+            {/* Floor suggestions */}
+            {currentStep === "floors" && !isTyping && !isGenerating && (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2 }}
+                className="px-4 pb-2 shrink-0"
+              >
+                <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(15,23,42,0.07)]">
+                  <div className="px-3 pt-2.5 pb-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Gợi ý</span>
+                  </div>
+                  {[1, 2, 3, 4].map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => handleSend(`${n} tầng`)}
+                      className="w-full flex items-center justify-between px-3 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 border-t border-slate-100 transition-colors cursor-pointer"
+                    >
+                      <span>{n} tầng</span>
+                      <svg className="w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
             {/* Input */}
             <div className="px-4 pb-12 pt-2 bg-transparent shrink-0">
               <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-3.5 py-2.5 focus-within:ring-2 focus-within:ring-[#00b5cd]/20 focus-within:border-[#00b5cd] transition-all shadow-[0_1px_3px_rgba(15,23,42,0.08)]">
@@ -5995,7 +6047,7 @@ Requirements:
                   className="flex-1 bg-transparent text-slate-700 text-xs placeholder-slate-400 outline-none"
                 />
                 <button
-                  onClick={handleSend}
+                  onClick={() => handleSend()}
                   disabled={!inputValue.trim() || isGenerating || isTyping}
                   className="w-8 h-8 flex items-center justify-center rounded-xl bg-[#00b5cd] hover:bg-[#009cb0] active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-white shadow-md shadow-[#00b5cd]/30 shrink-0"
                 >
@@ -6005,7 +6057,7 @@ Requirements:
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col bg-slate-50 overflow-hidden">
+          <div className="flex-1 flex flex-col bg-slate-50 overflow-hidden" style={{ minWidth: 380 }}>
             {/* History List header */}
             <div className="p-3 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Danh sách bản vẽ</span>
@@ -6147,7 +6199,19 @@ Requirements:
             </div>
           </div>
         )}
-      </div>
+      </motion.div>
+
+      {/* ── SIDEBAR TOGGLE BUTTON ─────────────────────────────────────────── */}
+      <button
+        onClick={() => setIsSidebarCollapsed(c => !c)}
+        title={isSidebarCollapsed ? "Mở hộp chat" : "Thu hộp chat"}
+        className="absolute top-1/2 -translate-y-1/2 z-30 w-5 h-14 bg-white border border-l-0 border-slate-200 rounded-r-lg flex items-center justify-center shadow-md hover:bg-slate-50 transition-all cursor-pointer"
+        style={{ left: isSidebarCollapsed ? 0 : 380 }}
+      >
+        <motion.div animate={{ rotate: isSidebarCollapsed ? 0 : 180 }} transition={{ duration: 0.2 }}>
+          <ChevronLeft className="w-3 h-3 text-slate-500" />
+        </motion.div>
+      </button>
 
       {/* ── CANVAS AREA ──────────────────────────────────────────────────── */}
       <div className="flex-1 min-w-0 flex flex-col pt-12 relative overflow-hidden">
@@ -6574,7 +6638,7 @@ Requirements:
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
                           <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M13.5 12H3"/>
                         </svg>
-                        <span>Door</span>
+                        <span>Cửa đi</span>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
                     </button>
@@ -6592,7 +6656,7 @@ Requirements:
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
                           <path d="M3 21h18M3 21v-4h4v-4h4v-4h4v-4h4V3" />
                         </svg>
-                        <span>Stairs</span>
+                        <span>Cầu thang</span>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
                     </button>
@@ -6613,7 +6677,7 @@ Requirements:
                           <line x1="15" y1="3" x2="15" y2="21" stroke="currentColor" strokeWidth="2"/>
                           <line x1="3" y1="12" x2="21" y2="12" stroke="currentColor" strokeWidth="2"/>
                         </svg>
-                        <span>Window</span>
+                        <span>Cửa sổ</span>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
                     </button>
@@ -6631,7 +6695,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            Garage Door
+                            Cửa cuốn garage
                           </button>
                           <button
                             onClick={() => {
@@ -6640,7 +6704,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            Hinged Door
+                            Cửa bản lề
                           </button>
                           <button
                             onClick={() => {
@@ -6649,7 +6713,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            Sliding Door
+                            Cửa lùa
                           </button>
                         </>
                       )}
@@ -6663,7 +6727,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            L-shaped staircase (landing)
+                            Cầu thang chữ L (chiếu nghỉ)
                           </button>
                           <button
                             onClick={() => {
@@ -6672,7 +6736,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            L-shaped staircase (winder)
+                            Cầu thang chữ L (rẽ quạt)
                           </button>
                           <button
                             onClick={() => {
@@ -6681,7 +6745,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            Straight staircase
+                            Cầu thang thẳng
                           </button>
                           <button
                             onClick={() => {
@@ -6690,7 +6754,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            U-shaped staircase
+                            Cầu thang chữ U
                           </button>
                         </>
                       )}
@@ -6704,7 +6768,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            Blinds Window
+                            Cửa sổ chớp
                           </button>
                           <button
                             onClick={() => {
@@ -6713,7 +6777,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            Hinged Window
+                            Cửa sổ bản lề
                           </button>
                           <button
                             onClick={() => {
@@ -6722,7 +6786,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            Sliding Window
+                            Cửa sổ lùa
                           </button>
                         </>
                       )}
@@ -7245,7 +7309,7 @@ Requirements:
 
                     {/* Finish Selection (triggers popover) */}
                     <div className="space-y-3">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Design References</span>
+                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Vật liệu & Phong cách</span>
                       <button
                         onClick={() => {
                           setShowFinishPopup(true);
@@ -7256,13 +7320,13 @@ Requirements:
                           <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
                             <Settings2 className="w-3.5 h-3.5" />
                           </div>
-                          <span>Finish</span>
+                          <span>Vật liệu / Màu sắc</span>
                         </div>
                         <div className="flex items-center gap-2">
                           {(() => {
                             const isColor = !!furniture.color;
                             const val = furniture.color || furniture.material || "";
-                            if (!val) return <span className="text-slate-400 font-medium">Default</span>;
+                            if (!val) return <span className="text-slate-400 font-medium">Mặc định</span>;
 
                             if (isColor) {
                               const matchedCol = ALL_COLOURS.find((c) => c.value === val);
@@ -7491,13 +7555,13 @@ Requirements:
                   {/* Design References */}
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Design References</span>
+                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Vật liệu & Phong cách</span>
                       <button
                         onClick={() => {
                           if (floorPlan) {
                             const updatedRooms = floorPlan.rooms.map((r) => {
                               if (r.id === selectedRoom.id) {
-                                return { ...r, style: undefined, finishes: undefined };
+                                  return { ...r, style: undefined, finishes: undefined };
                               }
                               return r;
                             });
@@ -7511,7 +7575,7 @@ Requirements:
                         }}
                         className="text-[10px] text-slate-400 hover:text-slate-600 font-bold transition-colors cursor-pointer"
                       >
-                        Reset all
+                        Làm mới
                       </button>
                     </div>
 
@@ -7524,7 +7588,7 @@ Requirements:
                     >
                       <div className="flex items-center gap-2.5">
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><circle cx="12" cy="12" r="10"/><path d="M12 2a7 7 0 1 0 10 10"/></svg>
-                        <span>Style</span>
+                        <span>Phong cách</span>
                       </div>
                       {selectedRoom.style ? (
                         <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1.5 pr-3 py-1 text-slate-700">
@@ -7551,7 +7615,7 @@ Requirements:
                     >
                       <div className="flex items-center gap-2.5">
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
-                        <span>Flooring</span>
+                        <span>Sàn</span>
                       </div>
                       {selectedRoom.finishes?.flooring ? (() => {
                         const matched = ROOM_FLOORINGS.find(f => f.value === selectedRoom.finishes?.flooring);
@@ -7581,7 +7645,7 @@ Requirements:
                     >
                       <div className="flex items-center gap-2.5">
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M12 6v6h6"/></svg>
-                        <span>Walls</span>
+                        <span>Tường</span>
                       </div>
                       {selectedRoom.finishes?.walls ? (() => {
                         const matched = ROOM_WALLS.find(w => w.value === selectedRoom.finishes?.walls);
@@ -7611,7 +7675,7 @@ Requirements:
                     >
                       <div className="flex items-center gap-2.5">
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><path d="M3 21h18M3 21v-4h4v-4h4v-4h4v-4h4V3"/></svg>
-                        <span>Ceiling</span>
+                        <span>Trần</span>
                       </div>
                       {selectedRoom.finishes?.ceiling ? (() => {
                         const matched = ROOM_CEILINGS.find(c => c.value === selectedRoom.finishes?.ceiling);
@@ -7641,7 +7705,7 @@ Requirements:
                     >
                       <div className="flex items-center gap-2.5">
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5 M13.5 12H3"/></svg>
-                        <span>Doors</span>
+                        <span>Cửa đi</span>
                       </div>
                       {selectedRoom.finishes?.doors ? (() => {
                         const matched = ROOM_DOORS.find(d => d.value === selectedRoom.finishes?.doors);
@@ -7649,7 +7713,7 @@ Requirements:
                           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1.5 pr-3 py-1 text-slate-700">
                             <div className="w-4 h-4 rounded-full border border-slate-100 overflow-hidden bg-slate-100">
                               {matched?.image ? (
-                                <img src={matched.image} className="w-full h-full object-cover" />
+                                  <img src={matched.image} className="w-full h-full object-cover" />
                               ) : (
                                 <div className="w-full h-full" style={{ backgroundColor: matched?.color || "#ffffff" }} />
                               )}
@@ -7671,7 +7735,7 @@ Requirements:
                     >
                       <div className="flex items-center gap-2.5">
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
-                        <span>Windows</span>
+                        <span>Cửa sổ</span>
                       </div>
                       {selectedRoom.finishes?.windows ? (() => {
                         const matched = ROOM_WINDOWS.find(w => w.value === selectedRoom.finishes?.windows);
@@ -7766,7 +7830,7 @@ Requirements:
                     {/* DESIGN REFERENCES */}
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Design References</span>
+                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Vật liệu & Phong cách</span>
                         <button
                           onClick={() => {
                             const defaultFinishes = {
@@ -7802,7 +7866,7 @@ Requirements:
                           }}
                           className="text-[10px] text-[#00b5cd] hover:underline font-semibold cursor-pointer"
                         >
-                          Reset all
+                          Làm mới
                         </button>
                       </div>
 
@@ -7813,7 +7877,7 @@ Requirements:
                       >
                         <div className="flex items-center gap-2.5">
                           <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><circle cx="12" cy="12" r="10"/><path d="M12 2a7 7 0 1 0 10 10"/></svg>
-                          <span>Style</span>
+                          <span>Phong cách</span>
                         </div>
                         {selectedStyle ? (
                           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1.5 pr-3 py-1 text-slate-700">
@@ -7838,7 +7902,7 @@ Requirements:
                       >
                         <div className="flex items-center gap-2.5">
                           <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
-                          <span>Flooring</span>
+                          <span>Sàn</span>
                         </div>
                         {finishes.flooring.value ? (() => {
                           const matched = ROOM_FLOORINGS.find(f => f.value === finishes.flooring.value);
@@ -7866,7 +7930,7 @@ Requirements:
                       >
                         <div className="flex items-center gap-2.5">
                           <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M12 6v6h6"/></svg>
-                          <span>Walls</span>
+                          <span>Tường</span>
                         </div>
                         {finishes.walls.value ? (() => {
                           const matched = ROOM_WALLS.find(w => w.value === finishes.walls.value);
@@ -7894,7 +7958,7 @@ Requirements:
                       >
                         <div className="flex items-center gap-2.5">
                           <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><path d="M3 21h18M3 21v-4h4v-4h4v-4h4v-4h4V3"/></svg>
-                          <span>Ceiling</span>
+                          <span>Trần</span>
                         </div>
                         {finishes.ceiling.value ? (() => {
                           const matched = ROOM_CEILINGS.find(c => c.value === finishes.ceiling.value);
@@ -7922,7 +7986,7 @@ Requirements:
                       >
                         <div className="flex items-center gap-2.5">
                           <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5 M13.5 12H3"/></svg>
-                          <span>Doors</span>
+                          <span>Cửa đi</span>
                         </div>
                         {finishes.doors.value ? (() => {
                           const matched = ROOM_DOORS.find(d => d.value === finishes.doors.value);
@@ -7950,7 +8014,7 @@ Requirements:
                       >
                         <div className="flex items-center gap-2.5">
                           <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
-                          <span>Windows</span>
+                          <span>Cửa sổ</span>
                         </div>
                         {finishes.windows.value ? (() => {
                           const matched = ROOM_WINDOWS.find(w => w.value === finishes.windows.value);
