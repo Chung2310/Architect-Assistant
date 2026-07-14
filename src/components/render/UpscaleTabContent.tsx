@@ -34,22 +34,16 @@ export const UpscaleTabContent: React.FC = () => {
   const [upscaledImage, setUpscaledImage] = useState<string | null>(null);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isUpscaling) {
-      setTimeout(() => setUpscaleProgress(0), 0);
-      interval = setInterval(() => {
-        setUpscaleProgress((prev) => {
-          if (prev < 90) {
-            return prev + Math.random() * 5;
-          } else if (prev < 99) {
-            return prev + Math.random() * 0.5;
-          }
-          return prev;
-        });
-      }, 500);
-    } else {
-      setTimeout(() => setUpscaleProgress(100), 0);
-    }
+    if (!isUpscaling) return;
+
+    const interval = setInterval(() => {
+      setUpscaleProgress((prev) => {
+        if (prev < 90) return Math.min(90, prev + 2);
+        if (prev < 99) return Math.min(99, prev + 0.25);
+        return prev;
+      });
+    }, 500);
+
     return () => clearInterval(interval);
   }, [isUpscaling]);
 
@@ -220,6 +214,7 @@ export const UpscaleTabContent: React.FC = () => {
       return;
     }
 
+    setUpscaleProgress(0);
     setIsUpscaling(true);
     setUpscaledImage(null);
 

@@ -473,6 +473,7 @@ const EditTabContent: React.FC = () => {
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
   const [promptStatus, setPromptStatus] = useState("");
   const [smoothPromptProgress, setSmoothPromptProgress] = useState(0);
+  const smoothPromptProgressRef = useRef(0);
   const [isRendering, setIsRendering] = useState(false);
   const [smoothRenderProgress, setSmoothRenderProgress] = useState(0);
   const [editHistory, setEditHistory] = useState<
@@ -593,6 +594,7 @@ const EditTabContent: React.FC = () => {
 
   const handleGeneratePrompt = async () => {
     setIsGeneratingPrompt(true);
+    smoothPromptProgressRef.current = 0;
     setSmoothPromptProgress(0);
     setPromptStatus("Khởi tạo...");
     const startTime = Date.now();
@@ -602,6 +604,7 @@ const EditTabContent: React.FC = () => {
     const progressInterval = setInterval(() => {
       const elapsed = Date.now() - startTime;
       const progress = Math.min(90, (elapsed / expectedDuration) * 90);
+      smoothPromptProgressRef.current = progress;
       setSmoothPromptProgress(progress);
     }, 100);
 
@@ -759,7 +762,7 @@ ${cropInfo}
       success = true;
 
       // Animate progress to 100% smoothly
-      let currentProgress = smoothPromptProgress;
+      let currentProgress = smoothPromptProgressRef.current;
       const targetProgress = 100;
       const duration = 600;
       const steps = 30;
@@ -770,6 +773,7 @@ ${cropInfo}
       const animInterval = setInterval(() => {
         step++;
         if (step >= steps) {
+          smoothPromptProgressRef.current = 100;
           setSmoothPromptProgress(100);
           clearInterval(animInterval);
           setPromptStatus("Hoàn tất!");
@@ -777,10 +781,12 @@ ${cropInfo}
           setTimeout(() => {
             setIsGeneratingPrompt(false);
             setPromptStatus("");
+            smoothPromptProgressRef.current = 0;
             setSmoothPromptProgress(0);
           }, 1000);
         } else {
           currentProgress += increment;
+          smoothPromptProgressRef.current = currentProgress;
           setSmoothPromptProgress(Math.floor(currentProgress));
         }
       }, stepTime);
@@ -796,6 +802,7 @@ ${cropInfo}
       if (!success) {
         setIsGeneratingPrompt(false);
         setPromptStatus("");
+        smoothPromptProgressRef.current = 0;
         setSmoothPromptProgress(0);
       }
     }

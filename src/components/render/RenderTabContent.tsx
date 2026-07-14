@@ -27,6 +27,9 @@ interface RenderJob {
   };
 }
 
+const getRenderJobId = (job: RenderJob | undefined | null) =>
+  job?._id || job?.id || "";
+
 const MODELS = [
   {
     id: "nano-banana-2",
@@ -199,12 +202,14 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
         renderJobs.forEach((job) => {
           if (job.status === "pending" || job.status === "processing") {
             const target = job.progress || 10;
-            const current = prev[job.id] || 0;
+            const jobId = getRenderJobId(job);
+            if (!jobId) return;
+            const current = prev[jobId] || 0;
             if (current < target) {
-              next[job.id] = current + 1;
+              next[jobId] = Math.min(target, current + 1);
               changed = true;
             } else if (current < 95 && current >= target) {
-              next[job.id] = current + 0.1;
+              next[jobId] = Math.min(95, current + 0.1);
               changed = true;
             }
           }
@@ -671,7 +676,16 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
 
       const jobRes = await apiClient.post<ApiResponse<RenderJob>>("/api/v1/render-jobs", jobData);
       clearInterval(progressInterval);
-      setSmoothRenderProgress(100);
+
+      // Finish from the current value so the indicator never jumps straight to 100%.
+      const completionStart = Math.min(95, Math.max(15, progress));
+      const completionSteps = 20;
+      for (let step = 1; step <= completionSteps; step++) {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        setSmoothRenderProgress(
+          completionStart + ((100 - completionStart) * step) / completionSteps,
+        );
+      }
 
       if (!jobRes.success || !jobRes.data) {
         throw new Error("Không thể khởi tạo render job trên server.");
@@ -705,6 +719,7 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
 
     if (!(await checkUserCredits())) return;
     setIsUploading(true);
+    setSmoothUploadProgress(1);
     setUploadProgress(1);
     let progressVal = 1;
     const progressInterval = setInterval(() => {
@@ -819,6 +834,7 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
 
     if (!(await checkUserCredits())) return;
     setIsUploadingRef(true);
+    setSmoothUploadProgressRef(1);
     setUploadProgressRef(1);
     let progressVal = 1;
     const progressInterval = setInterval(() => {
@@ -1922,13 +1938,13 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                                 r="40"
                                 fill="transparent"
                                 strokeDasharray={`${2 * Math.PI * 40}`}
-                                strokeDashoffset={`${2 * Math.PI * 40 * (1 - (smoothProgress[selectedItem.job?.id] || selectedItem.job?.progress || 10) / 100)}`}
+                                strokeDashoffset={`${2 * Math.PI * 40 * (1 - (smoothProgress[getRenderJobId(selectedItem.job)] || selectedItem.job?.progress || 10) / 100)}`}
                               ></circle>
                             </svg>
                             <div className="absolute inset-0 flex items-center justify-center">
                               <span className="text-sm font-bold">
                                 {Math.floor(
-                                  smoothProgress[selectedItem.job?.id] ||
+                                  smoothProgress[getRenderJobId(selectedItem.job)] ||
                                   selectedItem.job?.progress ||
                                   10,
                                 )}
@@ -2072,7 +2088,7 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                               <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 backdrop-blur-[1px]">
                                 <span className="text-white text-xs font-bold mb-1">
                                   {Math.floor(
-                                    smoothProgress[item.job?.id] ||
+                                    smoothProgress[getRenderJobId(item.job)] ||
                                     item.job?.progress ||
                                     10,
                                   )}
@@ -2082,7 +2098,7 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                                   <div
                                     className="h-full bg-primary transition-all duration-500 ease-out"
                                     style={{
-                                      width: `${smoothProgress[item.job?.id] || item.job?.progress || 10}%`,
+                                      width: `${smoothProgress[getRenderJobId(item.job)] || item.job?.progress || 10}%`,
                                     }}
                                   ></div>
                                 </div>
