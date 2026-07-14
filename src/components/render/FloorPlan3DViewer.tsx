@@ -1683,7 +1683,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     
@@ -1707,8 +1707,8 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     const sunLight = new THREE.DirectionalLight(0xfffaf0, 0.8);
     sunLight.position.set(15, 25, 10);
     sunLight.castShadow = true;
-    sunLight.shadow.mapSize.width = 2048;
-    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.mapSize.width = 1024;
+    sunLight.shadow.mapSize.height = 1024;
     sunLight.shadow.bias = -0.0005;
     scene.add(sunLight);
 
@@ -1736,13 +1736,20 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     // Initial update of the reflection cubemap
     cubeCamera.update(renderer, scene);
 
+    let needsRender = true;
+    const requestRender = () => {
+      needsRender = true;
+    };
+    controls.addEventListener("change", requestRender);
+
     // 5. Animation Loop
     const animate = () => {
       animFrameIdRef.current = requestAnimationFrame(animate);
-      if (controls.enabled) {
-        controls.update();
+      const controlsUpdated = controls.update();
+      if (controlsUpdated || needsRender) {
+        renderer.render(scene, camera);
+        needsRender = false;
       }
-      renderer.render(scene, camera);
     };
     animate();
 
