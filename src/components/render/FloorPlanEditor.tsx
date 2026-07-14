@@ -115,6 +115,100 @@ const CHECKLIST_STEPS: { key: GatherStep; label: string }[] = [
   { key: "extras", label: "Yêu cầu bổ sung" },
 ];
 
+const GATHER_STEP_ORDER: Exclude<GatherStep, "done">[] = [
+  "floors",
+  "area",
+  "shape",
+  "rooms",
+  "extras",
+];
+
+function hasGatherStepValue(info: GatherInfo, step: Exclude<GatherStep, "done">): boolean {
+  switch (step) {
+    case "floors":
+      return Number.isFinite(info.floors) && (info.floors ?? 0) > 0;
+    case "area":
+      return Boolean(info.area?.trim()) || Boolean(info.landWidth && info.landLength);
+    case "shape":
+      return Boolean(info.shape?.trim());
+    case "rooms":
+      return Boolean(info.rooms?.trim());
+    case "extras":
+      // "Không có" vẫn là một câu trả lời hợp lệ, không được hỏi lại.
+      return typeof info.extras === "string" && info.extras.trim().length > 0;
+  }
+}
+
+function getNextGatherStep(info: GatherInfo): GatherStep {
+  return GATHER_STEP_ORDER.find((step) => !hasGatherStepValue(info, step)) ?? "done";
+}
+
+function getCompletedGatherSteps(info: GatherInfo): Set<GatherStep> {
+  return new Set(GATHER_STEP_ORDER.filter((step) => hasGatherStepValue(info, step)));
+}
+
+function getGatherStepPrompt(step: GatherStep, info: GatherInfo, needsClarification = false): string {
+  const prefix = needsClarification ? "Mình chưa nhận ra thông tin này. " : "";
+
+  switch (step) {
+    case "floors":
+      return `${prefix}Công trình của bạn có **bao nhiêu tầng**? Ví dụ: 1 tầng, 2 tầng.`;
+    case "area":
+      return `${prefix}Tiếp theo, **diện tích hoặc kích thước mặt bằng** là bao nhiêu? Ví dụ: 100m² hoặc 5m × 20m.`;
+    case "shape":
+      return "__SHAPE_PICKER__";
+    case "rooms":
+      return "__ROOM_PICKER__";
+    case "extras":
+      return `${prefix}Cuối cùng, bạn có **yêu cầu bổ sung** nào không (phong cách, sân vườn, gara, hướng cửa...)? Nếu không, hãy trả lời “Không”.`;
+    case "done":
+      return `Đã đủ thông tin cho phương án ${info.floors ?? 1} tầng. Mình bắt đầu tạo mặt bằng nhé!`;
+  }
+}
+
+function mergeGatheredInput(info: GatherInfo, extracted: Record<string, unknown>, text: string, expectedStep: GatherStep): GatherInfo {
+  const next: GatherInfo = { ...info };
+  const floors = Number(extracted.floors);
+  const landWidth = Number(extracted.landWidth);
+  const landLength = Number(extracted.landLength);
+
+  if (Number.isInteger(floors) && floors > 0 && floors <= 100) next.floors = floors;
+  if (extracted.area != null && String(extracted.area).trim()) next.area = String(extracted.area).trim();
+  if (Number.isFinite(landWidth) && landWidth > 0) next.landWidth = landWidth;
+  if (Number.isFinite(landLength) && landLength > 0) next.landLength = landLength;
+  if (extracted.shape != null && String(extracted.shape).trim()) next.shape = String(extracted.shape).trim();
+  if (extracted.rooms != null && String(extracted.rooms).trim()) next.rooms = String(extracted.rooms).trim();
+  if (extracted.extras != null && String(extracted.extras).trim()) next.extras = String(extracted.extras).trim();
+
+  // Các câu trả lời ngắn, đúng bước vẫn được hiểu ngay cả khi model bỏ sót.
+  if (expectedStep === "floors" && !next.floors) {
+    const match = text.match(/^(?:nhà\s*)?(\d{1,2})\s*(?:tầng)?[.!]?$/i);
+    if (match) next.floors = Number(match[1]);
+  }
+
+  if (expectedStep === "area" && !hasGatherStepValue(next, "area")) {
+    const dimensions = text.match(/(\d+(?:[.,]\d+)?)\s*(?:m)?\s*[x×*]\s*(\d+(?:[.,]\d+)?)\s*(?:m)?/i);
+    const squareMetres = text.match(/(\d+(?:[.,]\d+)?)\s*(?:m\s*[²2]|mét\s*vuông)/i);
+    if (dimensions) {
+      next.landWidth = Number(dimensions[1].replace(",", "."));
+      next.landLength = Number(dimensions[2].replace(",", "."));
+      next.area = `${next.landWidth}m × ${next.landLength}m`;
+    } else if (squareMetres) {
+      next.area = `${Number(squareMetres[1].replace(",", "."))}m²`;
+    }
+  }
+
+  if (expectedStep === "rooms" && !hasGatherStepValue(next, "rooms") && text.trim().length >= 3) {
+    next.rooms = text.trim();
+  }
+
+  if (expectedStep === "extras" && !hasGatherStepValue(next, "extras")) {
+    next.extras = /^(không|không có|ko|k|no)[.!]?$/i.test(text.trim()) ? "Không có" : text.trim();
+  }
+
+  return next;
+}
+
 // ── Helper: parse user text for numbers ──────────────────────────────────
 function _extractDimensions(text: string): { w?: number; l?: number } {
   const matched = text.match(/(\d+(?:\.\d+)?)\s*[xX×*]\s*(\d+(?:\.\d+)?)/);
@@ -1083,13 +1177,16 @@ export const FloorPlanEditor: React.FC = () => {
   const [activeSidebarTab, setActiveSidebarTab] = useState<"chat" | "history">("chat");
 
   const handleLoadProject = useCallback((proj: any) => {
+    const loadedGatherInfo: GatherInfo = proj.gatherInfo || {};
     setCurrentProjectId(proj.id);
     setProjectName(proj.name);
     setFloorPlans(proj.floorPlans || []);
     setActiveFloorIndex(proj.activeFloorIndex || 0);
-    setGatherInfo(proj.gatherInfo || {});
-    setCurrentStep(proj.currentStep || "floors");
-    setCompletedSteps(new Set(proj.completedSteps || []));
+    setGatherInfo(loadedGatherInfo);
+    // Không tin vào bước đã lưu vì dữ liệu dự án có thể đã được cập nhật ở nơi khác.
+    // Luôn suy ra bước tiếp theo từ chính dữ liệu hiện có để không hỏi trùng.
+    setCurrentStep(getNextGatherStep(loadedGatherInfo));
+    setCompletedSteps(getCompletedGatherSteps(loadedGatherInfo));
     setMessages(proj.messages || []);
     
     if (proj.floorPlans && proj.floorPlans.length > 0) {
@@ -1608,8 +1705,8 @@ export const FloorPlanEditor: React.FC = () => {
     addMessage("user", text);
     setIsTyping(true);
 
-    // Enforce a minimum 3-second "thinking" delay before showing AI reply
-    const minDelay = new Promise<void>((resolve) => setTimeout(resolve, 3000));
+    // Giữ phản hồi tự nhiên nhưng không bắt người dùng chờ cố định quá lâu.
+    const minDelay = new Promise<void>((resolve) => setTimeout(resolve, 500));
 
     try {
       const ai = await getAIClient("gemini-2.5-flash");
@@ -1638,6 +1735,9 @@ Quy tắc bắt buộc:
 1. BẮT BUỘC: Bạn chỉ được trả lời bằng tiếng Việt chuẩn 100%, tuyệt đối không được sử dụng tiếng Trung (ví dụ các từ như 宽, 长, v.v.) hay bất kỳ ngôn ngữ nào khác trong câu trả lời. Câu trả lời cực kỳ ngắn gọn, súc tích, đi thẳng vào vấn đề (tối đa 2-3 câu). Tuyệt đối không giải thích dài dòng hay lan man.
 2. Khi hướng dẫn các bước thực hiện, hãy tóm tắt chúng thành các bước cực kỳ ngắn gọn (ví dụ: "1. Click nút A. 2. Nhấn B."), tuyệt đối không viết dài dòng.
 3. Nếu người dùng muốn thực hiện một hành động (thêm đồ vật, thêm cửa, render 3D, v.v.), bạn hãy đưa hành động tương ứng vào trường "actions" trong JSON phản hồi.
+4. Dữ liệu dự án đã có: ${gatheredContext || "chưa có"}.
+5. Bước ứng dụng đang chờ: ${currentStep}. Chỉ trích xuất dữ liệu người dùng thực sự cung cấp; không tự suy đoán giá trị còn thiếu và không hỏi lại dữ liệu đã có. Ứng dụng sẽ tự quyết định câu hỏi tiếp theo theo thứ tự: số tầng → diện tích/kích thước → hình dạng → phòng → yêu cầu bổ sung.
+6. Nếu người dùng cung cấp nhiều thông tin trong một câu, hãy trích xuất đầy đủ tất cả các trường tương ứng.
 
 Danh sách các mã loại đồ nội thất (furniture_type) được hỗ trợ:
 - Sofa phòng khách: "living_sofa"
@@ -1700,9 +1800,7 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
     "rooms": null,
     "extras": null
   },
-  "completedSteps": [],
-  "needsShapePicker": false,
-  "readyToGenerate": false
+  "completedSteps": []
 }`;
 
       const response = await generateContentWithRetry(ai, {
@@ -1729,20 +1827,8 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
       }
 
       const replyText: string = parsed.reply || "";
-      const extracted = parsed.extracted || {};
-      const newCompletedSteps: GatherStep[] = parsed.completedSteps || [];
-      const needsShapePicker: boolean = parsed.needsShapePicker || replyText.includes("__SHAPE_PICKER__");
-      const readyToGenerate: boolean = parsed.readyToGenerate || false;
-
-      // Merge extracted info
-      const newInfo: GatherInfo = { ...gatherInfo };
-      if (extracted.floors != null) newInfo.floors = parseInt(extracted.floors) || 1;
-      if (extracted.area != null) newInfo.area = String(extracted.area);
-      if (extracted.landWidth != null) newInfo.landWidth = parseFloat(extracted.landWidth) || 5;
-      if (extracted.landLength != null) newInfo.landLength = parseFloat(extracted.landLength) || 15;
-      if (extracted.shape != null) newInfo.shape = String(extracted.shape);
-      if (extracted.rooms != null) newInfo.rooms = String(extracted.rooms);
-      if (extracted.extras != null) newInfo.extras = String(extracted.extras);
+      const extracted = (parsed.extracted || {}) as Record<string, unknown>;
+      const newInfo = mergeGatheredInput(gatherInfo, extracted, text, currentStep);
 
       // Fallback: nếu chỉ có area (m²) mà không có landWidth/landLength → dụng tỷ lệ mặc định
       if (!newInfo.landWidth && !newInfo.landLength && newInfo.area) {
@@ -1756,48 +1842,30 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
       }
 
       setGatherInfo(newInfo);
+      setCompletedSteps(getCompletedGatherSteps(newInfo));
 
-      // Update checklist steps
-      if (newCompletedSteps.length > 0) {
-        setCompletedSteps((prev) => {
-          const next = new Set(prev);
-          newCompletedSteps.forEach((s) => next.add(s));
-          return next;
-        });
-      }
+      // Điều phối bằng dữ liệu thật thay vì để model tự chọn bước, nhờ đó không
+      // bỏ bước và cũng không hỏi lại trường đã có.
+      const nextStep = getNextGatherStep(newInfo);
+      setCurrentStep(nextStep);
 
-      // Auto-complete checklist based on extracted data
-      setCompletedSteps((prev) => {
-        const next = new Set(prev);
-        if (newInfo.floors) next.add("floors");
-        if (newInfo.area || (newInfo.landWidth && newInfo.landLength)) next.add("area");
-        if (newInfo.shape) next.add("shape");
-        if (newInfo.rooms) next.add("rooms");
-        if (newInfo.extras) next.add("extras");
-        return next;
-      });
-
-      // Wait for the minimum 3-second thinking delay before showing the reply
+      // Chờ nhịp phản hồi ngắn trước khi hiển thị câu tiếp theo.
       await minDelay;
 
-      if (needsShapePicker) {
-        // Show shape picker bubble
-        addMessage("assistant", "__SHAPE_PICKER__");
-        setCurrentStep("shape");
-      } else if (readyToGenerate) {
-        // Show final message then generate
-        const cleanReply = replyText.replace("__SHAPE_PICKER__", "").trim();
-        if (cleanReply) addMessage("assistant", cleanReply);
-        setCurrentStep("done");
+      if (!floorPlan && nextStep === "done") {
+        addMessage("assistant", getGatherStepPrompt("done", newInfo));
         setAutoRenderPending(true);
         await generateFloorPlan(newInfo);
+      } else if (!floorPlan) {
+        const didNotAdvance = nextStep === currentStep && !hasGatherStepValue(newInfo, nextStep as Exclude<GatherStep, "done">);
+        addMessage("assistant", getGatherStepPrompt(nextStep, newInfo, didNotAdvance));
       } else {
         const cleanReply = replyText.replace("__SHAPE_PICKER__", "").trim();
         addMessage("assistant", cleanReply || "Hãy cho tôi biết thêm nhé!");
       }
 
       // Execute any direct actions requested by the AI
-      if (Array.isArray(parsed.actions)) {
+      if (floorPlan && Array.isArray(parsed.actions)) {
         for (const action of parsed.actions) {
           if (action.type === "add_furniture") {
             const fType = action.furniture_type;
@@ -1835,7 +1903,6 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
 
     addMessage("user", `Hình dạng mặt bằng: ${shapeName} (${w}m × ${l}m)`);
 
-    setCompletedSteps((prev) => new Set([...prev, "shape" as GatherStep, "area" as GatherStep]));
     const newInfo: GatherInfo = {
       ...gatherInfo,
       shape: shapeName,
@@ -1845,16 +1912,20 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
       area: `${w}x${l}m`,
     };
     setGatherInfo(newInfo);
-    setCurrentStep("rooms");
+    setCompletedSteps(getCompletedGatherSteps(newInfo));
+    const nextStep = getNextGatherStep(newInfo);
+    setCurrentStep(nextStep);
 
     setIsTyping(true);
     await new Promise((r) => setTimeout(r, 600));
     setIsTyping(false);
-    addMessage(
-      "assistant",
-      `Tuyệt vời! Đã chọn hình dạng **${shapeName}** (${w}m × ${l}m). 🏗️\n\nTiếp theo, hãy lựa chọn các phòng mong muốn cho ngôi nhà của bạn:`
-    );
-    addMessage("assistant", "__ROOM_PICKER__");
+    if (nextStep === "done") {
+      addMessage("assistant", getGatherStepPrompt("done", newInfo));
+      setAutoRenderPending(true);
+      await generateFloorPlan(newInfo);
+    } else {
+      addMessage("assistant", getGatherStepPrompt(nextStep, newInfo));
+    }
   };
 
   // ── Rooms selected from modal ───────────────────────────────────────────
@@ -1866,22 +1937,26 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
 
     addMessage("user", `Phòng mong muốn:\n${roomsString}`);
 
-    setCompletedSteps((prev) => new Set([...prev, "rooms" as GatherStep]));
     const newInfo: GatherInfo = {
       ...gatherInfo,
       rooms: roomsString,
       roomSelection,
     };
     setGatherInfo(newInfo);
-    setCurrentStep("extras");
+    setCompletedSteps(getCompletedGatherSteps(newInfo));
+    const nextStep = getNextGatherStep(newInfo);
+    setCurrentStep(nextStep);
 
     setIsTyping(true);
     await new Promise((r) => setTimeout(r, 600));
     setIsTyping(false);
-    addMessage(
-      "assistant",
-      "Đã ghi nhận danh sách phòng của bạn! 🚪✨\n\nCuối cùng, bạn có yêu cầu bổ sung nào khác không? "
-    );
+    if (nextStep === "done") {
+      addMessage("assistant", getGatherStepPrompt("done", newInfo));
+      setAutoRenderPending(true);
+      await generateFloorPlan(newInfo);
+    } else {
+      addMessage("assistant", getGatherStepPrompt(nextStep, newInfo));
+    }
   };
 
   // ── AI Floor Plan Generation ────────────────────────────────────────────
@@ -5749,9 +5824,11 @@ Requirements:
                   onKeyDown={handleKeyDown}
                   disabled={isGenerating || isTyping}
                   placeholder={
-                    currentStep === "done" || isGenerating
+                    isGenerating
                       ? "Đang xử lý..."
-                      : "Trả lời iGen..."
+                      : currentStep === "done"
+                        ? "Yêu cầu iGen chỉnh sửa bản vẽ..."
+                        : "Trả lời iGen..."
                   }
                   className="flex-1 bg-transparent text-slate-700 text-xs placeholder-slate-400 outline-none"
                 />
