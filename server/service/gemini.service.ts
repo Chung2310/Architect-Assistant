@@ -1022,44 +1022,10 @@ export const geminiService = {
       }
 
       // Quyết định provider chính:
-      // Nếu có GEMINI_API_KEY hợp lệ -> dùng Gemini Native SDK làm phương án chính.
-      // Nếu không có GEMINI_API_KEY hợp lệ nhưng có OpenRouter Key -> dùng OpenRouter Gemini làm phương án chính.
-      const hasValidNativeKey = apiKey && isValidGeminiKey(apiKey);
-
-      if (hasValidNativeKey) {
-        const ai = new GoogleGenAI({ apiKey: apiKey as string });
-        logger.info(`[Gemini Service] Provider: Gemini Native. Model: ${modelName}`);
-
-        // Clone and sanitize config to avoid validation errors on models without thinking support
-        const rawConfig = params.config || params.generationConfig || {};
-        const sanitizedConfig = { ...rawConfig };
-
-        const isThinkingModel = modelName.toLowerCase().includes("thinking");
-        if (!isThinkingModel) {
-          if ("thinkingConfig" in sanitizedConfig) {
-            delete sanitizedConfig.thinkingConfig;
-          }
-          if ("thinking_config" in sanitizedConfig) {
-            delete sanitizedConfig.thinking_config;
-          }
-        }
-
-        if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
-          sanitizedConfig.systemInstruction = systemInstruction;
-        }
-
-        try {
-          const response = await ai.models.generateContent({
-            model: modelName,
-            contents: params.contents,
-            config: sanitizedConfig,
-          });
-          return response;
-        } catch (err: any) {
-          logger.error(`[Gemini Service] Gemini Native API call failed: ${err.message || err}`);
-          return await performQwenFallback(err);
-        }
-      } else if (openRouterKey) {
+      // 1. Đầu tiên đi qua API của OpenRouter Gemini.
+      // 2. Sau đó dự phòng sang Qwen.
+      // 3. Cuối cùng mới dự phòng sang Gemini Native SDK (API).
+      if (openRouterKey) {
         const openRouterModel = mapToOpenRouterModel(modelName);
         logger.info(`[Gemini Service] Provider: OpenRouter (Primary). Model: ${openRouterModel}`);
 
@@ -1079,12 +1045,91 @@ export const geminiService = {
             }],
             text: textResult,
           };
-        } catch (err: any) {
-          logger.error(`[Gemini Service] Gemini via OpenRouter failed: ${err.message || err}`);
-          return await performQwenFallback(err);
+        } catch (openRouterErr: any) {
+          logger.warn(`[Gemini Service] Gemini via OpenRouter failed: ${openRouterErr.message || openRouterErr}. Falling back to Qwen...`);
+          
+          // 2. Dự phòng sang OpenRouter Qwen
+          try {
+            const { textResult } = await callOpenRouterChat(messages, fallbackQwenModel, openRouterKey, isJsonRequested);
+            logger.info(`[Gemini Service] Fallback OpenRouter Qwen response received (${textResult.length} chars)`);
+            return {
+              candidates: [{
+                content: {
+                  parts: [{ text: textResult }],
+                  role: "model",
+                },
+                finishReason: "STOP",
+              }],
+              text: textResult,
+            };
+          } catch (qwenErr: any) {
+            logger.warn(`[Gemini Service] Qwen via OpenRouter failed: ${qwenErr.message || qwenErr}. Falling back to Gemini Native SDK...`);
+            
+            // 3. Dự phòng cuối cùng sang Gemini Native API
+            const hasValidNativeKey = apiKey && isValidGeminiKey(apiKey);
+            if (hasValidNativeKey) {
+              try {
+                const ai = new GoogleGenAI({ apiKey: apiKey as string });
+                logger.info(`[Gemini Service] Fallback Provider: Gemini Native. Model: ${modelName}`);
+
+                const rawConfig = params.config || params.generationConfig || {};
+                const sanitizedConfig = { ...rawConfig };
+                const isThinkingModel = modelName.toLowerCase().includes("thinking");
+                if (!isThinkingModel) {
+                  delete sanitizedConfig.thinkingConfig;
+                  delete sanitizedConfig.thinking_config;
+                }
+                if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
+                  sanitizedConfig.systemInstruction = systemInstruction;
+                }
+
+                const response = await ai.models.generateContent({
+                  model: modelName,
+                  contents: params.contents,
+                  config: sanitizedConfig,
+                });
+                return response;
+              } catch (nativeErr: any) {
+                logger.error(`[Gemini Service] Fallback Gemini Native SDK also failed: ${nativeErr.message || nativeErr}`);
+                throw new Error(`Tất cả các dịch vụ (OpenRouter Gemini, Qwen và Gemini Native) đều thất bại. Lỗi Native: ${nativeErr.message}`);
+              }
+            } else {
+              throw new Error(`OpenRouter Gemini và Qwen đều thất bại, và không có API Key hợp lệ cho Gemini Native.`);
+            }
+          }
         }
       } else {
-        throw new Error("Không tìm thấy API Key hợp lệ cho Gemini Native hoặc OpenRouter.");
+        // Không có OpenRouter Key -> chuyển thẳng sang Gemini Native SDK làm phương án duy nhất
+        const hasValidNativeKey = apiKey && isValidGeminiKey(apiKey);
+        if (hasValidNativeKey) {
+          try {
+            const ai = new GoogleGenAI({ apiKey: apiKey as string });
+            logger.info(`[Gemini Service] Provider: Gemini Native (No OpenRouter Key). Model: ${modelName}`);
+
+            const rawConfig = params.config || params.generationConfig || {};
+            const sanitizedConfig = { ...rawConfig };
+            const isThinkingModel = modelName.toLowerCase().includes("thinking");
+            if (!isThinkingModel) {
+              delete sanitizedConfig.thinkingConfig;
+              delete sanitizedConfig.thinking_config;
+            }
+            if (systemInstruction && !("systemInstruction" in sanitizedConfig)) {
+              sanitizedConfig.systemInstruction = systemInstruction;
+            }
+
+            const response = await ai.models.generateContent({
+              model: modelName,
+              contents: params.contents,
+              config: sanitizedConfig,
+            });
+            return response;
+          } catch (nativeErr: any) {
+            logger.error(`[Gemini Service] Gemini Native SDK failed: ${nativeErr.message || nativeErr}`);
+            throw nativeErr;
+          }
+        } else {
+          throw new Error("Không tìm thấy API Key hợp lệ cho OpenRouter hoặc Gemini Native.");
+        }
       }
     }
   },
@@ -1123,7 +1168,8 @@ Các tính năng chính của phần mềm iGen để bạn hướng dẫn ngư�
 - Công cụ [Vẽ Mặt Bằng] (Floor Plan Editor - truy cập từ menu bên trái): Thiết kế bản vẽ 2D, kéo thả phòng, đặt đồ đạc nội thất và bật chế độ camera 3D (Visualize) để ngắm nhìn trực quan.
 
 Quy tắc trả lời:
-- Luôn thân thiện, chuyên nghiệp, trả lời bằng tiếng Việt.
+- BẮT BUỘC: Chỉ được trả lời bằng tiếng Việt chuẩn 100%, tuyệt đối không sử dụng ngôn ngữ khác.
+- Luôn thân thiện, chuyên nghiệp.
 - BẮT BUỘC: Câu trả lời phải cực kỳ ngắn gọn, súc tích (tối đa 2-3 câu hoặc 50-70 từ). Tuyệt đối không giải thích dài dòng hay lan man, đi thẳng vào câu trả lời hoặc hướng dẫn cụ thể.
 - Khi hướng dẫn các bước thực hiện, hãy tóm tắt các bước siêu ngắn gọn, súc tích (ví dụ: "1. Tải ảnh lên. 2. Nhập mô tả. 3. Nhấn Render."), tuyệt đối không viết thêm chi tiết mô tả dài dòng cho từng bước.`;
 

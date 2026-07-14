@@ -213,7 +213,7 @@ export const ChooseRoomsModal: React.FC<ChooseRoomsModalProps> = ({
     <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-[#141415] border border-[#2d2d30] rounded-2xl w-full max-w-[500px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden text-slate-100 font-sans">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-[#2d2d30] flex items-center justify-between flex-shrink-0">
+        <div className="relative px-6 py-4 border-b border-[#2d2d30] flex items-center justify-between flex-shrink-0">
           <h2 className="text-base font-bold tracking-wide text-slate-100 mx-auto">Thêm phòng</h2>
           <button
             onClick={onClose}
