@@ -157,7 +157,7 @@ function getGatherStepPrompt(step: GatherStep, info: GatherInfo, needsClarificat
     case "floors":
       return `${prefix}Công trình của bạn có **bao nhiêu tầng**? Ví dụ: 1 tầng, 2 tầng.`;
     case "area":
-      return `${prefix}Tiếp theo, **diện tích hoặc kích thước mặt bằng** là bao nhiêu? Ví dụ: 100m² hoặc 5m × 20m.`;
+      return `${prefix}Tiếp theo, **diện tích một sàn** là bao nhiêu? iGen hỗ trợ từ **20 m² đến 2.000 m²** (Ví dụ: 100m²).`;
     case "shape":
       return "__SHAPE_PICKER__";
     case "rooms":
@@ -175,7 +175,7 @@ function mergeGatheredInput(info: GatherInfo, extracted: Record<string, unknown>
   const landWidth = Number(extracted.landWidth);
   const landLength = Number(extracted.landLength);
 
-  if (Number.isInteger(floors) && floors > 0 && floors <= 100) next.floors = floors;
+  if (Number.isInteger(floors) && floors > 0 && floors <= 4) next.floors = floors;
   if (extracted.area != null && String(extracted.area).trim()) next.area = String(extracted.area).trim();
   if (Number.isFinite(landWidth) && landWidth > 0) next.landWidth = landWidth;
   if (Number.isFinite(landLength) && landLength > 0) next.landLength = landLength;
@@ -186,18 +186,21 @@ function mergeGatheredInput(info: GatherInfo, extracted: Record<string, unknown>
   // Các câu trả lời ngắn, đúng bước vẫn được hiểu ngay cả khi model bỏ sót.
   if (expectedStep === "floors" && !next.floors) {
     const match = text.match(/^(?:nhà\s*)?(\d{1,2})\s*(?:tầng)?[.!]?$/i);
-    if (match) next.floors = Number(match[1]);
+    if (match) {
+      const val = Number(match[1]);
+      if (val >= 1 && val <= 4) {
+        next.floors = val;
+      }
+    }
   }
 
   if (expectedStep === "area" && !hasGatherStepValue(next, "area")) {
-    const dimensions = text.match(/(\d+(?:[.,]\d+)?)\s*(?:m)?\s*[x×*]\s*(\d+(?:[.,]\d+)?)\s*(?:m)?/i);
     const squareMetres = text.match(/(\d+(?:[.,]\d+)?)\s*(?:m\s*[²2]|mét\s*vuông)/i);
-    if (dimensions) {
-      next.landWidth = Number(dimensions[1].replace(",", "."));
-      next.landLength = Number(dimensions[2].replace(",", "."));
-      next.area = `${next.landWidth}m × ${next.landLength}m`;
-    } else if (squareMetres) {
+    const plainNumber = text.match(/^\s*(\d+(?:[.,]\d+)?)\s*$/);
+    if (squareMetres) {
       next.area = `${Number(squareMetres[1].replace(",", "."))}m²`;
+    } else if (plainNumber) {
+      next.area = `${Number(plainNumber[1].replace(",", "."))}m²`;
     }
   }
 
@@ -1179,6 +1182,14 @@ export const FloorPlanEditor: React.FC = () => {
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [activeSidebarTab, setActiveSidebarTab] = useState<"chat" | "history">("chat");
 
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 60, y: 60 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStart = useRef({ x: 0, y: 0 });
+  const stageContainerRef = useRef<HTMLDivElement>(null);
+  const hasWarnedSmallStageRef = useRef(false);
+  const [stageSize, setStageSize] = useState({ w: 800, h: 600 });
+
   const handleLoadProject = useCallback((proj: any) => {
     const loadedGatherInfo: GatherInfo = proj.gatherInfo || {};
     setCurrentProjectId(proj.id);
@@ -1193,14 +1204,31 @@ export const FloorPlanEditor: React.FC = () => {
     setMessages(proj.messages || []);
     
     if (proj.floorPlans && proj.floorPlans.length > 0) {
-      setFloorPlan(proj.floorPlans[proj.activeFloorIndex || 0]);
+      const activePlan = proj.floorPlans[proj.activeFloorIndex || 0];
+      setFloorPlan(activePlan);
+      
+      // Auto-fit zoom & center the loaded plan
+      const landW = loadedGatherInfo.landWidth || 5;
+      const landL = loadedGatherInfo.landLength || 15;
+      const fitZoom = Math.min(
+        (stageSize.w - 120) / (landW * METER_TO_PX),
+        (stageSize.h - 120) / (landL * METER_TO_PX)
+      );
+      const newZoom = Math.max(0.4, Math.min(2, fitZoom));
+      setZoom(newZoom);
+      setPan({
+        x: (stageSize.w - landW * METER_TO_PX * newZoom) / 2,
+        y: (stageSize.h - landL * METER_TO_PX * newZoom) / 2,
+      });
     } else {
       setFloorPlan(null);
     }
     
     setActiveSidebarTab("chat");
     toast.success(`Đã tải dự án: ${proj.name}`);
-  }, []);
+  }, [stageSize]);
+
+
 
   const handleNewProject = useCallback(() => {
     const newId = "proj_" + Date.now();
@@ -1307,13 +1335,7 @@ export const FloorPlanEditor: React.FC = () => {
     }
   }, [editingProjectName, currentProjectId]);
 
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 60, y: 60 });
-  const [isPanning, setIsPanning] = useState(false);
-  const panStart = useRef({ x: 0, y: 0 });
-  const stageContainerRef = useRef<HTMLDivElement>(null);
-  const hasWarnedSmallStageRef = useRef(false);
-  const [stageSize, setStageSize] = useState({ w: 800, h: 600 });
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stageRef = useRef<any>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
@@ -1343,11 +1365,11 @@ export const FloorPlanEditor: React.FC = () => {
     roomId: string;
   } | null>(null);
   const [finishes, setFinishes] = useState<Record<string, { type: "material" | "color"; value: string; name: string }>>({
-    flooring: { type: "material", value: "natural_oak", name: "Natural Oak" },
-    walls: { type: "color", value: "#ffffff", name: "Trắng" },
-    ceiling: { type: "color", value: "#ffffff", name: "Trắng" },
-    doors: { type: "material", value: "natural_oak", name: "Natural Oak" },
-    windows: { type: "color", value: "#1c1c1e", name: "Đen" },
+    flooring: { type: "material", value: "", name: "" },
+    walls: { type: "color", value: "", name: "" },
+    ceiling: { type: "color", value: "", name: "" },
+    doors: { type: "material", value: "", name: "" },
+    windows: { type: "color", value: "", name: "" },
   });
 
   // ── Visualize / Camera states ───────────────────────────────────────────
@@ -1746,6 +1768,71 @@ export const FloorPlanEditor: React.FC = () => {
     const minDelay = new Promise<void>((resolve) => setTimeout(resolve, 500));
 
     try {
+      // ── Client-side validation ──────────────────────────────────────────
+      if (currentStep === "floors") {
+        const floorMatch = text.match(/(\d+)/);
+        if (floorMatch) {
+          const floorsNum = parseInt(floorMatch[1], 10);
+          if (floorsNum < 1 || floorsNum > 4) {
+            await minDelay;
+            addMessage(
+              "assistant",
+              "iGen chỉ hỗ trợ tối đa 4 tầng. Vui lòng nhập số tầng trong khoảng từ 1 đến 4."
+            );
+            setIsTyping(false);
+            return;
+          }
+        }
+      }
+
+      if (currentStep === "area") {
+        // Reject square feet
+        if (text.toLowerCase().includes("ft") || text.toLowerCase().includes("feet")) {
+          await minDelay;
+          addMessage(
+            "assistant",
+            "iGen chỉ nhận diện tích theo m², không hỗ trợ hoặc quy đổi ft². Vui lòng nhập diện tích từ 20 m² đến 2.000 m²."
+          );
+          setIsTyping(false);
+          return;
+        }
+
+        // Reject width x length input
+        const isDimension = text.match(/(\d+(?:[.,]\d+)?)\s*(?:m)?\s*[x×*]\s*(\d+(?:[.,]\d+)?)/i);
+        if (isDimension) {
+          await minDelay;
+          addMessage(
+            "assistant",
+            "Vui lòng nhập diện tích theo m², không nhập chiều dài × chiều rộng. iGen hỗ trợ diện tích từ 20 m² đến 2.000 m²."
+          );
+          setIsTyping(false);
+          return;
+        }
+
+        // Validate sqm range [20, 2000]
+        const numMatch = text.match(/(\d+(?:\.\d+)?)/);
+        if (numMatch) {
+          const areaVal = parseFloat(numMatch[1]);
+          if (areaVal < 20 || areaVal > 2000) {
+            await minDelay;
+            addMessage(
+              "assistant",
+              "Diện tích một sàn phải nằm trong khoảng từ 20 m² đến 2.000 m². Vui lòng nhập lại diện tích phù hợp."
+            );
+            setIsTyping(false);
+            return;
+          }
+        } else {
+          await minDelay;
+          addMessage(
+            "assistant",
+            "Vui lòng nhập diện tích một sàn của bạn theo m² (Từ 20 m² đến 2.000 m²)."
+          );
+          setIsTyping(false);
+          return;
+        }
+      }
+
       const ai = await getAIClient("gemini-2.5-flash");
 
       // Build conversation history for Gemini
@@ -1765,15 +1852,15 @@ export const FloorPlanEditor: React.FC = () => {
       const systemInstruction = `Bạn là iGen - Trợ lý AI cao cấp chuyên thiết kế bản vẽ mặt bằng và phối cảnh kiến trúc.
 Nhiệm vụ của bạn là hỗ trợ người dùng toàn diện trong suốt dự án:
 1. Hướng dẫn người dùng các bước thực hiện trên giao diện nếu họ hỏi cách làm (ví dụ: cách gen ảnh 3D, cách tải ảnh phối cảnh, cách vẽ thêm phòng...).
-2. Thu thập thông tin ban đầu (Số tầng, Kích thước đất, Hình dạng, Số phòng) để tạo bản vẽ mặt bằng tự động.
-3. Thực hiện trực tiếp các hành động thêm đồ nội thất hoặc thêm cửa/cửa sổ lên bản vẽ hoặc render 3D khi người dùng yêu cầu (ví dụ: "Thêm cho tôi một bộ sofa", "Thêm cửa sổ", "Đặt tủ quần áo", "Render 3D phối cảnh phòng này").
+2. Thu thập thông tin ban đầu (Số tầng, Diện tích một sàn m², Hình dạng, Số phòng) để tạo bản vẽ mặt bằng tự động.
+3. Thực hiện trực tiếp các hành động thêm đồ nội thất, cửa, hoặc xóa phòng/đồ vật trên bản vẽ hoặc render 3D khi người dùng yêu cầu (ví dụ: "Thêm cho tôi một bộ sofa", "Thêm cửa sổ", "Đặt tủ quần áo", "Xóa sân vườn trước", "Xóa ghế sofa", "Render 3D phối cảnh phòng này").
 
 Quy tắc bắt buộc:
-1. BẮT BUỘC: Bạn chỉ được trả lời bằng tiếng Việt chuẩn 100%, tuyệt đối không được sử dụng tiếng Trung (ví dụ các từ như 宽, 长, v.v.) hay bất kỳ ngôn ngữ nào khác trong câu trả lời. Câu trả lời cực kỳ ngắn gọn, súc tích, đi thẳng vào vấn đề (tối đa 2-3 câu). Tuyệt đối không giải thích dài dòng hay lan man.
+1. BẮT BUỘC: Bạn chỉ được trả lời bằng tiếng Việt chuẩn 100%, câu trả lời cực kỳ ngắn gọn, súc tích, đi thẳng vào vấn đề (tối đa 2-3 câu). Tuyệt đối không giải thích dài dòng hay lan man.
 2. Khi hướng dẫn các bước thực hiện, hãy tóm tắt chúng thành các bước cực kỳ ngắn gọn (ví dụ: "1. Click nút A. 2. Nhấn B."), tuyệt đối không viết dài dòng.
-3. Nếu người dùng muốn thực hiện một hành động (thêm đồ vật, thêm cửa, render 3D, v.v.), bạn hãy đưa hành động tương ứng vào trường "actions" trong JSON phản hồi.
-4. Dữ liệu dự án đã có: ${gatheredContext || "chưa có"}.
-5. Bước ứng dụng đang chờ: ${currentStep}. Chỉ trích xuất dữ liệu người dùng thực sự cung cấp; không tự suy đoán giá trị còn thiếu và không hỏi lại dữ liệu đã có. Ứng dụng sẽ tự quyết định câu hỏi tiếp theo theo thứ tự: số tầng → diện tích/kích thước → hình dạng → phòng → yêu cầu bổ sung.
+3. Dữ liệu dự án đã có: ${gatheredContext || "chưa có"}.
+4. Bước ứng dụng đang chờ: ${currentStep}. Chỉ trích xuất dữ liệu người dùng thực sự cung cấp; không tự suy đoán giá trị còn thiếu và không hỏi lại dữ liệu đã có. Ứng dụng sẽ tự quyết định câu hỏi tiếp theo theo thứ tự: số tầng → diện tích m² → hình dạng → phòng → yêu cầu bổ sung.
+5. Số tầng hợp lệ chỉ từ 1 đến 4. Diện tích hợp lệ chỉ từ 20 m² đến 2.000 m². Chỉ nhận diện tích theo m², không nhận ft² và không nhận kích thước dạng dài × rộng hay chiều rộng × chiều dài. Khi đang ở bước area, một con số không ghi đơn vị được hiểu là m².
 6. Nếu người dùng cung cấp nhiều thông tin trong một câu, hãy trích xuất đầy đủ tất cả các trường tương ứng.
 
 Danh sách các mã loại đồ nội thất (furniture_type) được hỗ trợ:
@@ -1818,6 +1905,8 @@ Các hành động (actions) được hỗ trợ trong JSON:
 - Thêm đồ nội thất: { "type": "add_furniture", "furniture_type": "[MÃ_LOẠI_ĐỒ]" }
 - Thêm cửa đi: { "type": "add_door", "style": "[KIỂU_DÁNG]" }
 - Thêm cửa sổ: { "type": "add_window", "style": "[KIỂU_DÁNG]" }
+- Xóa phòng: { "type": "delete_room", "room_name": "[Tên phòng cần xóa]" }
+- Xóa đồ nội thất: { "type": "delete_furniture", "furniture_name": "[Tên đồ vật cần xóa]" }
 - Render 3D phối cảnh: { "type": "render_3d" }
 - Hiển thị bảng chọn hình dạng đất: { "type": "show_shape_picker" }
 - Hiển thị bảng thêm phòng: { "type": "show_room_picker" }
@@ -1829,10 +1918,8 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
     // Danh sách các hành động cần thực thi (nếu có), có thể rỗng []
   ],
   "extracted": {
-    "floors": null, // hoặc số tầng chiết xuất được
-    "area": null, // hoặc diện tích chiết xuất được
-    "landWidth": null, // hoặc chiều rộng đất
-    "landLength": null, // hoặc chiều dài đất
+    "floors": null, // hoặc số tầng chiết xuất được (từ 1 đến 4)
+    "area": null, // hoặc diện tích m² chiết xuất được (từ 20 đến 2.000)
     "shape": null,
     "rooms": null,
     "extras": null
@@ -1878,19 +1965,6 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
         }
       }
 
-      // Kiểm tra giới hạn kích thước (từ 2m đến 80m)
-      const invalidWidth = newInfo.landWidth !== undefined && (newInfo.landWidth < 2 || newInfo.landWidth > 80);
-      const invalidLength = newInfo.landLength !== undefined && (newInfo.landLength < 2 || newInfo.landLength > 80);
-      if (invalidWidth || invalidLength) {
-        await minDelay;
-        addMessage(
-          "assistant",
-          `Kích thước chiều rộng hoặc chiều dài bạn cung cấp không hợp lệ (${newInfo.landWidth ? `${newInfo.landWidth}m` : 'chưa rõ'} × ${newInfo.landLength ? `${newInfo.landLength}m` : 'chưa rõ'}). Kích thước đất được hỗ trợ phải nằm trong khoảng từ **2m đến 80m**. Vui lòng nhập lại kích thước phù hợp.`
-        );
-        setIsTyping(false);
-        return;
-      }
-
       setGatherInfo(newInfo);
       setCompletedSteps(getCompletedGatherSteps(newInfo));
 
@@ -1926,6 +2000,59 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
             handleAddDoor(action.style || "hinged");
           } else if (action.type === "add_window") {
             handleAddWindow(action.style || "hinged");
+          } else if (action.type === "delete_room") {
+            const rName = action.room_name;
+            if (rName) {
+              const term = rName.toLowerCase().trim();
+              const found = floorPlan.rooms.find(r => r.name.toLowerCase().includes(term));
+              if (found) {
+                const updatedRooms = floorPlan.rooms.filter((r) => r.id !== found.id);
+                const updatedPlan = { ...floorPlan, rooms: updatedRooms };
+                setFloorPlan(updatedPlan);
+                setFloorPlans(prev => {
+                  const copy = [...prev];
+                  copy[activeFloorIndex] = updatedPlan;
+                  return copy;
+                });
+                toast.success(`Đã xóa phòng: ${found.name}`);
+              }
+            }
+          } else if (action.type === "delete_furniture") {
+            const fName = action.furniture_name;
+            if (fName) {
+              const term = fName.toLowerCase().trim();
+              let foundRoomId: string | null = null;
+              let foundFurnId: string | null = null;
+              for (const r of floorPlan.rooms) {
+                if (r.furniture) {
+                  const item = r.furniture.find(f => f.type.toLowerCase().includes(term));
+                  if (item) {
+                    foundRoomId = r.id;
+                    foundFurnId = item.id;
+                    break;
+                  }
+                }
+              }
+              if (foundRoomId && foundFurnId) {
+                const updatedRooms = floorPlan.rooms.map(r => {
+                  if (r.id === foundRoomId) {
+                    return {
+                      ...r,
+                      furniture: r.furniture?.filter(f => f.id !== foundFurnId)
+                    };
+                  }
+                  return r;
+                });
+                const updatedPlan = { ...floorPlan, rooms: updatedRooms };
+                setFloorPlan(updatedPlan);
+                setFloorPlans(prev => {
+                  const copy = [...prev];
+                  copy[activeFloorIndex] = updatedPlan;
+                  return copy;
+                });
+                toast.success(`Đã xóa đồ vật: ${fName}`);
+              }
+            }
           } else if (action.type === "render_3d") {
             handleRender3D();
           } else if (action.type === "show_shape_picker") {
@@ -2103,11 +2230,11 @@ ${shapeInstruction}
 
 QUY TẮC THIẾT KẾ BẮT BUỘC (TUÂN THỦ TUYỆT ĐỐI):
 
-1. YÊU CẦU PHÒNG & KHÔNG ĐỂ THỪA ĐẤT:
-   - CHỈ tạo đúng các phòng đã được yêu cầu cụ thể cho ${floorLabel}: "${floorRooms}". TUYỆT ĐỐI KHÔNG thêm phòng phụ ngoài yêu cầu và KHÔNG được tự ý bớt phòng. Mảng "rooms" trả về phải gồm chính xác số lượng và loại phòng này, không tự ý thêm phòng thờ, phòng sinh hoạt chung, hành lang (hành lang được thiết kế như khoảng trống giao thông giữa các phòng, không khai báo thành thực thể phòng trong JSON trừ khi được yêu cầu), phòng làm việc, vv nếu không có trong yêu cầu.
-   - KHÔNG ĐỂ THỪA ĐẤT: Tổng diện tích các phòng cộng lại và ghép lại phải bao phủ hoàn toàn diện tích cho phép của lô đất (đa giác ranh giới). Không được để trống bất kỳ góc nào hay để chừa đất trống ở các góc biên ranh giới.
-   - PHÂN BỔ TỶ LỆ DIỆN TÍCH THÔNG MINH (PHÒNG LỚN/NHỎ HỢP LÝ): Khi chia diện tích, hãy đảm bảo các phòng chính như Phòng khách (Living room), Phòng ngủ Master (Master Bedroom) phải RỘNG RÃI (ví dụ: phòng khách nên rộng nhất, chiếm từ 15m² - 25m²; phòng ngủ master từ 12m² - 18m²). Ngược lại, các phòng phụ như Phòng vệ sinh / Toilet / WC, Phòng giặt (Laundry), Lối đi phải thiết kế nhỏ gọn, HẸP và tiết kiệm diện tích tối đa (ví dụ: WC/Toilet chỉ nên rộng từ 2.2m² - 4m²). Tuyệt đối không để phòng vệ sinh quá rộng tương đương phòng ngủ hay phòng khách, gây lãng phí không gian.
-   - KHỚP KHÍT RANH GIỚI: Để lấp đầy diện tích đất mà không thêm phòng phụ, hãy TỰ ĐỘNG TĂNG KÍCH THƯỚC của các phòng được yêu cầu sao cho tổng chiều rộng và chiều dài của các phòng ghép lại vừa khít với ranh giới đất ở mọi hướng (nhưng phải giữ tỷ lệ phòng khách lớn và WC nhỏ).
+1. YÊU CẦU PHÒNG & KHÔNG ĐỂ THỪA ĐẤT (BẮT BUỘC TUÂN THỦ):
+   - CHỈ tạo đúng các phòng đã được yêu cầu cụ thể cho ${floorLabel}: "${floorRooms}". TUYỆT ĐỐI KHÔNG tự ý vẽ thêm bất kỳ phòng chức năng nào khác ngoài yêu cầu (ví dụ: nếu không được yêu cầu cụ thể, tuyệt đối không tự thêm phòng khách, phòng ngủ, phòng bếp, toilet, hành lang, phòng làm việc, phòng thờ, v.v.). Mảng "rooms" trả về phải gồm chính xác các phòng đã được yêu cầu.
+   - KHÔNG ĐỂ THỪA ĐẤT: Để lấp đầy diện tích đất mà không thêm phòng chức năng ngoài yêu cầu, hãy tự động phân bổ phần diện tích còn dư vào các khu vực mở ngoài trời hoặc khoảng trống và đặt tên là "Sân vườn", "Sân trước", "Sân sau", "Ban công", hoặc "Khoảng trống" (Void). Cạnh của các khu vực mở này kết hợp cùng các phòng yêu cầu phải ghép lại vừa khít 100% với ranh giới đất, không được chừa đất trống không phân vùng ở biên ranh giới.
+   - PHÂN BỔ TỶ LỆ DIỆN TÍCH THÔNG MINH: Cân đối kích thước hợp lý cho các phòng yêu cầu (ví dụ: Phòng ngủ từ 12m² - 18m², Toilet/WC chỉ nên nhỏ gọn từ 2.2m² - 4m²). Không được làm Toilet quá to bằng phòng ngủ.
+   - KHỚP KHÍT RANH GIỚI: Tổng diện tích của các phòng yêu cầu và các khu vực mở bổ sung ghép lại phải bao phủ hoàn toàn ranh giới lô đất.
 
 2. KÍCH THƯỚC TỐI THIỂU BẮT BUỘC CHO TỪNG LOẠI PHÒNG (phải đảm bảo đủ diện tích để bố trí nội thất):
    - Phòng khách (living room): tối thiểu 3.0m x 4.0m (12m²), ưu tiên 4m x 5m trở lên
@@ -2238,14 +2365,18 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
       setFloorPlan(generatedPlans[0]);
       setActiveFloorIndex(0);
 
-      // Auto-fit zoom
+      // Auto-fit zoom & centering
       if (generatedPlans[0].rooms.length > 0) {
         const fitZoom = Math.min(
           (stageSize.w - 120) / (landW * METER_TO_PX),
           (stageSize.h - 120) / (landL * METER_TO_PX)
         );
-        setZoom(Math.max(0.4, Math.min(2, fitZoom)));
-        setPan({ x: 60, y: 60 });
+        const newZoom = Math.max(0.4, Math.min(2, fitZoom));
+        setZoom(newZoom);
+        setPan({
+          x: (stageSize.w - landW * METER_TO_PX * newZoom) / 2,
+          y: (stageSize.h - landL * METER_TO_PX * newZoom) / 2
+        });
       }
 
       addMessage(
@@ -5562,7 +5693,7 @@ Requirements:
 
   // ════════════════════════════════════════════════════════════════════════
   return (
-    <div className="flex h-full w-full bg-white text-slate-900 font-sans overflow-hidden">
+    <div className="flex h-[calc(100vh-64px)] w-full bg-white text-slate-900 font-sans overflow-hidden">
       {/* ── TOP BAR ─────────────────────────────────────────────────────── */}
       <div className="absolute top-0 inset-x-0 h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4 z-30">
         <div className="flex items-center gap-3">
@@ -6204,7 +6335,7 @@ Requirements:
           )}
 
           {/* Zoom controls */}
-          <div className="absolute bottom-6 right-6 flex flex-col gap-1.5 items-center z-10">
+          <div className="absolute top-[140px] right-6 flex flex-col gap-1.5 items-center z-10">
             <span className="text-[10px] text-slate-500 font-mono bg-white/90 border border-slate-200 shadow-sm rounded px-1.5 py-0.5 select-none mb-1">
               {Math.round(zoom * 100)}%
             </span>
@@ -6221,7 +6352,25 @@ Requirements:
               <ZoomOut className="w-4 h-4" />
             </button>
             <button
-              onClick={() => { setZoom(1); setPan({ x: 60, y: 60 }); }}
+              onClick={() => {
+                if (floorPlan) {
+                  const landW = gatherInfo.landWidth || 5;
+                  const landL = gatherInfo.landLength || 15;
+                  const fitZoom = Math.min(
+                    (stageSize.w - 120) / (landW * METER_TO_PX),
+                    (stageSize.h - 120) / (landL * METER_TO_PX)
+                  );
+                  const newZoom = Math.max(0.4, Math.min(2, fitZoom));
+                  setZoom(newZoom);
+                  setPan({
+                    x: (stageSize.w - landW * METER_TO_PX * newZoom) / 2,
+                    y: (stageSize.h - landL * METER_TO_PX * newZoom) / 2
+                  });
+                } else {
+                  setZoom(1);
+                  setPan({ x: 60, y: 60 });
+                }
+              }}
               className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors shadow-sm cursor-pointer"
               title="Fit to screen"
             >
@@ -7621,11 +7770,11 @@ Requirements:
                         <button
                           onClick={() => {
                             const defaultFinishes = {
-                              flooring: { type: "material" as const, value: "natural_oak", name: "Natural Oak" },
-                              walls: { type: "color" as const, value: "#ffffff", name: "White" },
-                              ceiling: { type: "color" as const, value: "#ffffff", name: "White" },
-                              doors: { type: "material" as const, value: "natural_oak", name: "Natural Oak" },
-                              windows: { type: "color" as const, value: "#1c1c1e", name: "Dark" },
+                              flooring: { type: "material" as const, value: "", name: "" },
+                              walls: { type: "color" as const, value: "", name: "" },
+                              ceiling: { type: "color" as const, value: "", name: "" },
+                              doors: { type: "material" as const, value: "", name: "" },
+                              windows: { type: "color" as const, value: "", name: "" },
                             };
                             setFinishes(defaultFinishes);
                             setSelectedStyle("");
