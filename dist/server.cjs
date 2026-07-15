@@ -1111,17 +1111,6 @@ import_dotenv.default.config();
 var PIAPI_API_KEY = process.env.PIAPI_API_KEY || "";
 var PIAPI_BASE_URL = process.env.PIAPI_BASE_URL || "https://api.piapi.ai/api/v1";
 console.log(`[PiAPI Service] Loaded API Key status: ${PIAPI_API_KEY ? `Present (Length: ${PIAPI_API_KEY.length}, Prefix: ${PIAPI_API_KEY.substring(0, 8)}...)` : "Missing"}`);
-async function fetchImageAsBase64(url) {
-  if (url.startsWith("data:")) return url;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`H\xECnh \u1EA3nh \u0111\u1EA7u v\xE0o kh\xF4ng t\u1ED3n t\u1EA1i ho\u1EB7c \u0111\xE3 b\u1ECB x\xF3a kh\u1ECFi Cloudinary (m\xE3 l\u1ED7i: ${response.status}). Vui l\xF2ng t\u1EA3i l\u1EA1i \u1EA3nh m\u1EDBi l\xEAn.`);
-  }
-  const arrayBuffer = await response.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  const mimeType = response.headers.get("content-type") || "image/png";
-  return `data:${mimeType};base64,${buffer.toString("base64")}`;
-}
 var piapiService = {
   /**
    * Tạo task sinh ảnh bất đồng bộ trên PiAPI
@@ -1173,19 +1162,13 @@ var piapiService = {
       };
       const content = [{ type: "text", text: prompt }];
       if (options?.image) {
-        try {
-          console.log(`[OpenRouter Image Task] Converting image to base64 for OpenRouter: ${options.image}`);
-          const base64Image = await fetchImageAsBase64(options.image);
-          content.push({
-            type: "image_url",
-            image_url: {
-              url: base64Image
-            }
-          });
-        } catch (fetchErr) {
-          console.error(`[OpenRouter Image Task] Failed to convert image to base64:`, fetchErr);
-          throw fetchErr;
-        }
+        console.log(`[OpenRouter Image Task] Passing image URL directly to OpenRouter: ${options.image}`);
+        content.push({
+          type: "image_url",
+          image_url: {
+            url: options.image
+          }
+        });
       }
       const body = {
         model: openRouterModel,

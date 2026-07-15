@@ -145,7 +145,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentScreen: _curren
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       {/* TopAppBar */}
       <header className="fixed top-0 w-full z-50 bg-white/60 backdrop-blur-xl shadow-sm shadow-[#0f172a]/5 flex justify-between items-center px-6 py-4">
         <div className="flex items-center gap-3">
