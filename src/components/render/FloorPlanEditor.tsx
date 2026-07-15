@@ -342,7 +342,6 @@ const FURNITURE_METADATA: Record<string, {
     ],
     styles: [
       { name: "Giường bọc nệm hiện đại", value: "padded" },
-      { name: "Giường chân gỗ Scandinavian", value: "wooden" },
       { name: "Giường bệt kiểu Nhật", value: "tatami" }
     ]
   },
@@ -4526,6 +4525,70 @@ Requirements:
     toast.success("Đã xóa cửa/cửa sổ");
   };
 
+  // ── Snap opening to nearest wall ────────────────────────────────────────
+  // Returns { x, y, rotation } snapped to the closest room wall edge,
+  // or the original values if no wall is within SNAP_RADIUS metres.
+  const snapOpeningToWall = (
+    px: number,
+    py: number,
+    plan: FloorPlanData,
+    currentRotation: number = 0,
+    snapRadius: number = 0.25   // metres – override with Infinity to always snap
+  ): { x: number; y: number; rotation: number } => {
+    const SNAP_RADIUS = snapRadius;
+    const thick = 0; // Snap exactly on the centerline of the wall boundary
+
+    let bestDist = SNAP_RADIUS;
+    let bestX = px;
+    let bestY = py;
+    let bestRot = currentRotation; // keep existing rotation if no wall found
+    let snapped = false;
+
+    for (const room of plan.rooms) {
+      // Each room has 4 wall segments. We find the closest wall and the
+      // closest point along its length, then snap to that point.
+
+      const walls = [
+        // Top wall   – horizontal, rotation = 0
+        { x1: room.x, y1: room.y,          x2: room.x + room.w, y2: room.y,          horizontal: true,  wallY: room.y },
+        // Bottom wall – horizontal, rotation = 0
+        { x1: room.x, y1: room.y + room.h, x2: room.x + room.w, y2: room.y + room.h, horizontal: true,  wallY: room.y + room.h },
+        // Left wall  – vertical, rotation = 90
+        { x1: room.x,          y1: room.y, x2: room.x,          y2: room.y + room.h, horizontal: false, wallX: room.x },
+        // Right wall – vertical, rotation = 90
+        { x1: room.x + room.w, y1: room.y, x2: room.x + room.w, y2: room.y + room.h, horizontal: false, wallX: room.x + room.w },
+      ];
+
+      for (const wall of walls) {
+        if (wall.horizontal) {
+          // Distance from point to this horizontal line
+          const dy = Math.abs(py - wall.y1);
+          if (dy >= bestDist) continue;
+          // Check that the projection falls within the wall segment
+          const clampedX = Math.max(wall.x1, Math.min(wall.x2, px));
+          bestDist = dy;
+          bestX = clampedX;
+          bestY = wall.wallY!;
+          bestRot = 0;
+          snapped = true;
+        } else {
+          // Vertical wall
+          const dx = Math.abs(px - wall.x1);
+          if (dx >= bestDist) continue;
+          const clampedY = Math.max(wall.y1, Math.min(wall.y2, py));
+          bestDist = dx;
+          bestX = wall.wallX!;
+          bestY = clampedY;
+          bestRot = 90;
+          snapped = true;
+        }
+      }
+    }
+
+    void snapped; // available for callers that want to show feedback
+    return { x: Math.round(bestX * 20) / 20, y: Math.round(bestY * 20) / 20, rotation: bestRot };
+  };
+
   // ── Manual Furniture & Room Actions ────────────────────────────────────
   const [activeBottomPopup, setActiveBottomPopup] = useState<"furniture" | "structure" | null>(null);
   const [activeStructureCategory, setActiveStructureCategory] = useState<"door" | "stairs" | "window" | null>("door");
@@ -4674,13 +4737,20 @@ Requirements:
     }
     pushHistory(floorPlan);
     const width = style === "garage" ? 2.4 : style === "sliding" ? 1.6 : 0.9;
+
+    // Always snap new door directly to the nearest wall (no radius limit)
+    const firstRoom = floorPlan.rooms[0];
+    const initX = firstRoom ? firstRoom.x + firstRoom.w / 2 : 3.0;
+    const initY = firstRoom ? firstRoom.y + firstRoom.h / 2 : 3.0;
+    const snapped = snapOpeningToWall(initX, initY, floorPlan, 0, Infinity);
+
     const newOpening: Opening = {
       id: `open_${activeFloorIndex}_${Date.now()}`,
       type: "door",
-      x: 3.0,
-      y: 3.0,
+      x: snapped.x,
+      y: snapped.y,
       w: width,
-      rotation: 0,
+      rotation: snapped.rotation,
       style
     };
     const updatedOpenings = [...(floorPlan.openings || []), newOpening];
@@ -4701,13 +4771,20 @@ Requirements:
     }
     pushHistory(floorPlan);
     const width = style === "sliding" ? 1.5 : 1.2;
+
+    // Always snap new window directly to the nearest wall (no radius limit)
+    const firstRoom = floorPlan.rooms[0];
+    const initX = firstRoom ? firstRoom.x + firstRoom.w / 2 : 3.0;
+    const initY = firstRoom ? firstRoom.y : 3.0;
+    const snapped = snapOpeningToWall(initX, initY, floorPlan, 0, Infinity);
+
     const newOpening: Opening = {
       id: `open_${activeFloorIndex}_${Date.now()}`,
       type: "window",
-      x: 3.0,
-      y: 3.0,
+      x: snapped.x,
+      y: snapped.y,
       w: width,
-      rotation: 0,
+      rotation: snapped.rotation,
       style
     };
     const updatedOpenings = [...(floorPlan.openings || []), newOpening];
@@ -4754,12 +4831,13 @@ Requirements:
             draggable={true}
             onDragMove={(e) => {
               e.cancelBubble = true;
-              const newX = (e.target.x() - pan.x) / scale;
-              const newY = (e.target.y() - pan.y) / scale;
-              const roundedX = Math.round(newX * 20) / 20; // 0.05m
-              const roundedY = Math.round(newY * 20) / 20;
-              e.target.x(pan.x + roundedX * scale);
-              e.target.y(pan.y + roundedY * scale);
+              const rawX = (e.target.x() - pan.x) / scale;
+              const rawY = (e.target.y() - pan.y) / scale;
+              // Snap in real time (using 0.45m threshold for comfortable drag snapping)
+              const snapped = snapOpeningToWall(rawX, rawY, floorPlan, open.rotation ?? 0, 0.45);
+              e.target.x(pan.x + snapped.x * scale);
+              e.target.y(pan.y + snapped.y * scale);
+              e.target.rotation(snapped.rotation);
             }}
             onClick={(e) => {
               e.cancelBubble = true;
@@ -4793,16 +4871,15 @@ Requirements:
             }}
             onDragEnd={(e) => {
               e.cancelBubble = true;
-              const newX = (e.target.x() - pan.x) / scale;
-              const newY = (e.target.y() - pan.y) / scale;
-              const roundedX = Math.round(newX * 20) / 20; // snap to 0.05m
-              const roundedY = Math.round(newY * 20) / 20;
+              const finalX = (e.target.x() - pan.x) / scale;
+              const finalY = (e.target.y() - pan.y) / scale;
+              const finalRot = e.target.rotation();
 
               if (floorPlan) {
                 pushHistory(floorPlan);
                 const updatedOpenings = floorPlan.openings.map((o) => {
                   if (o.id === open.id) {
-                    return { ...o, x: roundedX, y: roundedY };
+                    return { ...o, x: finalX, y: finalY, rotation: finalRot };
                   }
                   return o;
                 });
@@ -4811,7 +4888,6 @@ Requirements:
                 const nextPlans = [...floorPlans];
                 nextPlans[activeFloorIndex] = updatedPlan;
                 setFloorPlans(nextPlans);
-                toast.success(`Đã di chuyển cửa đến (${roundedX}m, ${roundedY}m)`);
               }
             }}
           >
@@ -4868,12 +4944,13 @@ Requirements:
             draggable={true}
             onDragMove={(e) => {
               e.cancelBubble = true;
-              const newX = (e.target.x() - pan.x) / scale;
-              const newY = (e.target.y() - pan.y) / scale;
-              const roundedX = Math.round(newX * 20) / 20; // 0.05m
-              const roundedY = Math.round(newY * 20) / 20;
-              e.target.x(pan.x + roundedX * scale);
-              e.target.y(pan.y + roundedY * scale);
+              const rawX = (e.target.x() - pan.x) / scale;
+              const rawY = (e.target.y() - pan.y) / scale;
+              // Snap in real time (using 0.45m threshold for comfortable drag snapping)
+              const snapped = snapOpeningToWall(rawX, rawY, floorPlan, open.rotation ?? 0, 0.45);
+              e.target.x(pan.x + snapped.x * scale);
+              e.target.y(pan.y + snapped.y * scale);
+              e.target.rotation(snapped.rotation);
             }}
             onClick={(e) => {
               e.cancelBubble = true;
@@ -4907,16 +4984,15 @@ Requirements:
             }}
             onDragEnd={(e) => {
               e.cancelBubble = true;
-              const newX = (e.target.x() - pan.x) / scale;
-              const newY = (e.target.y() - pan.y) / scale;
-              const roundedX = Math.round(newX * 20) / 20; // snap to 0.05m
-              const roundedY = Math.round(newY * 20) / 20;
+              const finalX = (e.target.x() - pan.x) / scale;
+              const finalY = (e.target.y() - pan.y) / scale;
+              const finalRot = e.target.rotation();
 
               if (floorPlan) {
                 pushHistory(floorPlan);
                 const updatedOpenings = floorPlan.openings.map((o) => {
                   if (o.id === open.id) {
-                    return { ...o, x: roundedX, y: roundedY };
+                    return { ...o, x: finalX, y: finalY, rotation: finalRot };
                   }
                   return o;
                 });
@@ -4925,7 +5001,6 @@ Requirements:
                 const nextPlans = [...floorPlans];
                 nextPlans[activeFloorIndex] = updatedPlan;
                 setFloorPlans(nextPlans);
-                toast.success(`Đã di chuyển cửa sổ đến (${roundedX}m, ${roundedY}m)`);
               }
             }}
           >
@@ -6358,7 +6433,6 @@ Requirements:
             ref={stageRef}
             width={stageSize.w}
             height={stageSize.h}
-            onWheel={handleWheel}
             onMouseDown={handleStageMouseDown}
             onMouseMove={handleStageMouseMove}
             onMouseUp={handleStageMouseUp}
@@ -6663,9 +6737,9 @@ Requirements:
 
               {/* Structure Popover */}
               {activeBottomPopup === "structure" && (
-                <div className="mb-3 flex gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                <div className="mb-3 flex items-start gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
                   {/* Left panel: main options */}
-                  <div className="w-48 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1">
+                  <div className="w-48 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 h-[180px]">
                     <button
                       onMouseEnter={() => setActiveStructureCategory("door")}
                       onClick={() => setActiveStructureCategory("door")}
@@ -6726,7 +6800,7 @@ Requirements:
 
                   {/* Right panel: submenu */}
                   {activeStructureCategory && (
-                    <div className="w-56 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-100 justify-center">
+                    <div className="w-56 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-100 h-[180px] overflow-y-auto">
                       {activeStructureCategory === "door" && (
                         <>
                           <button
@@ -7323,30 +7397,7 @@ Requirements:
                       </div>
                     </div>
 
-                    {/* Styles Selection */}
-                    {meta.styles.length > 0 && (
-                      <div className="space-y-3">
-                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Kiểu dáng thiết kế</span>
-                        <div className="grid grid-cols-2 gap-2">
-                          {meta.styles.map((st, idx) => {
-                            const isSelectedStyle = furniture.style === st.value || (!furniture.style && idx === 0);
-                            return (
-                              <button
-                                key={st.value}
-                                onClick={() => updateFurnitureProperty(room.id, furniture.id, { style: st.value })}
-                                className={`px-3 py-2 text-left rounded-xl border text-xs font-semibold cursor-pointer transition-all ${
-                                  isSelectedStyle
-                                    ? "border-[#00b5cd] bg-[#00b5cd]/5 text-[#00b5cd]"
-                                    : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
-                                }`}
-                              >
-                                {st.name}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+                
 
                     {/* Finish Selection (triggers popover) */}
                     <div className="space-y-3">
