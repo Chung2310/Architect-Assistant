@@ -1604,15 +1604,25 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
               lineMesh.position.set(0, i * slatH, 0);
               openGroup.add(lineMesh);
             }
-          } else {
             // Panel (semi-open at 45 degrees) - Hinged door
+            const flipX = !!open.flipX;
+            const flipY = !!open.flipY;
+
             const panelGeo = new THREE.BoxGeometry(open.w * 0.95, frameHeight * 0.95, 0.03);
             const panel = new THREE.Mesh(panelGeo, doorMat);
-            panel.position.set(open.w * 0.95 / 2, frameHeight * 0.95 / 2, 0);
+
+            const hingeX = flipX ? open.w / 2 : -open.w / 2;
+            const panelOffsetX = flipX ? -open.w * 0.95 / 2 : open.w * 0.95 / 2;
+            panel.position.set(panelOffsetX, frameHeight * 0.95 / 2, 0);
 
             const pivot = new THREE.Group();
-            pivot.position.set(-open.w / 2, 0, 0);
-            pivot.rotation.y = Math.PI / 4; // open 45deg
+            pivot.position.set(hingeX, 0, 0);
+            
+            let swingAngle = Math.PI / 4;
+            if (flipY) swingAngle = -swingAngle;
+            if (flipX) swingAngle = -swingAngle;
+            
+            pivot.rotation.y = swingAngle;
             pivot.add(panel);
 
             openGroup.add(pivot);
