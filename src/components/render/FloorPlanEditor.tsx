@@ -1405,10 +1405,10 @@ export function isFurnitureCollidingWithDoor(
   open: Opening
 ): boolean {
   if (open.type !== "door") return false;
-  let dx1 = open.x;
-  let dx2 = open.x;
-  let dy1 = open.y;
-  let dy2 = open.y;
+  let dx1: number;
+  let dx2: number;
+  let dy1: number;
+  let dy2: number;
   const ow = open.w;
 
   if (open.rotation === 0) {
@@ -5250,8 +5250,8 @@ Requirements:
         if (open.type === "door" && open.style !== "sliding" && open.style !== "garage") {
           const fx = !!open.flipX;
           const fy = !!open.flipY;
-          let nextFX = false;
-          let nextFY = false;
+          let nextFX: boolean;
+          let nextFY: boolean;
           if (!fx && !fy) {
             nextFX = true; nextFY = false;
           } else if (fx && !fy) {
@@ -5345,7 +5345,7 @@ Requirements:
             }
           }
 
-          let clampedX = px;
+          let clampedX: number;
           if (minX > maxX) {
             clampedX = (wall.x1 + wall.x2) / 2;
             if (isDoor) {
@@ -5385,7 +5385,7 @@ Requirements:
             }
           }
 
-          let clampedY = py;
+          let clampedY: number;
           if (minY > maxY) {
             clampedY = (wall.y1 + wall.y2) / 2;
             if (isDoor) {
