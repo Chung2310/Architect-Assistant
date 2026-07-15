@@ -61,7 +61,6 @@ const ROOM_META: Record<
   "Lối vào / Sảnh đón (Entry)": { label: "Lối vào / Sảnh đón (Entry)", icon: Home },
   "Sảnh phụ (Mudroom)": { label: "Sảnh phụ (Mudroom)", icon: Home },
   "Hiên trước (Porch)": { label: "Hiên trước (Porch)", icon: Home },
-  "Sân vườn": { label: "Sân vườn", icon: Trees },
 };
 
 const ALL_ROOM_NAMES = Object.keys(ROOM_META);
@@ -91,7 +90,6 @@ export const ChooseRoomsModal: React.FC<ChooseRoomsModalProps> = ({
               { name: "Phòng bếp", count: 1 },
               { name: "Phòng khách", count: 1 },
               { name: "Phòng tắm lớn", count: 1 },
-              { name: "Sân vườn", count: 1 },
               { name: "Phòng ăn", count: 1 },
               { name: "Nhà xe / Gara", count: 1 },
             ];
@@ -181,7 +179,6 @@ export const ChooseRoomsModal: React.FC<ChooseRoomsModalProps> = ({
           { name: "Phòng bếp", count: 1 },
           { name: "Phòng khách", count: 1 },
           { name: "Phòng tắm lớn", count: 1 },
-          { name: "Sân vườn", count: 1 },
           { name: "Phòng ăn", count: 1 },
           { name: "Nhà xe / Gara", count: 1 },
         ];
