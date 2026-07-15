@@ -193,11 +193,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentScreen: _curren
             <div className="absolute right-0 top-12 mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-100 py-2 z-50">
               <div className="px-4 py-2 border-b border-slate-100 mb-2">
                 <p className="text-sm font-semibold text-slate-800 truncate">
-                  {role === 'admin' ? 'Admin' : (user?.displayName || 'Người dùng')}
+                  {role === 'admin' ? 'Admin' : (role === 'superadmin' ? 'Super Admin' : (user?.displayName || 'Người dùng'))}
                 </p>
                 <p className="text-xs text-slate-500 truncate">{user?.email}</p>
               </div>
-              {role === 'admin' && (
+              {(role === 'admin' || role === 'superadmin') && (
                 <button 
                   onClick={() => {
                     onNavigate('/admin');

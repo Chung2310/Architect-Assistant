@@ -4,6 +4,7 @@ import { renderJobService } from "../service/render-job.service";
 import { userService } from "../service/user.service";
 import { piapiService } from "../service/piapi.service";
 import { geminiService } from "../service/gemini.service";
+import { openrouterService } from "../service/openrouter.service";
 import { cloudinaryService } from "../service/cloudinary.service";
 import { emitToUser } from "../socket";
 import Joi from "joi";
@@ -336,7 +337,8 @@ export const renderJobController = {
         !piapiModel.startsWith("piapi-") &&
         piapiModel !== "nano-banana-pro" &&
         piapiModel !== "nano-banana-2" &&
-        piapiModel !== "igen-image-flash"
+        piapiModel !== "igen-image-flash" &&
+        piapiModel !== "openrouter-nano-banana-2"
       ) {
         piapiModel = "piapi-flux";
       }
@@ -369,11 +371,14 @@ export const renderJobController = {
       finalPrompt = appendFloorplanCameraDirective(req.body.type, finalPrompt, cameraAngle, customCameraAngle);
       finalPrompt = appendFloorplan3DFloorplanCameraDirective(req.body.type, finalPrompt, cameraAngleStyle);
 
-      const aspect = aspectRatio || "1:1";
+      // Bỏ hậu tố nhãn tiếng Việt (vd: "4:3 (Ngang)" -> "4:3") trước khi gửi cho PiAPI,
+      // để tránh giá trị không hợp lệ bị PiAPI âm thầm mặc định về hình vuông 1:1.
+      const aspect = (aspectRatio || "").split(" ")[0].trim() || "1:1";
 
       const isGeminiModel = isGeminiNativeModel;
 
       if (isGeminiModel) {
+
         try {
           const user = await userService.getById(req.user!.userId);
           const userApiKey = user?.apiKey || "";
@@ -412,6 +417,24 @@ export const renderJobController = {
         } catch (apiErr) {
           logger.error(`[renderJobController] Failed to generate Gemini image: ${apiErr}`);
           res.status(500).json({ success: false, message: "Không thể tạo ảnh từ Gemini: " + (apiErr as Error).message });
+          return;
+        }
+      } else if (piapiModel === "openrouter-nano-banana-2") {
+        // OpenRouter trả ảnh đồng bộ ngay trong response, không có task_id để poll,
+        // nên xử lý xong hoàn toàn trong request này thay vì đi qua polling.service.ts.
+        try {
+          logger.info(`[renderJobController] Generating image via OpenRouter (nano-banana 2)`);
+          const genResult = await openrouterService.generateImage(finalPrompt, piapiModel, {
+            aspectRatio: aspect,
+            image: inputImageUrls?.[0],
+          });
+          const uploadedUrl = await cloudinaryService.uploadMedia(genResult.url, "renders");
+          outputImageUrls = [uploadedUrl];
+          status = "completed";
+          progress = 100;
+        } catch (apiErr) {
+          logger.error(`[renderJobController] Failed to generate image via OpenRouter: ${apiErr}`);
+          res.status(500).json({ success: false, message: "Không thể tạo ảnh qua OpenRouter: " + (apiErr as Error).message });
           return;
         }
       } else {

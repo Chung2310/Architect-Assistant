@@ -7,7 +7,7 @@ import Joi from "joi";
 import { logger } from "../utils/logger";
 
 const roleSchema = Joi.object({
-  role: Joi.string().valid("user", "admin").required().messages({
+  role: Joi.string().valid("user", "admin", "superadmin").required().messages({
     "any.only": "Vai trò không hợp lệ.",
     "any.required": "Vai trò là bắt buộc.",
   }),
@@ -155,13 +155,15 @@ export const userController = {
       return;
     }
     try {
+      const amount = req.body.amount;
+      const type = amount < 0 ? "deduct" : "topup";
       const user = await userService.updateCredits(
         req.params.id,
-        req.body.amount,
-        "topup",
+        Math.abs(amount),
+        type,
         "Admin Top-up"
       );
-      logger.info(`[userController.updateCredits] Updated credits for user: ${req.params.id} by: ${req.body.amount}`);
+      logger.info(`[userController.updateCredits] Updated credits for user: ${req.params.id} by: ${amount}`);
       res.json({ success: true, data: user });
     } catch (error) {
       logger.error(`[userController.updateCredits] Error: ${error}`);
