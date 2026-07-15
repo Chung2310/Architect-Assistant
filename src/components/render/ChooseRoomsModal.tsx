@@ -13,7 +13,6 @@ import {
   Briefcase,
   Sun,
   Trees,
-  DoorOpen,
   Dumbbell,
   Gamepad2,
   Shirt,
@@ -50,7 +49,6 @@ const ROOM_META: Record<
   "Phòng làm việc": { label: "Phòng làm việc", icon: Briefcase },
   "Ban công": { label: "Ban công", icon: Sun },
   "Sân thượng": { label: "Sân thượng", icon: Trees },
-  "Hành lang / Lối đi": { label: "Hành lang / Lối đi", icon: DoorOpen },
   "Phòng vệ sinh phụ": { label: "Phòng vệ sinh phụ", icon: Bath },
   "Phòng sinh hoạt chung": { label: "Phòng sinh hoạt chung", icon: Sofa },
   "Phòng chơi game": { label: "Phòng chơi game", icon: Gamepad2 },
@@ -93,11 +91,18 @@ export const ChooseRoomsModal: React.FC<ChooseRoomsModalProps> = ({
               { name: "Phòng bếp", count: 1 },
               { name: "Phòng khách", count: 1 },
               { name: "Phòng tắm lớn", count: 1 },
+              { name: "Sân vườn", count: 1 },
+              { name: "Phòng ăn", count: 1 },
+              { name: "Nhà xe / Gara", count: 1 },
             ];
           } else {
             defaults[f] = [
               { name: "Phòng ngủ", count: 2 },
               { name: "Phòng tắm lớn", count: 1 },
+              { name: "Phòng sinh hoạt chung", count: 1 },
+              { name: "Ban công", count: 1 },
+              { name: "Phòng vệ sinh phụ", count: 1 },
+              { name: "Phòng làm việc", count: 1 },
             ];
           }
         }
@@ -176,11 +181,18 @@ export const ChooseRoomsModal: React.FC<ChooseRoomsModalProps> = ({
           { name: "Phòng bếp", count: 1 },
           { name: "Phòng khách", count: 1 },
           { name: "Phòng tắm lớn", count: 1 },
+          { name: "Sân vườn", count: 1 },
+          { name: "Phòng ăn", count: 1 },
+          { name: "Nhà xe / Gara", count: 1 },
         ];
       } else {
         defaults[f] = [
           { name: "Phòng ngủ", count: 2 },
           { name: "Phòng tắm lớn", count: 1 },
+          { name: "Phòng sinh hoạt chung", count: 1 },
+          { name: "Ban công", count: 1 },
+          { name: "Phòng vệ sinh phụ", count: 1 },
+          { name: "Phòng làm việc", count: 1 },
         ];
       }
     }

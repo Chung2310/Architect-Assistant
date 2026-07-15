@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useCallback } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -15,6 +15,7 @@ interface FloorPlan3DViewerProps {
     y: number;
     rotation: number;
     fov: number;
+    aspectRatio?: string;
   } | null;
   onCaptureRef?: React.MutableRefObject<(() => string) | null>;
   onChangeCamera: (cam: { rotation: number }) => void;
@@ -306,18 +307,34 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
   const sceneObjectsGroupRef = useRef<THREE.Group | null>(null);
   const needsRenderRef = useRef<boolean>(false);
 
+  const activeCameraRef = useRef(activeCamera);
+  const onChangeCameraRef = useRef(_onChangeCamera);
+  const renderModeRef = useRef(renderMode);
+
+  useEffect(() => {
+    activeCameraRef.current = activeCamera;
+  }, [activeCamera]);
+
+  useEffect(() => {
+    onChangeCameraRef.current = _onChangeCamera;
+  }, [_onChangeCamera]);
+
+  useEffect(() => {
+    renderModeRef.current = renderMode;
+  }, [renderMode]);
+
 
 
 
 
 // ── Draw helper to compile floorplan meshes ──────────────────────────────
-  function draw3DScene(
+  const draw3DScene = useCallback((
     scene: THREE.Scene,
     plan: FloorPlanData,
     thicknessMM: number,
     finishes: FloorPlan3DViewerProps["finishes"],
     cubeTexture: THREE.Texture | null
-  ) {
+  ) => {
     if (!plan || !plan.rooms || plan.rooms.length === 0) return;
 
     const loader = new GLTFLoader();
@@ -418,6 +435,25 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
       floorMesh.position.set(rx, 0.02, rz);
       floorMesh.receiveShadow = true;
       scene.add(floorMesh);
+
+      // 1b. Draw Room Trần (Ceiling)
+      const rawRoomCeiling = (typeof room.finishes?.ceiling === "object"
+        ? (room.finishes?.ceiling as { value?: string })?.value
+        : room.finishes?.ceiling) || finishes?.ceiling?.value || "paint white";
+      const roomCeilingResolved = resolveFinishValue(rawRoomCeiling, "#ffffff");
+      const roomCeilingMat: THREE.Material = buildFlooringMat(roomCeilingResolved);
+      roomCeilingMat.side = THREE.DoubleSide; // Ensure the ceiling is visible from below
+
+      const ceilingGeo = new THREE.BoxGeometry(room.w, 0.04, room.h);
+      const ceilingMesh = new THREE.Mesh(ceilingGeo, roomCeilingMat);
+      // Place it right at WALL_HEIGHT (2.7m) plus half of box height (0.02m) so the bottom surface of ceiling is exactly at WALL_HEIGHT
+      ceilingMesh.position.set(rx, WALL_HEIGHT + 0.02, rz);
+      ceilingMesh.castShadow = true;
+      ceilingMesh.receiveShadow = true;
+      ceilingMesh.userData = { isCeiling: true };
+      // Initial visibility depends on activeCamera
+      ceilingMesh.visible = !!activeCameraRef.current && renderModeRef.current !== "Floorplan to 3D Floorplan";
+      scene.add(ceilingMesh);
 
       // 2. Draw Room Tường (Walls along borders)
       // Top wall
@@ -1658,7 +1694,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
         scene.add(openGroup);
       });
     }
-  }
+  }, []);
 
   useEffect(() => {
     const container = mountRef.current;
@@ -1745,6 +1781,17 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     };
     controls.addEventListener("change", requestRender);
 
+    const handleControlsEnd = () => {
+      if (activeCameraRef.current && onChangeCameraRef.current) {
+        const dir = new THREE.Vector3();
+        camera.getWorldDirection(dir);
+        const rotation = (Math.atan2(dir.z, dir.x) * 180) / Math.PI + 90;
+        const normalizedRotation = (Math.round(rotation) + 360) % 360;
+        onChangeCameraRef.current({ rotation: normalizedRotation });
+      }
+    };
+    controls.addEventListener("end", handleControlsEnd);
+
     // 5. Animation Loop
     const animate = () => {
       animFrameIdRef.current = requestAnimationFrame(animate);
@@ -1797,6 +1844,8 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
         cubeRenderTargetRef.current.dispose();
       }
 
+      controls.removeEventListener("change", requestRender);
+      controls.removeEventListener("end", handleControlsEnd);
       controls.dispose();
       renderer.dispose();
       container.innerHTML = "";
@@ -1850,7 +1899,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
 
     // 6. Signal the animation loop to render a fresh frame
     needsRenderRef.current = true;
-  }, [floorPlan, wallThickness, finishes]);
+  }, [floorPlan, wallThickness, finishes, draw3DScene]);
 
   // Expose screenshot capture function to parent
   useEffect(() => {
@@ -1866,9 +1915,15 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
         const originalWidth = container.clientWidth || 800;
         const originalHeight = container.clientHeight || 500;
 
-        // 2. Temporarily resize renderer & camera to high-resolution 2K (4:3 aspect ratio)
+        // 2. Temporarily resize renderer & camera to high-resolution 2K matching aspect ratio option
         const targetW = 2048;
-        const targetH = 1536;
+        let targetH = 1536; // default 4:3
+        const aspectStr = activeCameraRef.current?.aspectRatio;
+        if (aspectStr === "Widescreen (16:9)") {
+          targetH = 1152;
+        } else if (aspectStr === "Square (1:1)") {
+          targetH = 2048;
+        }
         renderer.setSize(targetW, targetH);
         camera.aspect = targetW / targetH;
         camera.updateProjectionMatrix();
@@ -1903,6 +1958,14 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     const renderer = rendererRef.current;
     if (!scene || !camera || !floorPlan || !controls) return;
 
+    // Toggle ceiling visibility based on active camera mode
+    const showCeiling = !!activeCamera && renderMode !== "Floorplan to 3D Floorplan";
+    scene.traverse((child) => {
+      if (child.userData && child.userData.isCeiling) {
+        child.visible = showCeiling;
+      }
+    });
+
     if (activeCamera && renderMode !== "Floorplan to 3D Floorplan") {
       // 1. Calculate center offset to map coordinates correctly
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -1915,30 +1978,36 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
 
-      // 2. Position camera at height 1.25m (chest level for better perspective)
+      // 2. Position target at camera coordinates on the floor plan
       const rx = activeCamera.x - centerX;
       const rz = activeCamera.y - centerY;
       const height = 1.25;
-      camera.position.set(rx, height, rz);
+
+      controls.target.set(rx, height, rz);
 
       // Reset camera up vector to default before lookAt
       camera.up.set(0, 1, 0);
 
-      // 3. Aim camera in target direction (based on activeCamera.rotation angle)
+      // 3. Position camera slightly behind the target in the opposite look direction (first-person look-around)
       const rad = ((activeCamera.rotation - 90) * Math.PI) / 180;
-      const targetX = rx + Math.cos(rad) * 10;
-      const targetZ = rz + Math.sin(rad) * 10;
+      const offset = 0.05; // 5cm offset
+      const camX = rx - Math.cos(rad) * offset;
+      const camZ = rz - Math.sin(rad) * offset;
 
-      camera.lookAt(new THREE.Vector3(targetX, height, targetZ));
+      camera.position.set(camX, height, camZ);
+      camera.lookAt(new THREE.Vector3(rx, height, rz));
 
       if (activeCamera.fov) {
         camera.fov = activeCamera.fov;
         camera.updateProjectionMatrix();
       }
 
-      // Configure OrbitControls to rotate and zoom centered on the camera's look-at point (Flycam zoom!)
+      // Configure OrbitControls constraints for first-person look-around
       controls.enabled = true;
-      controls.target.set(targetX, height, targetZ);
+      controls.minDistance = 0.01;
+      controls.maxDistance = 0.1;
+      controls.maxPolarAngle = Math.PI - 0.05; // allow looking down at floor
+      controls.minPolarAngle = 0.05;          // allow looking up at ceiling
       controls.update();
 
       // Trigger redraw
@@ -1946,6 +2015,12 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
         renderer.render(scene, camera);
       }
     } else {
+      // Restore default constraints for dollhouse view
+      controls.minDistance = 1;
+      controls.maxDistance = 40;
+      controls.maxPolarAngle = Math.PI / 2 - 0.05; // prevent going below ground
+      controls.minPolarAngle = 0.05;
+
       if (renderMode === "Floorplan to 3D Floorplan") {
         // Calculate the bounding box of the floor plan to set the height dynamically
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;

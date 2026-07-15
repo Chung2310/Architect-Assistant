@@ -1136,6 +1136,61 @@ const FURNITURE_CATEGORIES = [
   }
 ];
 
+// Helper to convert hex to HSV
+const hexToHsv = (hex: string): { h: number; s: number; v: number } => {
+  let r: number, g: number, b: number;
+  const cleanHex = hex.replace("#", "").trim();
+  if (cleanHex.length === 6) {
+    r = parseInt(cleanHex.substring(0, 2), 16);
+    g = parseInt(cleanHex.substring(2, 4), 16);
+    b = parseInt(cleanHex.substring(4, 6), 16);
+  } else if (cleanHex.length === 3) {
+    r = parseInt(cleanHex.substring(0, 1) + cleanHex.substring(0, 1), 16);
+    g = parseInt(cleanHex.substring(1, 2) + cleanHex.substring(1, 2), 16);
+    b = parseInt(cleanHex.substring(2, 3) + cleanHex.substring(2, 3), 16);
+  } else {
+    return { h: 0, s: 1, v: 1 };
+  }
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const v = max;
+  const d = max - min;
+  const s = max === 0 ? 0 : d / max;
+  let h = 0;
+  if (max !== min) {
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h /= 6;
+  }
+  return { h: Math.round(h * 360), s, v };
+};
+
+// Helper to convert HSV to hex
+const hsvToHex = (h: number, s: number, v: number): string => {
+  let r = 0, g = 0, b = 0;
+  const i = Math.floor(h / 60);
+  const f = h / 60 - i;
+  const p = v * (1 - s);
+  const q = v * (1 - f * s);
+  const t = v * (1 - (1 - f) * s);
+  switch (i % 6) {
+    case 0: r = v; g = t; b = p; break;
+    case 1: r = q; g = v; b = p; break;
+    case 2: r = p; g = v; b = t; break;
+    case 3: r = p; g = q; b = v; break;
+    case 4: r = t; g = p; b = v; break;
+    case 5: r = v; g = p; b = q; break;
+  }
+  const toHex = (x: number) => {
+    const hex = Math.round(x * 255).toString(16);
+    return hex.length === 1 ? "0" + hex : hex;
+  };
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+};
+
 // ══════════════════════════════════════════════════════════════════════════
 export const FloorPlanEditor: React.FC = () => {
   const navigate = useNavigate();
@@ -1384,6 +1439,88 @@ export const FloorPlanEditor: React.FC = () => {
     windows: { type: "color", value: "", name: "" },
   });
 
+  const [pickerColor, setPickerColor] = useState<{ h: number; s: number; v: number }>({ h: 0, s: 1, v: 1 });
+
+  useEffect(() => {
+    if (showFinishModal) {
+      const val = finishes[showFinishModal]?.value || "#ff0000";
+      if (val.startsWith("#")) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setPickerColor(hexToHsv(val));
+      } else {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setPickerColor({ h: 0, s: 1, v: 1 });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showFinishModal]);
+
+  const handleSquarePointer = (e: React.PointerEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+    const s = x / rect.width;
+    const v = 1 - (y / rect.height);
+    
+    const nextColor = { ...pickerColor, s, v };
+    setPickerColor(nextColor);
+    
+    const hex = hsvToHex(nextColor.h, s, v);
+    setFinishes(prevFin => ({
+      ...prevFin,
+      [showFinishModal!]: { type: "color", value: hex, name: hex.toUpperCase() }
+    }));
+  };
+
+  const onSquarePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    handleSquarePointer(e);
+  };
+
+  const onSquarePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      handleSquarePointer(e);
+    }
+  };
+
+  const onSquarePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    const hex = hsvToHex(pickerColor.h, pickerColor.s, pickerColor.v);
+    applyFinishToAllRooms(showFinishModal as "flooring" | "walls" | "ceiling" | "doors" | "windows", hex);
+  };
+
+  const handleHuePointer = (e: React.PointerEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const h = Math.round((x / rect.width) * 360) % 360;
+    
+    const nextColor = { ...pickerColor, h };
+    setPickerColor(nextColor);
+    
+    const hex = hsvToHex(h, nextColor.s, nextColor.v);
+    setFinishes(prevFin => ({
+      ...prevFin,
+      [showFinishModal!]: { type: "color", value: hex, name: hex.toUpperCase() }
+    }));
+  };
+
+  const onHuePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    handleHuePointer(e);
+  };
+
+  const onHuePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      handleHuePointer(e);
+    }
+  };
+
+  const onHuePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    const hex = hsvToHex(pickerColor.h, pickerColor.s, pickerColor.v);
+    applyFinishToAllRooms(showFinishModal as "flooring" | "walls" | "ceiling" | "doors" | "windows", hex);
+  };
+
   // ── Visualize / Camera states ───────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<"layout" | "visualize">("layout");
   const [selectedCameraRoomId, setSelectedCameraRoomId] = useState<string | null>(null);
@@ -1487,7 +1624,7 @@ export const FloorPlanEditor: React.FC = () => {
         }
       });
 
-      // 2. Khởi tạo hoặc cập nhật vị trí camera theo tâm phòng mới khi ở tab layout
+      // 2. Khởi tạo vị trí camera theo tâm phòng mới cho phòng chưa có camera
       floorPlan.rooms.forEach((room) => {
         const centerX = room.x + room.w / 2;
         const centerY = room.y + room.h / 2;
@@ -1503,16 +1640,6 @@ export const FloorPlanEditor: React.FC = () => {
             prompt: "",
           };
           changed = true;
-        } else if (activeTab === "layout") {
-          // Khi ở tab layout, camera luôn bám theo tâm phòng
-          if (Math.abs(cam.x - centerX) > 0.01 || Math.abs(cam.y - centerY) > 0.01) {
-            updatedCameras[room.id] = {
-              ...cam,
-              x: centerX,
-              y: centerY
-            };
-            changed = true;
-          }
         }
       });
 
@@ -1522,7 +1649,7 @@ export const FloorPlanEditor: React.FC = () => {
         }, 0);
       }
     }
-  }, [floorPlan, activeTab]);
+  }, [floorPlan]);
 
   // ── Auto-scroll chat ────────────────────────────────────────────────────
   useEffect(() => {
@@ -1784,6 +1911,15 @@ export const FloorPlanEditor: React.FC = () => {
 
     // Giữ phản hồi tự nhiên nhưng không bắt người dùng chờ cố định quá lâu.
     const minDelay = new Promise<void>((resolve) => setTimeout(resolve, 500));
+
+    // Tự động trả lời nếu tin nhắn chứa từ khóa hành lang
+    const normalizedText = text.toLowerCase();
+    if (normalizedText.includes("hành lang") || normalizedText.includes("hanh lang")) {
+      await minDelay;
+      addMessage("assistant", "Igen không hỗ trợ hành lang");
+      setIsTyping(false);
+      return;
+    }
 
     try {
       // ── Client-side validation ──────────────────────────────────────────
@@ -2204,6 +2340,14 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
 - Mặt bằng đất là hình chữ nhật kích thước ${landW}m x ${landL}m. Các phòng phải nằm hoàn toàn trong phạm vi x ∈ [0, ${landW}] và y ∈ [0, ${landL}].`;
     }
 
+    const boundaryInstruction = shape === "hình chữ nhật"
+      ? `     + Các phòng ở trên cùng bắt buộc phải có y = 0.
+     + Các phòng ở dưới cùng bắt buộc phải kết thúc tại y + h = ${landL}.
+     + Các phòng ở bên trái bắt buộc phải có x = 0.
+     + Các phòng ở bên phải bắt buộc phải kết thúc tại x + w = ${landW}.`
+      : `     + Các cạnh ngoài của các phòng nằm ở biên bắt buộc phải trùng khít hoàn toàn với các cạnh tương ứng của đa giác ranh giới ${shape} (tuyệt đối không được vượt ra ngoài ranh giới và không lấn vào vùng khuyết).
+     + Kích thước và vị trí các phòng ghép lại phải tạo thành đúng 100% hình dạng đa giác ${shape} đã chọn. Tất cả các tầng của công trình phải có chung hình dạng đa giác ranh giới này, không được tự ý bo tròn, làm phẳng hay thay đổi hình dáng sang hình chữ nhật hay hình dạng khác.`;
+
     const generatedPlans: FloorPlanData[] = [];
 
     // Build per-floor room strings from roomSelection (structured) when available
@@ -2248,11 +2392,13 @@ ${shapeInstruction}
 
 QUY TẮC THIẾT KẾ BẮT BUỘC (TUÂN THỦ TUYỆT ĐỐI):
 
-1. YÊU CẦU PHÒNG & KHÔNG ĐỂ THỪA ĐẤT (BẮT BUỘC TUÂN THỦ):
-   - CHỈ tạo đúng các phòng đã được yêu cầu cụ thể cho ${floorLabel}: "${floorRooms}". TUYỆT ĐỐI KHÔNG tự ý vẽ thêm bất kỳ phòng chức năng nào khác ngoài yêu cầu (ví dụ: nếu không được yêu cầu cụ thể, tuyệt đối không tự thêm phòng khách, phòng ngủ, phòng bếp, toilet, hành lang, phòng làm việc, phòng thờ, v.v.). Mảng "rooms" trả về phải gồm chính xác các phòng đã được yêu cầu.
-   - KHÔNG ĐỂ THỪA ĐẤT: Để lấp đầy diện tích đất mà không thêm phòng chức năng ngoài yêu cầu, hãy tự động phân bổ phần diện tích còn dư vào các khu vực mở ngoài trời hoặc khoảng trống và đặt tên là "Sân vườn", "Sân trước", "Sân sau", "Ban công", hoặc "Khoảng trống" (Void). Cạnh của các khu vực mở này kết hợp cùng các phòng yêu cầu phải ghép lại vừa khít 100% với ranh giới đất, không được chừa đất trống không phân vùng ở biên ranh giới.
+1. YÊU CẦU PHÒNG & PHỦ KÍN ĐẤT (BẮT BUỘC TUÂN THỦ):
+   - CHỈ tạo đúng các phòng đã được yêu cầu cụ thể cho ${floorLabel}: "${floorRooms}". TUYỆT ĐỐI KHÔNG tự ý vẽ thêm bất kỳ phòng chức năng hoặc khu vực phụ ngoài yêu cầu (không tự ý vẽ thêm phòng khách, phòng ngủ, phòng bếp, toilet, hành lang, phòng làm việc, phòng thờ, sân vườn, sân trước, sân sau, ban công, khoảng trống, v.v. trừ khi có yêu cầu cụ thể). Mảng "rooms" trả về phải gồm chính xác các phòng đã được yêu cầu.
+   - PHỦ KÍN TOÀN BỘ ĐẤT & KHỚP KHÍT RANH GIỚI: Phải tăng kích thước (chiều rộng w, chiều dài h) của các phòng yêu cầu lên sao cho tổng diện tích các phòng này bao phủ toàn bộ 100% diện tích và khớp khít hoàn hảo với ranh giới của lô đất (không được vượt ra ngoài ranh giới và không lấn vào vùng khuyết nếu có). KHÔNG ĐỂ THỪA bất kỳ khoảng đất trống nào.
+${boundaryInstruction}
+     + Phải phân bổ kích thước sao cho các phòng ghép sát nhau khít hoàn toàn và cùng chạm đến ranh giới. Ví dụ, nếu phòng bên cạnh kéo dài chạm biên ranh giới, thì phòng song song bên cạnh cũng phải được tăng chiều rộng hoặc chiều dài để chạm sát biên ranh giới tương ứng, không được để thụt ngắn hơn tạo ra khoảng đất trống thừa ở biên.
+   - TUYỆT ĐỐI KHÔNG CHỒNG ĐÈ: Các phòng phải tiếp giáp khít nhau qua cạnh tường chung, tuyệt đối không chồng chéo, không đè lên nhau (overlap), và không được trùng lấn tọa độ.
    - PHÂN BỔ TỶ LỆ DIỆN TÍCH THÔNG MINH: Cân đối kích thước hợp lý cho các phòng yêu cầu (ví dụ: Phòng ngủ từ 12m² - 18m², Toilet/WC chỉ nên nhỏ gọn từ 2.2m² - 4m²). Không được làm Toilet quá to bằng phòng ngủ.
-   - KHỚP KHÍT RANH GIỚI: Tổng diện tích của các phòng yêu cầu và các khu vực mở bổ sung ghép lại phải bao phủ hoàn toàn ranh giới lô đất.
 
 2. KÍCH THƯỚC TỐI THIỂU BẮT BUỘC CHO TỪNG LOẠI PHÒNG (phải đảm bảo đủ diện tích để bố trí nội thất):
    - Phòng khách (living room): tối thiểu 3.0m x 4.0m (12m²), ưu tiên 4m x 5m trở lên
@@ -2266,20 +2412,22 @@ QUY TẮC THIẾT KẾ BẮT BUỘC (TUÂN THỦ TUYỆT ĐỐI):
    - Garage / nhà xe: tối thiểu 3.0m x 5.5m (16.5m²)
    - Phòng giặt (laundry): tối thiểu 1.5m x 2.0m (3.0m²)
    - Sảnh / lối vào (entry/foyer): tối thiểu 1.5m x 2.0m (3.0m²)
-   - Hành lang / lối đi: rộng tối thiểu 1.0m
    Lưu ý: nếu lô đất nhỏ không đủ để đạt kích thước khuyến nghị, hãy ưu tiên đạt kích thước TỐI THIỂU và phân bổ phần diện tích còn lại cho các phòng chính lớn hơn.
 
 3. QUY TẮC BỐ TRÍ CÁC PHÒNG CHUẨN CÔNG NĂNG:
    - Phòng khách: Đặt gần cửa chính/lối vào, làm trung tâm kết nối các khu vực, thuận tiện tiếp cận các phòng khác.
    - Phòng bếp: Đặt liền kề hoặc gần phòng ăn. Không đặt bếp làm lối đi bắt buộc để vào các phòng khác. Hạn chế đặt sát phòng ngủ nếu còn phương án tốt hơn.
    - Phòng ăn: Liền kề phòng bếp và kết nối thuận tiện với phòng khách.
-   - Phòng ngủ: Gần phòng vệ sinh, đảm bảo sự riêng tư, hạn chế mở cửa trực tiếp ra phòng khách nếu có hành lang thay thế, và không làm lối đi sang phòng khác.
+   - Phòng ngủ: Gần phòng vệ sinh, đảm bảo sự riêng tư, cửa phòng ngủ mở trực tiếp ra phòng khách hoặc phòng sinh hoạt chung ở trung tâm, không làm lối đi xuyên sang phòng khác.
    - Phòng vệ sinh (Toilet/WC): Phải đặt rất gần hoặc tiếp giáp phòng ngủ. Không đặt ngay trước cửa chính hoặc ở giữa phòng khách. Có thể dùng chung cho nhiều phòng ngủ nếu hợp lý.
    - Phòng làm việc: Đặt ở khu vực yên tĩnh, tách biệt với phòng khách.
    - Phòng giặt: Gần khu vực sân hoặc ban công nếu có.
+   - Ban công: Phải đặt liền kề và có cửa kết nối đi ra từ một phòng ngủ. Diện tích của ban công luôn phải nhỏ và chỉ bằng khoảng 1/3 diện tích của căn phòng ngủ liền kề đó.
 
-4. LUỒNG GIAO THÔNG & ÁNH SÁNG:
-   - Có thể đi từ cửa chính đến mọi phòng mà không phải đi xuyên qua phòng ngủ. Hạn chế đi xuyên qua bếp để đến các khu vực khác. Đường di chuyển ngắn, rõ ràng, hợp lý.
+4. LUỒNG GIAO THÔNG & ÁNH SÁNG (KHÔNG DÙNG HÀNH LANG):
+   - TUYỆT ĐỐI KHÔNG tự ý tạo thêm hành lang, lối đi riêng biệt hoặc các không gian lưu thông phụ.
+   - PHÒNG TRUNG TÂM LÀM CẦU NỐI: Phòng khách (hoặc phòng sinh hoạt chung ở các tầng trên) phải được đặt ở vị trí trung tâm, chính giữa các phòng khác để làm cầu nối giao thông kết nối trực tiếp đến tất cả các phòng (phòng ngủ, phòng bếp, WC...). Người dùng có thể di chuyển từ phòng trung tâm này trực tiếp vào các phòng chức năng khác mà không cần qua hành lang.
+   - Có thể đi từ cửa chính đến mọi phòng mà không phải đi xuyên qua phòng ngủ. Hạn chế đi xuyên qua bếp để đến các khu vực khác.
    - Ưu tiên các phòng chính (phòng khách, phòng ngủ) tiếp xúc với mặt ngoài công trình để có cửa sổ đón ánh sáng tự nhiên nhiều nhất.
 
 5. HÌNH HỌC & ĐỘ LIỀN MẠCH:
@@ -2508,6 +2656,13 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
 
   // ── Finalise drawn polygon into a new room ───────────────────────────────
   const finaliseDrawWall = (pts: { x: number; y: number }[]) => {
+    const roomNameClean = (drawWallRoomName || "").trim().toLowerCase();
+    if (roomNameClean.includes("hành lang") || roomNameClean.includes("hanh lang")) {
+      toast.error("Igen không hỗ trợ hành lang");
+      addMessage("assistant", "Igen không hỗ trợ hành lang");
+      return;
+    }
+
     if (pts.length < 3) {
       toast.error("Vẽ ít nhất 3 điểm để tạo phòng!");
       return;
@@ -5659,9 +5814,16 @@ Requirements:
             const newX = (e.target.x() - pan.x) / scale;
             const newY = (e.target.y() - pan.y) / scale;
             
-            // Limit within room boundaries
-            const clampedX = Math.max(room.x, Math.min(room.x + room.w, newX));
-            const clampedY = Math.max(room.y, Math.min(room.y + room.h, newY));
+            // Limit within global floor plan boundaries with a margin of 5 meters
+            let minX = -5, maxX = 15, minY = -5, maxY = 15;
+            if (floorPlan && floorPlan.rooms.length > 0) {
+              minX = Math.min(...floorPlan.rooms.map(r => r.x)) - 5;
+              maxX = Math.max(...floorPlan.rooms.map(r => r.x + r.w)) + 5;
+              minY = Math.min(...floorPlan.rooms.map(r => r.y)) - 5;
+              maxY = Math.max(...floorPlan.rooms.map(r => r.y + r.h)) + 5;
+            }
+            const clampedX = Math.max(minX, Math.min(maxX, newX));
+            const clampedY = Math.max(minY, Math.min(maxY, newY));
 
             e.target.x(pan.x + clampedX * scale);
             e.target.y(pan.y + clampedY * scale);
@@ -5679,8 +5841,16 @@ Requirements:
             e.cancelBubble = true;
             const newX = (e.target.x() - pan.x) / scale;
             const newY = (e.target.y() - pan.y) / scale;
-            const clampedX = Math.max(room.x, Math.min(room.x + room.w, newX));
-            const clampedY = Math.max(room.y, Math.min(room.y + room.h, newY));
+            
+            let minX = -5, maxX = 15, minY = -5, maxY = 15;
+            if (floorPlan && floorPlan.rooms.length > 0) {
+              minX = Math.min(...floorPlan.rooms.map(r => r.x)) - 5;
+              maxX = Math.max(...floorPlan.rooms.map(r => r.x + r.w)) + 5;
+              minY = Math.min(...floorPlan.rooms.map(r => r.y)) - 5;
+              maxY = Math.max(...floorPlan.rooms.map(r => r.y + r.h)) + 5;
+            }
+            const clampedX = Math.max(minX, Math.min(maxX, newX));
+            const clampedY = Math.max(minY, Math.min(maxY, newY));
             
             setCameras((prev) => ({
               ...prev,
@@ -5721,6 +5891,46 @@ Requirements:
             <Group
               x={18}
               y={-18}
+              draggable={true}
+              onDragStart={(e) => {
+                e.cancelBubble = true;
+              }}
+              onDragMove={(e) => {
+                e.cancelBubble = true;
+                const stage = e.target.getStage();
+                if (!stage) return;
+                const pointer = stage.getPointerPosition();
+                if (!pointer) return;
+
+                const parent = e.target.getParent();
+                if (!parent) return;
+
+                const parentX = parent.x();
+                const parentY = parent.y();
+
+                const dx = pointer.x - parentX;
+                const dy = pointer.y - parentY;
+
+                const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+                const rotation = (angle + 90 + 360) % 360;
+
+                setCameras((prev) => ({
+                  ...prev,
+                  [room.id]: {
+                    ...prev[room.id],
+                    rotation: rotation,
+                  },
+                }));
+
+                // Reset position of handle in parent group so it stays at fixed offset
+                e.target.x(18);
+                e.target.y(-18);
+              }}
+              onDragEnd={(e) => {
+                e.cancelBubble = true;
+                e.target.x(18);
+                e.target.y(-18);
+              }}
               onClick={(e) => {
                 e.cancelBubble = true;
                 setCameras((prev) => ({
@@ -7084,7 +7294,13 @@ Requirements:
             return (
               <div className="p-6 space-y-6">
                 {/* 3D Camera Preview Box */}
-                <div className="relative w-full aspect-square rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex flex-col items-center justify-center text-slate-400 group shadow-inner">
+                <div className={`relative w-full rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex flex-col items-center justify-center text-slate-400 group shadow-inner transition-all duration-300 ${
+                  selectedCam?.aspectRatio === "Widescreen (16:9)"
+                    ? "aspect-[16/9]"
+                    : selectedCam?.aspectRatio === "Landscape (4:3)"
+                    ? "aspect-[4/3]"
+                    : "aspect-square"
+                }`}>
                   {sidebarTab === "scene" ? (
                     selectedCameraRoomId || renderMode === "Floorplan to 3D Floorplan" ? (
                       <FloorPlan3DViewer
@@ -7099,7 +7315,8 @@ Requirements:
                             x: selectedCam.x,
                             y: selectedCam.y,
                             rotation: selectedCam.rotation,
-                            fov: selectedCam.fov
+                            fov: selectedCam.fov,
+                            aspectRatio: selectedCam.aspectRatio
                           } : null
                         }
                         onCaptureRef={capture3DRef}
@@ -7180,11 +7397,11 @@ Requirements:
                   selectedCam ? (
                     <div className="space-y-5">
                       {/* CONFIGURATION Header */}
-                      <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">CONFIGURATION</span>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Cấu hình</span>
 
                       {/* Field of View */}
                       <div className="space-y-2">
-                        <span className="text-xs font-bold text-slate-700 block">Field of view</span>
+                        <span className="text-xs font-bold text-slate-700 block">Tầm nhìn</span>
                         <div className="flex items-center justify-between border border-slate-200 bg-white rounded-xl p-1 shadow-sm">
                           <button
                             onClick={() => {
@@ -7220,7 +7437,7 @@ Requirements:
 
                       {/* Aspect Ratio */}
                       <div className="space-y-1.5">
-                        <span className="text-xs font-bold text-slate-700 block">Aspect ratio</span>
+                        <span className="text-xs font-bold text-slate-700 block">Tỷ lệ khung hình</span>
                         <div className="relative">
                           <select
                             value={selectedCam.aspectRatio}
@@ -7624,7 +7841,6 @@ Requirements:
                         <option value="Phòng làm việc">Phòng làm việc</option>
                         <option value="Phòng Tắm / WC">Phòng Tắm / WC</option>
                         <option value="Garage">Garage</option>
-                        <option value="Hành lang">Hành lang</option>
                         <option value="Sân trước">Sân trước</option>
                         <option value="Sân sau">Sân sau</option>
                         <option value="Ban công">Ban công</option>
@@ -8433,7 +8649,7 @@ Requirements:
                 <p className="text-xs text-slate-500">Bạn vừa vẽ phòng với <strong>{drawingPoints.length} điểm</strong>. Chọn loại phòng hoặc nhập tên tùy ý.</p>
                 {/* Quick room name buttons */}
                 <div className="flex flex-wrap gap-1.5">
-                  {["Phòng khách", "Phòng ngủ", "Phòng bếp", "Phòng ăn", "WC", "Toilet", "Hành lang", "Gara"].map(name => (
+                  {["Phòng khách", "Phòng ngủ", "Phòng bếp", "Phòng ăn", "WC", "Toilet", "Gara"].map(name => (
                     <button
                       key={name}
                       onClick={() => setDrawWallRoomName(name)}
@@ -8781,38 +8997,48 @@ Requirements:
                   );
                 })() : (
                   <div className="space-y-4">
-                    {/* Color picker canvas gradient demo */}
+                    {/* Color picker canvas gradient */}
                     <div
                       className="w-full h-32 rounded-xl relative overflow-hidden cursor-crosshair border border-[#2d2d30]"
                       style={{
-                        background: "linear-gradient(to bottom, transparent, black), linear-gradient(to right, white, red)"
+                        background: `linear-gradient(to bottom, transparent, #000), linear-gradient(to right, #fff, transparent)`,
+                        backgroundColor: hsvToHex(pickerColor.h, 1, 1),
+                        touchAction: "none"
                       }}
-                      onClick={() => {
-                        setFinishes(prev => ({
-                          ...prev,
-                          [showFinishModal]: { type: "color", value: "#ff0000", name: "Đỏ" }
-                        }));
-                      }}
+                      onPointerDown={onSquarePointerDown}
+                      onPointerMove={onSquarePointerMove}
+                      onPointerUp={onSquarePointerUp}
                     >
                       <div
-                        className="absolute w-3 h-3 rounded-full border-2 border-white shadow-md cursor-pointer"
-                        style={{ top: "10%", left: "90%" }}
+                        className="absolute w-3.5 h-3.5 rounded-full border-2 border-white shadow-[0_0_4px_rgba(0,0,0,0.5)] pointer-events-none"
+                        style={{
+                          top: `${(1 - pickerColor.v) * 100}%`,
+                          left: `${pickerColor.s * 100}%`,
+                          transform: "translate(-50%, -50%)"
+                        }}
                       />
                     </div>
 
                     {/* Hue slider bar */}
                     <div
-                      className="w-full h-3.5 rounded-full cursor-pointer border border-[#2d2d30]"
+                      className="w-full h-3.5 rounded-full cursor-pointer border border-[#2d2d30] relative"
                       style={{
-                        background: "linear-gradient(to right, red, yellow, lime, cyan, blue, magenta, red)"
+                        background: "linear-gradient(to right, red, yellow, lime, cyan, blue, magenta, red)",
+                        touchAction: "none"
                       }}
-                      onClick={() => {
-                        setFinishes(prev => ({
-                          ...prev,
-                          [showFinishModal]: { type: "color", value: "#00b5cd", name: "Xanh Cyan" }
-                        }));
-                      }}
-                    />
+                      onPointerDown={onHuePointerDown}
+                      onPointerMove={onHuePointerMove}
+                      onPointerUp={onHuePointerUp}
+                    >
+                      <div
+                        className="absolute w-4 h-4 rounded-full bg-white border border-[#2d2d30] shadow-[0_0_3px_rgba(0,0,0,0.4)] pointer-events-none"
+                        style={{
+                          left: `${(pickerColor.h / 360) * 100}%`,
+                          top: "50%",
+                          transform: "translate(-50%, -50%)"
+                        }}
+                      />
+                    </div>
 
                     {/* Hex input & color info */}
                     <div className="flex items-center gap-3">
@@ -8827,6 +9053,10 @@ Requirements:
                               ...prev,
                               [showFinishModal]: { type: "color", value: `#${val}`, name: `#${val.toUpperCase()}` }
                             }));
+                            const cleanHex = val.trim();
+                            if (cleanHex.length === 6 || cleanHex.length === 3) {
+                              setPickerColor(hexToHsv(`#${cleanHex}`));
+                            }
                           }}
                           onBlur={(e) => {
                             const val = e.target.value.trim();
