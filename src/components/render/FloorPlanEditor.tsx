@@ -2452,6 +2452,47 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
     setPan({ x: pointer.x - to.x * newScale, y: pointer.y - to.y * newScale });
   };
 
+  // ── Non-passive wheel listener for scroll-to-zoom ────────────────────────
+  // React's synthetic events are passive by default in modern browsers, which
+  // prevents calling preventDefault(). We attach a native { passive: false }
+  // listener directly on the canvas container so the page does not scroll.
+  useEffect(() => {
+    const el = stageContainerRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const scaleBy = 1.12;
+      const stage = stageRef.current;
+      if (!stage) return;
+
+      // Get pointer position relative to the canvas container
+      const rect = el.getBoundingClientRect();
+      const pointer = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      };
+
+      setZoom((oldZoom) => {
+        const newScale = Math.max(0.3, Math.min(4, e.deltaY < 0 ? oldZoom * scaleBy : oldZoom / scaleBy));
+        setPan((oldPan) => {
+          const toWorld = {
+            x: (pointer.x - oldPan.x) / oldZoom,
+            y: (pointer.y - oldPan.y) / oldZoom,
+          };
+          return {
+            x: pointer.x - toWorld.x * newScale,
+            y: pointer.y - toWorld.y * newScale,
+          };
+        });
+        return newScale;
+      });
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
   // ── Snap-to-grid helper for draw_wall ───────────────────────────────────
   const snapGridSize = 0.5; // snap every 0.5m
   const screenToWorld = (sx: number, sy: number) => {

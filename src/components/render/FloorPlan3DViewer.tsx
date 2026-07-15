@@ -301,6 +301,10 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
   const animFrameIdRef = useRef<number | null>(null);
   const cubeCameraRef = useRef<THREE.CubeCamera | null>(null);
   const cubeRenderTargetRef = useRef<THREE.WebGLCubeRenderTarget | null>(null);
+  // Group that holds all floorplan/furniture meshes so we can clear & redraw
+  // without destroying the renderer / camera / controls.
+  const sceneObjectsGroupRef = useRef<THREE.Group | null>(null);
+  const needsRenderRef = useRef<boolean>(false);
 
 
 
@@ -1732,15 +1736,12 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     scene.add(cubeCamera);
     cubeCameraRef.current = cubeCamera;
 
-    // 4. Draw Floorplan Elements
-    draw3DScene(scene, floorPlan, wallThickness, finishes, cubeRenderTarget.texture);
+    // Initial render flag – the scene-update effect will do the first draw
+    needsRenderRef.current = true;
 
-    // Initial update of the reflection cubemap
-    cubeCamera.update(renderer, scene);
-
-    let needsRender = true;
+    let controlsChanged = false;
     const requestRender = () => {
-      needsRender = true;
+      controlsChanged = true;
     };
     controls.addEventListener("change", requestRender);
 
@@ -1748,9 +1749,10 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     const animate = () => {
       animFrameIdRef.current = requestAnimationFrame(animate);
       const controlsUpdated = controls.update();
-      if (controlsUpdated || needsRender) {
+      if (controlsUpdated || controlsChanged || needsRenderRef.current) {
         renderer.render(scene, camera);
-        needsRender = false;
+        controlsChanged = false;
+        needsRenderRef.current = false;
       }
     };
     animate();
@@ -1799,6 +1801,55 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
       renderer.dispose();
       container.innerHTML = "";
     };
+  }, []);
+
+  // ── Scene update effect: rebuild geometry when floorPlan / finishes change ─
+  // This runs without destroying the renderer so there is no white-screen flash.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const renderer = rendererRef.current;
+    const cubeCamera = cubeCameraRef.current;
+    const cubeTarget = cubeRenderTargetRef.current;
+    if (!scene || !renderer || !floorPlan) return;
+
+    // 1. Remove previous scene objects group and dispose its resources
+    if (sceneObjectsGroupRef.current) {
+      sceneObjectsGroupRef.current.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          obj.geometry.dispose();
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach((m) => m.dispose());
+          } else {
+            obj.material.dispose();
+          }
+        }
+      });
+      scene.remove(sceneObjectsGroupRef.current);
+      sceneObjectsGroupRef.current = null;
+    }
+
+    // 2. Snapshot existing scene children (sky, lights, cubeCamera, etc.)
+    const existingChildren = new Set(scene.children.map((c) => c.uuid));
+
+    // 3. Call draw3DScene – it adds meshes directly to `scene` as usual
+    draw3DScene(scene, floorPlan, wallThickness, finishes, cubeTarget?.texture ?? null);
+
+    // 4. Collect all newly added objects into a dedicated group so we can
+    //    remove them cleanly next time without touching lights / sky / controls.
+    const group = new THREE.Group();
+    const newObjects = scene.children.filter((c) => !existingChildren.has(c.uuid));
+    newObjects.forEach((obj) => scene.remove(obj));
+    newObjects.forEach((obj) => group.add(obj));
+    sceneObjectsGroupRef.current = group;
+    scene.add(group);
+
+    // 5. Refresh cube-camera reflections
+    if (cubeCamera) {
+      cubeCamera.update(renderer, scene);
+    }
+
+    // 6. Signal the animation loop to render a fresh frame
+    needsRenderRef.current = true;
   }, [floorPlan, wallThickness, finishes]);
 
   // Expose screenshot capture function to parent
