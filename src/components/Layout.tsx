@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Icon } from './Icon';
 import { useAuth } from '../context/useAuth';
 import { useNavigate } from 'react-router-dom';
@@ -122,6 +122,9 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentScreen: _curren
   const [showQRModal, setShowQRModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showHeader, setShowHeader] = useState(true);
+  const mainRef = useRef<HTMLDivElement>(null);
+  
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
@@ -135,6 +138,32 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentScreen: _curren
     return () => window.removeEventListener('show-topup-modal', handleShowTopUp);
   }, []);
 
+  useEffect(() => {
+    const mainEl = mainRef.current;
+    if (!mainEl) return;
+
+    let prevScrollTop = 0;
+
+    const handleScroll = () => {
+      const scrollTop = mainEl.scrollTop;
+      
+      if (scrollTop <= 10) {
+        setShowHeader(true);
+      } else if (scrollTop > prevScrollTop && scrollTop > 64) {
+        setShowHeader(false);
+      } else if (scrollTop < prevScrollTop) {
+        setShowHeader(true);
+      }
+      
+      prevScrollTop = scrollTop;
+    };
+
+    mainEl.addEventListener('scroll', handleScroll);
+    return () => {
+      mainEl.removeEventListener('scroll', handleScroll);
+    };
+  }, [_currentScreen]);
+
   const handleLogout = async () => {
     try {
       await logout();
@@ -147,7 +176,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentScreen: _curren
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       {/* TopAppBar */}
-      <header className="fixed top-0 w-full z-50 bg-white/60 backdrop-blur-xl shadow-sm shadow-[#0f172a]/5 flex justify-between items-center px-6 py-4">
+      <header className={`fixed top-0 w-full z-50 bg-white/60 backdrop-blur-xl shadow-sm shadow-[#0f172a]/5 flex justify-between items-center px-6 py-4 transition-transform duration-300 ease-in-out ${showHeader ? 'translate-y-0' : '-translate-y-full'}`}>
         <div className="flex items-center gap-3">
           <button type="button" className="cursor-pointer flex items-center" onClick={() => navigate('/home')}>
             <img 
@@ -231,9 +260,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentScreen: _curren
         </div>
       </header>
 
-      <div className="flex flex-1 pt-16 overflow-hidden max-w-full">
+      <div className="flex flex-1 overflow-hidden max-w-full">
         {/* Main Content */}
-        <main className={`flex-1 ${_currentScreen === '/tools/floor-plan' ? 'overflow-hidden' : 'overflow-auto'}`}>
+        <main 
+          ref={mainRef}
+          className={`flex-1 transition-all duration-300 ease-in-out ${_currentScreen === '/tools/floor-plan' ? 'overflow-hidden' : 'overflow-auto'} ${showHeader ? 'pt-16' : 'pt-0'}`}
+        >
           {children}
         </main>
       </div>
