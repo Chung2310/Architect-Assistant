@@ -41,6 +41,11 @@ const MODELS = [
     name: "Igen gemini Image Pro",
     isPro: true,
   },
+  {
+    id: "openrouter-nano-banana-2",
+    name: "Nano Banana 2 (OpenRouter)",
+    isPro: true,
+  },
 ];
 
 const RESOLUTIONS = [
@@ -512,6 +517,7 @@ ${activeSubTab === "Render Nội Thất"
 - Phong cách: ${interiorStyle || "Không có"}
 - Góc chụp: ${customCameraAngle || cameraAngle || "Không có"}
 ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ nguyên 100% vị trí tường, cửa, cửa sổ, lối đi, phân khu phòng và đồ đạc theo bản vẽ. CHỈ được dựng các thành phần có cơ sở từ bản vẽ hoặc ảnh tham chiếu; không tự gán thêm món đồ đặc thù, không đổi vị trí nội thất và không làm lệch cấu trúc mặt bằng.
+- Quy tắc tỷ lệ hình dạng: PHẢI giữ đúng tỷ lệ chiều dài/chiều rộng (aspect ratio) thực tế của mặt bằng gốc trong bản vẽ. Nếu mặt bằng là hình chữ nhật (một cạnh dài hơn cạnh kia rõ rệt), không gian 3D dựng lại BẮT BUỘC phải là hình chữ nhật với đúng tỷ lệ đó, TUYỆT ĐỐI KHÔNG được làm vuông hóa (square hóa) công trình hoặc căn phòng.
 `
               : activeSubTab === "Floorplan to 3D Floorplan"
                 ? `

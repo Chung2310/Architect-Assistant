@@ -20,7 +20,6 @@ function AppContent() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, loading: authLoading, refreshUser } = useAuth();
-  const hasApiKey = user ? !!user.hasSetupApiKey : null;
 
   const handleSetupComplete = async () => {
     if (user) {
@@ -32,7 +31,7 @@ function AppContent() {
     navigate(path.startsWith('/') ? path : `/${path}`);
   };
 
-  if (authLoading || (user && hasApiKey === null)) {
+  if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -43,25 +42,13 @@ function AppContent() {
   // Login screen has its own layout/nav in the design
   if (location.pathname === '/login') {
     if (user) {
-      return hasApiKey ? <Navigate to="/home" replace /> : <Navigate to="/setup-api-key" replace />;
+      return <Navigate to="/home" replace />;
     }
     return <Login onNavigate={handleNavigate} />;
   }
 
   if (!user) {
     return <Navigate to="/login" replace />;
-  }
-
-  // API Key setup screen has its own layout
-  if (location.pathname === '/setup-api-key') {
-    if (hasApiKey) {
-      return <Navigate to="/home" replace />;
-    }
-    return <ApiKeySetup onSetupComplete={handleSetupComplete} />;
-  }
-
-  if (!hasApiKey) {
-    return <Navigate to="/setup-api-key" replace />;
   }
 
   return (
