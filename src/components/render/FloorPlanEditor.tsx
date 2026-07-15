@@ -1462,32 +1462,267 @@ export function resolveFurnitureDoorCollisions(
   openings: Opening[],
   wallThickness: number = 100
 ): Room[] {
-  return rooms.map((room) => {
-    if (!room.furniture || room.furniture.length === 0) return room;
+  // Keep all furniture intact as requested by the user. Do not delete any colliding furniture.
+  return rooms;
+}
 
-    const updatedFurniture = room.furniture.filter((f) => {
-      let collides = false;
-      for (const open of openings) {
-        if (open.type === "door") {
-          const fGlobalX = room.x + f.x;
-          const fGlobalY = room.y + f.y;
-          const dist = Math.hypot(open.x - fGlobalX, open.y - fGlobalY);
-          if (dist < Math.max(room.w, room.h) + 1.0) {
-            if (isFurnitureCollidingWithDoor(f, fGlobalX, fGlobalY, open)) {
-              collides = true;
-              break;
+interface Cutout {
+  x1: number;
+  x2: number;
+  y1: number;
+  y2: number;
+}
+
+export function getCutoutsForShape(shapeName: string, landW: number, landL: number): Cutout[] {
+  const normName = shapeName.toLowerCase();
+  const cutouts: Cutout[] = [];
+  
+  if (normName.includes("l-shape") || normName.includes("chữ l") || normName.includes("l shape")) {
+    if (normName.includes("bottom-left")) {
+      cutouts.push({ x1: 0, x2: 0.35 * landW, y1: 0.65 * landL, y2: landL });
+    } else if (normName.includes("bottom-right")) {
+      cutouts.push({ x1: 0.65 * landW, x2: landW, y1: 0.65 * landL, y2: landL });
+    } else {
+      // Top-Right default
+      cutouts.push({ x1: 0.65 * landW, x2: landW, y1: 0, y2: 0.35 * landL });
+    }
+  } else if (normName.includes("u-shape") || normName.includes("chữ u") || normName.includes("u shape")) {
+    cutouts.push({ x1: 0.3 * landW, x2: 0.7 * landW, y1: 0.8 * landL, y2: landL });
+  } else if (normName.includes("t-shape") || normName.includes("chữ t") || normName.includes("t shape")) {
+    cutouts.push({ x1: 0, x2: 0.25 * landW, y1: 0, y2: 0.35 * landL });
+    cutouts.push({ x1: 0.75 * landW, x2: landW, y1: 0, y2: 0.35 * landL });
+  } else if (normName.includes("h-shape") || normName.includes("chữ h") || normName.includes("h shape")) {
+    cutouts.push({ x1: 0.3 * landW, x2: 0.7 * landW, y1: 0, y2: 0.25 * landL });
+    cutouts.push({ x1: 0.3 * landW, x2: 0.7 * landW, y1: 0.75 * landL, y2: landL });
+  } else if (normName.includes("cross") || normName.includes("chữ thập")) {
+    cutouts.push({ x1: 0, x2: 0.3 * landW, y1: 0, y2: 0.3 * landL });
+    cutouts.push({ x1: 0.7 * landW, x2: landW, y1: 0, y2: 0.3 * landL });
+    cutouts.push({ x1: 0, x2: 0.3 * landW, y1: 0.7 * landL, y2: landL });
+    cutouts.push({ x1: 0.7 * landW, x2: landW, y1: 0.7 * landL, y2: landL });
+  }
+  return cutouts;
+}
+
+export function adjustRoomsToFitShape(rooms: Room[], shape: string, landW: number, landL: number): Room[] {
+  if (rooms.length === 0) return [];
+
+  const cutouts = getCutoutsForShape(shape, landW, landL);
+
+  // 1. Crop rooms to stay out of cutouts and stay inside land boundary
+  const adjusted = rooms.map(room => {
+    let rx = Math.max(0, Math.min(landW, room.x));
+    let ry = Math.max(0, Math.min(landL, room.y));
+    let rw = Math.max(0.5, Math.min(landW - rx, room.w));
+    let rh = Math.max(0.5, Math.min(landL - ry, room.h));
+
+    for (const c of cutouts) {
+      const overlapX = Math.min(rx + rw, c.x2) - Math.max(rx, c.x1);
+      const overlapY = Math.min(ry + rh, c.y2) - Math.max(ry, c.y1);
+
+      if (overlapX > 0 && overlapY > 0) {
+        const candidates: { x: number; y: number; w: number; h: number; area: number }[] = [];
+
+        if (rx < c.x1) {
+          const w = c.x1 - rx;
+          if (w >= 0.5) candidates.push({ x: rx, y: ry, w, h: rh, area: w * rh });
+        }
+        if (rx + rw > c.x2) {
+          const x = c.x2;
+          const w = (rx + rw) - c.x2;
+          if (w >= 0.5) candidates.push({ x, y: ry, w, h: rh, area: w * rh });
+        }
+        if (ry < c.y1) {
+          const h = c.y1 - ry;
+          if (h >= 0.5) candidates.push({ x: rx, y: ry, w: rw, h, area: rw * h });
+        }
+        if (ry + rh > c.y2) {
+          const y = c.y2;
+          const h = (ry + rh) - c.y2;
+          if (h >= 0.5) candidates.push({ x: rx, y: ry, w: rw, h, area: rw * h });
+        }
+
+        if (candidates.length > 0) {
+          candidates.sort((a, b) => b.area - a.area);
+          rx = candidates[0].x;
+          ry = candidates[0].y;
+          rw = candidates[0].w;
+          rh = candidates[0].h;
+        } else {
+          rw = 0.5;
+          rh = 0.5;
+          if (rx + rw > c.x1 && rx < c.x2) {
+            rx = c.x1 - rw >= 0 ? c.x1 - rw : c.x2;
+          }
+        }
+      }
+    }
+
+    return { ...room, x: rx, y: ry, w: rw, h: rh };
+  });
+
+  // 2. Resolve room overlaps
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < adjusted.length; i++) {
+      for (let j = i + 1; j < adjusted.length; j++) {
+        const rA = adjusted[i];
+        const rB = adjusted[j];
+
+        const overlapX = Math.min(rA.x + rA.w, rB.x + rB.w) - Math.max(rA.x, rB.x);
+        const overlapY = Math.min(rA.y + rA.h, rB.y + rB.h) - Math.max(rA.y, rB.y);
+
+        if (overlapX > 0 && overlapY > 0) {
+          if (overlapX < overlapY) {
+            const midX = (Math.max(rA.x, rB.x) + Math.min(rA.x + rA.w, rB.x + rB.w)) / 2;
+            if (rA.x < rB.x) {
+              rA.w = Math.max(0.5, midX - rA.x);
+              rB.w = Math.max(0.5, (rB.x + rB.w) - midX);
+              rB.x = midX;
+            } else {
+              rB.w = Math.max(0.5, midX - rB.x);
+              rA.w = Math.max(0.5, (rA.x + rA.w) - midX);
+              rA.x = midX;
+            }
+          } else {
+            const midY = (Math.max(rA.y, rB.y) + Math.min(rA.y + rA.h, rB.y + rB.h)) / 2;
+            if (rA.y < rB.y) {
+              rA.h = Math.max(0.5, midY - rA.y);
+              rB.h = Math.max(0.5, (rB.y + rB.h) - midY);
+              rB.y = midY;
+            } else {
+              rB.h = Math.max(0.5, midY - rB.y);
+              rA.h = Math.max(0.5, (rA.y + rA.h) - midY);
+              rA.y = midY;
             }
           }
         }
       }
-      return !collides;
-    });
+    }
+  }
 
-    return {
-      ...room,
-      furniture: updatedFurniture,
-    };
-  });
+  // 3. Expand rooms to fill gaps (iterative passes)
+  const passes = 3;
+  for (let p = 0; p < passes; p++) {
+    for (let i = 0; i < adjusted.length; i++) {
+      const r = adjusted[i];
+
+      // Expand Right
+      let limitRight = landW;
+      for (let j = 0; j < adjusted.length; j++) {
+        if (i === j) continue;
+        const o = adjusted[j];
+        const vOverlap = Math.min(r.y + r.h, o.y + o.h) - Math.max(r.y, o.y);
+        if (vOverlap > 0.01 && o.x >= r.x + r.w - 0.01) {
+          limitRight = Math.min(limitRight, o.x);
+        }
+      }
+      for (const c of cutouts) {
+        const vOverlap = Math.min(r.y + r.h, c.y2) - Math.max(r.y, c.y1);
+        if (vOverlap > 0.01 && c.x1 >= r.x + r.w - 0.01) {
+          limitRight = Math.min(limitRight, c.x1);
+        }
+      }
+      if (limitRight > r.x + r.w) {
+        r.w = limitRight - r.x;
+      }
+
+      // Expand Down
+      let limitDown = landL;
+      for (let j = 0; j < adjusted.length; j++) {
+        if (i === j) continue;
+        const o = adjusted[j];
+        const hOverlap = Math.min(r.x + r.w, o.x + o.w) - Math.max(r.x, o.x);
+        if (hOverlap > 0.01 && o.y >= r.y + r.h - 0.01) {
+          limitDown = Math.min(limitDown, o.y);
+        }
+      }
+      for (const c of cutouts) {
+        const hOverlap = Math.min(r.x + r.w, c.x2) - Math.max(r.x, c.x1);
+        if (hOverlap > 0.01 && c.y1 >= r.y + r.h - 0.01) {
+          limitDown = Math.min(limitDown, c.y1);
+        }
+      }
+      if (limitDown > r.y + r.h) {
+        r.h = limitDown - r.y;
+      }
+
+      // Expand Left
+      let limitLeft = 0;
+      for (let j = 0; j < adjusted.length; j++) {
+        if (i === j) continue;
+        const o = adjusted[j];
+        const vOverlap = Math.min(r.y + r.h, o.y + o.h) - Math.max(r.y, o.y);
+        if (vOverlap > 0.01 && o.x + o.w <= r.x + 0.01) {
+          limitLeft = Math.max(limitLeft, o.x + o.w);
+        }
+      }
+      for (const c of cutouts) {
+        const vOverlap = Math.min(r.y + r.h, c.y2) - Math.max(r.y, c.y1);
+        if (vOverlap > 0.01 && c.x2 <= r.x + 0.01) {
+          limitLeft = Math.max(limitLeft, c.x2);
+        }
+      }
+      if (limitLeft < r.x) {
+        r.w += (r.x - limitLeft);
+        r.x = limitLeft;
+      }
+
+      // Expand Up
+      let limitUp = 0;
+      for (let j = 0; j < adjusted.length; j++) {
+        if (i === j) continue;
+        const o = adjusted[j];
+        const hOverlap = Math.min(r.x + r.w, o.x + o.w) - Math.max(r.x, o.x);
+        if (hOverlap > 0.01 && o.y + o.h <= r.y + 0.01) {
+          limitUp = Math.max(limitUp, o.y + o.h);
+        }
+      }
+      for (const c of cutouts) {
+        const hOverlap = Math.min(r.x + r.w, c.x2) - Math.max(r.x, c.x1);
+        if (hOverlap > 0.01 && c.y2 <= r.y + 0.01) {
+          limitUp = Math.max(limitUp, c.y2);
+        }
+      }
+      if (limitUp < r.y) {
+        r.h += (r.y - limitUp);
+        r.y = limitUp;
+      }
+    }
+  }
+
+  return adjusted.map(room => ({
+    ...room,
+    x: parseFloat(room.x.toFixed(2)),
+    y: parseFloat(room.y.toFixed(2)),
+    w: parseFloat(Math.max(0.5, room.w).toFixed(2)),
+    h: parseFloat(Math.max(0.5, room.h).toFixed(2)),
+  }));
+}
+
+export function isDoorCollidingWithAnyFurniture(
+  door: Opening,
+  snappedX: number,
+  snappedY: number,
+  snappedRot: number,
+  rooms: Room[]
+): boolean {
+  const tempDoor: Opening = {
+    ...door,
+    x: snappedX,
+    y: snappedY,
+    rotation: snappedRot,
+  };
+
+  for (const room of rooms) {
+    if (!room.furniture) continue;
+    for (const f of room.furniture) {
+      const fGlobalX = room.x + f.x;
+      const fGlobalY = room.y + f.y;
+      if (isFurnitureCollidingWithDoor(f, fGlobalX, fGlobalY, tempDoor)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 // ── Smart openings (doors) placement algorithm using graph adjacency ────────
@@ -1612,7 +1847,7 @@ function generateSmartOpenings(rooms: Room[], floor: number): Opening[] {
     return !name.includes("sân") && !name.includes("vườn") && !name.includes("garden") && !name.includes("yard");
   });
 
-  if (nonYardRooms.length > 0) {
+  if (floor === 0 && nonYardRooms.length > 0) {
     let mainRoom = nonYardRooms.find(r => {
       const name = r.name.toLowerCase();
       return name.includes("khách") || name.includes("sảnh") || name.includes("lối vào");
@@ -1621,28 +1856,76 @@ function generateSmartOpenings(rooms: Room[], floor: number): Opening[] {
       mainRoom = nonYardRooms.reduce((prev, curr) => (curr.y < prev.y ? curr : prev), nonYardRooms[0]);
     }
 
-    const hasDoorToOutside = openings.some(op => {
-      if (!mainRoom) return false;
-      const isTopWall = Math.abs(op.y - mainRoom.y) < 0.05 && op.x >= mainRoom.x && op.x <= mainRoom.x + mainRoom.w;
-      const isLeftWall = Math.abs(op.x - mainRoom.x) < 0.05 && op.y >= mainRoom.y && op.y <= mainRoom.y + mainRoom.h;
-      return isTopWall || isLeftWall;
-    });
+    if (mainRoom) {
+      // Find which walls of the main room are outer walls (do not touch any other room)
+      const sharesTop = rooms.some(o => o.id !== mainRoom.id && Math.abs((o.y + o.h) - mainRoom.y) < 0.08 && Math.min(o.x + o.w, mainRoom.x + mainRoom.w) - Math.max(o.x, mainRoom.x) > 0.1);
+      const sharesBottom = rooms.some(o => o.id !== mainRoom.id && Math.abs(o.y - (mainRoom.y + mainRoom.h)) < 0.08 && Math.min(o.x + o.w, mainRoom.x + mainRoom.w) - Math.max(o.x, mainRoom.x) > 0.1);
+      const sharesLeft = rooms.some(o => o.id !== mainRoom.id && Math.abs((o.x + o.w) - mainRoom.x) < 0.08 && Math.min(o.y + o.h, mainRoom.y + mainRoom.h) - Math.max(o.y, mainRoom.y) > 0.1);
+      const sharesRight = rooms.some(o => o.id !== mainRoom.id && Math.abs(o.x - (mainRoom.x + mainRoom.w)) < 0.08 && Math.min(o.y + o.h, mainRoom.y + mainRoom.h) - Math.max(o.y, mainRoom.y) > 0.1);
 
-    if (!hasDoorToOutside && mainRoom) {
-      const entranceX = parseFloat((mainRoom.x + mainRoom.w / 2).toFixed(2));
-      const entranceY = parseFloat(mainRoom.y.toFixed(2));
-      const flips = getOptimalDoorFlips(entranceX, entranceY, 0, "hinged", rooms);
-      openings.push({
-        id: `open_${floor}_entrance_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-        type: "door",
-        x: entranceX,
-        y: entranceY,
-        w: 0.9,
-        rotation: 0,
-        style: "hinged",
-        flipX: flips.flipX,
-        flipY: flips.flipY,
+      let entranceX = 0;
+      let entranceY = 0;
+      let entranceRot = 0;
+      let foundWall = false;
+
+      // Prioritize bottom wall (typical Vietnamese front facade facing street at the bottom of drawing)
+      if (!sharesBottom) {
+        entranceX = parseFloat((mainRoom.x + mainRoom.w / 2).toFixed(2));
+        entranceY = parseFloat((mainRoom.y + mainRoom.h).toFixed(2));
+        entranceRot = 0;
+        foundWall = true;
+      }
+      // Top wall
+      else if (!sharesTop) {
+        entranceX = parseFloat((mainRoom.x + mainRoom.w / 2).toFixed(2));
+        entranceY = parseFloat(mainRoom.y.toFixed(2));
+        entranceRot = 0;
+        foundWall = true;
+      }
+      // Left wall
+      else if (!sharesLeft) {
+        entranceX = parseFloat(mainRoom.x.toFixed(2));
+        entranceY = parseFloat((mainRoom.y + mainRoom.h / 2).toFixed(2));
+        entranceRot = 90;
+        foundWall = true;
+      }
+      // Right wall
+      else if (!sharesRight) {
+        entranceX = parseFloat((mainRoom.x + mainRoom.w).toFixed(2));
+        entranceY = parseFloat((mainRoom.y + mainRoom.h / 2).toFixed(2));
+        entranceRot = 90;
+        foundWall = true;
+      }
+
+      // Fallback if no outer wall found (place on top wall)
+      if (!foundWall) {
+        entranceX = parseFloat((mainRoom.x + mainRoom.w / 2).toFixed(2));
+        entranceY = parseFloat(mainRoom.y.toFixed(2));
+        entranceRot = 0;
+      }
+
+      const hasDoorToOutside = openings.some(op => {
+        if (entranceRot === 0) {
+          return Math.abs(op.y - entranceY) < 0.05 && op.x >= mainRoom.x && op.x <= mainRoom.x + mainRoom.w;
+        } else {
+          return Math.abs(op.x - entranceX) < 0.05 && op.y >= mainRoom.y && op.y <= mainRoom.y + mainRoom.h;
+        }
       });
+
+      if (!hasDoorToOutside) {
+        const flips = getOptimalDoorFlips(entranceX, entranceY, entranceRot, "hinged", rooms);
+        openings.push({
+          id: `open_${floor}_entrance_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          type: "door",
+          x: entranceX,
+          y: entranceY,
+          w: 0.9,
+          rotation: entranceRot,
+          style: "hinged",
+          flipX: flips.flipX,
+          flipY: flips.flipY,
+        });
+      }
     }
   }
 
@@ -3007,51 +3290,73 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
         const parsed = safeJsonParse(textResult) as Record<string, any> | null;
 
         if (parsed && Array.isArray(parsed.rooms)) {
-          const validatedRooms: Room[] = parsed.rooms.map(
+          // Calculate valid area to check if we have too many rooms
+          const landArea = landW * landL;
+          const shapeCutouts = getCutoutsForShape(shape, landW, landL);
+          const cutoutArea = shapeCutouts.reduce((sum, c) => sum + (c.x2 - c.x1) * (c.y2 - c.y1), 0);
+          const validArea = landArea - cutoutArea;
+
+          // Compute size scaling factor if there are too many rooms
+          const numRooms = parsed.rooms.length;
+          const avgArea = validArea / Math.max(1, numRooms);
+          let minSizeScale = 1.0;
+          if (avgArea < 8.0) {
+            minSizeScale = Math.max(0.4, Math.sqrt(avgArea / 8.0));
+          }
+
+          // Map rooms to raw format first
+          const rawRooms: Room[] = parsed.rooms.map(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (r: any, idx: number) => {
               const name = (r.name || "Phòng").toLowerCase();
-              // Minimum room sizes per room type (to fit furniture)
-              let minW = 1.5;
-              let minH = 1.5;
+              // Minimum room sizes per room type (to fit furniture) scaled by minSizeScale
+              let minW = 1.5 * minSizeScale;
+              let minH = 1.5 * minSizeScale;
               if (name.includes("khách") || name.includes("living") || name.includes("sinh hoạt")) {
-                minW = 3.0; minH = 3.5;
+                minW = 3.0 * minSizeScale; minH = 3.5 * minSizeScale;
               } else if (name.includes("ngủ") || name.includes("bed")) {
-                minW = 2.5; minH = 3.0;
+                minW = 2.5 * minSizeScale; minH = 3.0 * minSizeScale;
               } else if (name.includes("bếp") || name.includes("kitchen")) {
-                minW = 2.0; minH = 2.5;
+                minW = 2.0 * minSizeScale; minH = 2.5 * minSizeScale;
               } else if (name.includes("ăn") || name.includes("dining")) {
-                minW = 2.5; minH = 2.5;
+                minW = 2.5 * minSizeScale; minH = 2.5 * minSizeScale;
               } else if (name.includes("tắm") || name.includes("wc") || name.includes("toilet") || name.includes("vệ sinh")) {
-                minW = 1.2; minH = 1.6;
+                minW = 1.2 * minSizeScale; minH = 1.6 * minSizeScale;
               } else if (name.includes("gara") || name.includes("garage") || name.includes("xe")) {
-                minW = 2.8; minH = 5.0;
+                minW = 2.8 * minSizeScale; minH = 5.0 * minSizeScale;
               } else if (name.includes("giặt") || name.includes("laundry")) {
-                minW = 1.5; minH = 1.8;
+                minW = 1.5 * minSizeScale; minH = 1.8 * minSizeScale;
               } else if (name.includes("làm việc") || name.includes("office")) {
-                minW = 2.5; minH = 2.5;
+                minW = 2.5 * minSizeScale; minH = 2.5 * minSizeScale;
               } else if (name.includes("sảnh") || name.includes("lối vào") || name.includes("entry")) {
-                minW = 1.5; minH = 1.8;
+                minW = 1.5 * minSizeScale; minH = 1.8 * minSizeScale;
               } else if (name.includes("hành lang") || name.includes("lối đi")) {
-                minW = 1.0; minH = 2.0;
+                minW = 1.0 * minSizeScale; minH = 2.0 * minSizeScale;
               }
               const rw = Math.max(minW, Math.min(landW, parseFloat(r.w) || minW));
               const rh = Math.max(minH, Math.min(landL, parseFloat(r.h) || minH));
-              const roomObj = {
+              return {
                 id: `room_${floor}_${idx}_${Date.now()}`,
                 name: r.name || "Phòng",
-                x: Math.max(0, Math.min(landW - rw, parseFloat(r.x) || 0)),
-                y: Math.max(0, Math.min(landL - rh, parseFloat(r.y) || 0)),
+                x: parseFloat(r.x) || 0,
+                y: parseFloat(r.y) || 0,
                 w: rw,
                 h: rh,
                 color: r.color || getRoomColor(r.name || ""),
               };
-              return {
-                ...roomObj,
-                furniture: getDefaultFurnitureForRoom(roomObj),
-              };
             }
           );
+
+          // Adjust rooms geometrically to perfectly fit shape boundary, shrink if crowded, expand if gapped
+          const adjustedRooms = adjustRoomsToFitShape(rawRooms, shape, landW, landL);
+
+          // Build final Room objects and add default furniture based on the adjusted room sizes
+          const validatedRooms: Room[] = adjustedRooms.map((roomObj) => {
+            return {
+              ...roomObj,
+              furniture: getDefaultFurnitureForRoom(roomObj),
+            };
+          });
 
           // ── Smart door placement using adjacency graph ────────────────
           const openings: Opening[] = generateSmartOpenings(validatedRooms, floor);
@@ -5714,8 +6019,19 @@ Requirements:
               const finalRot = e.target.rotation();
 
               if (floorPlan) {
-                pushHistory(floorPlan);
                 const snapped = snapOpeningToWall(finalX, finalY, floorPlan, finalRot, Infinity, open.w, true, !!open.flipX);
+                
+                // Check if the snapped location collides with any furniture
+                if (isDoorCollidingWithAnyFurniture(open, snapped.x, snapped.y, snapped.rotation, floorPlan.rooms)) {
+                  // Revert the node position visually
+                  e.target.x(pan.x + open.x * scale);
+                  e.target.y(pan.y + open.y * scale);
+                  e.target.rotation(open.rotation);
+                  toast.error("Không thể di chuyển cửa vào vị trí này vì vướng đồ nội thất!");
+                  return;
+                }
+
+                pushHistory(floorPlan);
                 const updatedOpenings = floorPlan.openings.map((o) => {
                   if (o.id === open.id) {
                     const flips = getOptimalDoorFlips(snapped.x, snapped.y, snapped.rotation, o.style, floorPlan.rooms);
