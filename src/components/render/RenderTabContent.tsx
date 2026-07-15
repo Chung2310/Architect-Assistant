@@ -41,6 +41,11 @@ const MODELS = [
     name: "Igen gemini Image Pro",
     isPro: true,
   },
+  {
+    id: "openrouter-nano-banana-2",
+    name: "Nano Banana 2 (OpenRouter)",
+    isPro: true,
+  },
 ];
 
 const RESOLUTIONS = [
