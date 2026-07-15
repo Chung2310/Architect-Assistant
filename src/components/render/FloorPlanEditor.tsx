@@ -1138,7 +1138,7 @@ const FURNITURE_CATEGORIES = [
 
 // Helper to convert hex to HSV
 const hexToHsv = (hex: string): { h: number; s: number; v: number } => {
-  let r = 0, g = 0, b = 0;
+  let r: number, g: number, b: number;
   const cleanHex = hex.replace("#", "").trim();
   if (cleanHex.length === 6) {
     r = parseInt(cleanHex.substring(0, 2), 16);
@@ -1153,9 +1153,10 @@ const hexToHsv = (hex: string): { h: number; s: number; v: number } => {
   }
   r /= 255; g /= 255; b /= 255;
   const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  let h = 0, s = 0, v = max;
+  const v = max;
   const d = max - min;
-  s = max === 0 ? 0 : d / max;
+  const s = max === 0 ? 0 : d / max;
+  let h = 0;
   if (max !== min) {
     switch (max) {
       case r: h = (g - b) / d + (g < b ? 6 : 0); break;
@@ -1444,11 +1445,14 @@ export const FloorPlanEditor: React.FC = () => {
     if (showFinishModal) {
       const val = finishes[showFinishModal]?.value || "#ff0000";
       if (val.startsWith("#")) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setPickerColor(hexToHsv(val));
       } else {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setPickerColor({ h: 0, s: 1, v: 1 });
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showFinishModal]);
 
   const handleSquarePointer = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -1907,6 +1911,15 @@ export const FloorPlanEditor: React.FC = () => {
 
     // Giữ phản hồi tự nhiên nhưng không bắt người dùng chờ cố định quá lâu.
     const minDelay = new Promise<void>((resolve) => setTimeout(resolve, 500));
+
+    // Tự động trả lời nếu tin nhắn chứa từ khóa hành lang
+    const normalizedText = text.toLowerCase();
+    if (normalizedText.includes("hành lang") || normalizedText.includes("hanh lang")) {
+      await minDelay;
+      addMessage("assistant", "Igen không hỗ trợ hành lang");
+      setIsTyping(false);
+      return;
+    }
 
     try {
       // ── Client-side validation ──────────────────────────────────────────
@@ -2643,6 +2656,13 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
 
   // ── Finalise drawn polygon into a new room ───────────────────────────────
   const finaliseDrawWall = (pts: { x: number; y: number }[]) => {
+    const roomNameClean = (drawWallRoomName || "").trim().toLowerCase();
+    if (roomNameClean.includes("hành lang") || roomNameClean.includes("hanh lang")) {
+      toast.error("Igen không hỗ trợ hành lang");
+      addMessage("assistant", "Igen không hỗ trợ hành lang");
+      return;
+    }
+
     if (pts.length < 3) {
       toast.error("Vẽ ít nhất 3 điểm để tạo phòng!");
       return;
@@ -7821,7 +7841,6 @@ Requirements:
                         <option value="Phòng làm việc">Phòng làm việc</option>
                         <option value="Phòng Tắm / WC">Phòng Tắm / WC</option>
                         <option value="Garage">Garage</option>
-                        <option value="Hành lang">Hành lang</option>
                         <option value="Sân trước">Sân trước</option>
                         <option value="Sân sau">Sân sau</option>
                         <option value="Ban công">Ban công</option>

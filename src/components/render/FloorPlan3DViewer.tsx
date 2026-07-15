@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useCallback } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -309,6 +309,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
 
   const activeCameraRef = useRef(activeCamera);
   const onChangeCameraRef = useRef(_onChangeCamera);
+  const renderModeRef = useRef(renderMode);
 
   useEffect(() => {
     activeCameraRef.current = activeCamera;
@@ -318,18 +319,22 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     onChangeCameraRef.current = _onChangeCamera;
   }, [_onChangeCamera]);
 
+  useEffect(() => {
+    renderModeRef.current = renderMode;
+  }, [renderMode]);
+
 
 
 
 
 // ── Draw helper to compile floorplan meshes ──────────────────────────────
-  function draw3DScene(
+  const draw3DScene = useCallback((
     scene: THREE.Scene,
     plan: FloorPlanData,
     thicknessMM: number,
     finishes: FloorPlan3DViewerProps["finishes"],
     cubeTexture: THREE.Texture | null
-  ) {
+  ) => {
     if (!plan || !plan.rooms || plan.rooms.length === 0) return;
 
     const loader = new GLTFLoader();
@@ -447,7 +452,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
       ceilingMesh.receiveShadow = true;
       ceilingMesh.userData = { isCeiling: true };
       // Initial visibility depends on activeCamera
-      ceilingMesh.visible = !!activeCamera && renderMode !== "Floorplan to 3D Floorplan";
+      ceilingMesh.visible = !!activeCameraRef.current && renderModeRef.current !== "Floorplan to 3D Floorplan";
       scene.add(ceilingMesh);
 
       // 2. Draw Room Tường (Walls along borders)
@@ -1689,7 +1694,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
         scene.add(openGroup);
       });
     }
-  }
+  }, []);
 
   useEffect(() => {
     const container = mountRef.current;
@@ -1894,7 +1899,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
 
     // 6. Signal the animation loop to render a fresh frame
     needsRenderRef.current = true;
-  }, [floorPlan, wallThickness, finishes]);
+  }, [floorPlan, wallThickness, finishes, draw3DScene]);
 
   // Expose screenshot capture function to parent
   useEffect(() => {

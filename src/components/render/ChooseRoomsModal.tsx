@@ -13,7 +13,6 @@ import {
   Briefcase,
   Sun,
   Trees,
-  DoorOpen,
   Dumbbell,
   Gamepad2,
   Shirt,

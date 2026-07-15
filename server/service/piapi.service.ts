@@ -8,7 +8,7 @@ const PIAPI_BASE_URL = process.env.PIAPI_BASE_URL || "https://api.piapi.ai/api/v
 
 console.log(`[PiAPI Service] Loaded API Key status: ${PIAPI_API_KEY ? `Present (Length: ${PIAPI_API_KEY.length}, Prefix: ${PIAPI_API_KEY.substring(0, 8)}...)` : 'Missing'}`);
 
-async function fetchImageAsBase64(url: string): Promise<string> {
+async function _fetchImageAsBase64(url: string): Promise<string> {
   // If it's already a base64 Data URI, return as-is
   if (url.startsWith("data:")) return url;
 
