@@ -1191,6 +1191,178 @@ const hsvToHex = (h: number, s: number, v: number): string => {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 };
 
+
+// ── Smart openings (doors) placement algorithm using graph adjacency ────────
+function generateSmartOpenings(rooms: Room[], floor: number): Opening[] {
+  if (rooms.length === 0) return [];
+
+  const openings: Opening[] = [];
+
+  interface Connection {
+    roomAIdx: number;
+    roomBIdx: number;
+    type: "horizontal" | "vertical";
+    x: number;
+    y: number;
+    w: number;
+    rotation: number;
+  }
+
+  const possibleConnections: Connection[] = [];
+
+  // Find all adjacent room pairs that share a wall segment of length >= 0.9m
+  for (let i = 0; i < rooms.length; i++) {
+    for (let j = i + 1; j < rooms.length; j++) {
+      const rA = rooms[i];
+      const rB = rooms[j];
+
+      // Check horizontal boundary: bottom wall of rA meets top wall of rB (or vice versa)
+      const isAbove = Math.abs((rA.y + rA.h) - rB.y) < 0.08;
+      const isBelow = Math.abs((rB.y + rB.h) - rA.y) < 0.08;
+
+      if (isAbove || isBelow) {
+        const boundaryY = isAbove ? rA.y + rA.h : rB.y + rB.h;
+        const overlapStart = Math.max(rA.x, rB.x);
+        const overlapEnd = Math.min(rA.x + rA.w, rB.x + rB.w);
+        const overlapLen = overlapEnd - overlapStart;
+
+        if (overlapLen >= 0.9) {
+          possibleConnections.push({
+            roomAIdx: i,
+            roomBIdx: j,
+            type: "horizontal",
+            x: parseFloat((overlapStart + overlapLen / 2).toFixed(2)),
+            y: parseFloat(boundaryY.toFixed(2)),
+            w: 0.9,
+            rotation: 0,
+          });
+        }
+      }
+
+      // Check vertical boundary: right wall of rA meets left wall of rB (or vice versa)
+      const isLeft = Math.abs((rA.x + rA.w) - rB.x) < 0.08;
+      const isRight = Math.abs((rB.x + rB.w) - rA.x) < 0.08;
+
+      if (isLeft || isRight) {
+        const boundaryX = isLeft ? rA.x + rA.w : rB.x + rB.w;
+        const overlapStart = Math.max(rA.y, rB.y);
+        const overlapEnd = Math.min(rA.y + rA.h, rB.y + rB.h);
+        const overlapLen = overlapEnd - overlapStart;
+
+        if (overlapLen >= 0.9) {
+          possibleConnections.push({
+            roomAIdx: i,
+            roomBIdx: j,
+            type: "vertical",
+            x: parseFloat(boundaryX.toFixed(2)),
+            y: parseFloat((overlapStart + overlapLen / 2).toFixed(2)),
+            w: 0.9,
+            rotation: 90,
+          });
+        }
+      }
+    }
+  }
+
+  // Find starting room index (prefer living room / phòng khách)
+  let startIdx = 0;
+  for (let i = 0; i < rooms.length; i++) {
+    const name = rooms[i].name.toLowerCase();
+    if (name.includes("khách") || name.includes("sảnh") || name.includes("lối vào")) {
+      startIdx = i;
+      break;
+    }
+  }
+
+  // Spanning tree BFS to connect all rooms
+  const connected = new Set<number>();
+  connected.add(startIdx);
+  const selectedConnections: Connection[] = [];
+
+  let addedAny = true;
+  while (addedAny) {
+    addedAny = false;
+    for (const conn of possibleConnections) {
+      const hasA = connected.has(conn.roomAIdx);
+      const hasB = connected.has(conn.roomBIdx);
+      if (hasA !== hasB) {
+        selectedConnections.push(conn);
+        connected.add(conn.roomAIdx);
+        connected.add(conn.roomBIdx);
+        addedAny = true;
+        break;
+      }
+    }
+  }
+
+  // Convert selected connections to Opening door objects
+  selectedConnections.forEach((conn, index) => {
+    openings.push({
+      id: `open_${floor}_door_${index}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      type: "door",
+      x: conn.x,
+      y: conn.y,
+      w: conn.w,
+      rotation: conn.rotation,
+      style: "hinged",
+    });
+  });
+
+  // Ensure main entrance door: check if any door is on the top/outer wall of the main room
+  const nonYardRooms = rooms.filter(r => {
+    const name = r.name.toLowerCase();
+    return !name.includes("sân") && !name.includes("vườn") && !name.includes("garden") && !name.includes("yard");
+  });
+
+  if (nonYardRooms.length > 0) {
+    let mainRoom = nonYardRooms.find(r => {
+      const name = r.name.toLowerCase();
+      return name.includes("khách") || name.includes("sảnh") || name.includes("lối vào");
+    });
+    if (!mainRoom) {
+      mainRoom = nonYardRooms.reduce((prev, curr) => (curr.y < prev.y ? curr : prev), nonYardRooms[0]);
+    }
+
+    const hasDoorToOutside = openings.some(op => {
+      if (!mainRoom) return false;
+      const isTopWall = Math.abs(op.y - mainRoom.y) < 0.05 && op.x >= mainRoom.x && op.x <= mainRoom.x + mainRoom.w;
+      const isLeftWall = Math.abs(op.x - mainRoom.x) < 0.05 && op.y >= mainRoom.y && op.y <= mainRoom.y + mainRoom.h;
+      return isTopWall || isLeftWall;
+    });
+
+    if (!hasDoorToOutside && mainRoom) {
+      openings.push({
+        id: `open_${floor}_entrance_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        type: "door",
+        x: parseFloat((mainRoom.x + mainRoom.w / 2).toFixed(2)),
+        y: parseFloat(mainRoom.y.toFixed(2)),
+        w: 0.9,
+        rotation: 0,
+        style: "hinged",
+      });
+    }
+  }
+
+  // Connect any remaining unconnected rooms
+  for (let i = 0; i < rooms.length; i++) {
+    if (!connected.has(i)) {
+      const room = rooms[i];
+      openings.push({
+        id: `open_${floor}_unconn_${i}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        type: "door",
+        x: parseFloat((room.x + room.w / 2).toFixed(2)),
+        y: parseFloat(room.y.toFixed(2)),
+        w: 0.9,
+        rotation: 0,
+        style: "hinged",
+      });
+      connected.add(i);
+    }
+  }
+
+  return openings;
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 export const FloorPlanEditor: React.FC = () => {
   const navigate = useNavigate();
@@ -2509,14 +2681,10 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
               };
             }
           );
-          const openings: Opening[] = validatedRooms.slice(1).map((room, i) => ({
-            id: `open_${floor}_${i}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-            type: "door",
-            x: room.x + Math.min(room.w / 2, 0.5),
-            y: room.y,
-            w: 0.9,
-            rotation: 0,
-          }));
+
+          // ── Smart door placement using adjacency graph ────────────────
+          const openings: Opening[] = generateSmartOpenings(validatedRooms, floor);
+
           generatedPlans.push({
             rooms: validatedRooms,
             openings,
