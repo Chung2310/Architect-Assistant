@@ -6,6 +6,13 @@ dotenv.config();
 const PIAPI_API_KEY = process.env.PIAPI_API_KEY || "";
 const PIAPI_BASE_URL = process.env.PIAPI_BASE_URL || "https://api.piapi.ai/api/v1";
 
+export function getImageToImageStrength(jobType: string): number {
+  const normalizedType = String(jobType || "").toLowerCase();
+  if (normalizedType.includes("floorplan")) return 0.35;
+  if (normalizedType.includes("masterplan")) return 0.85;
+  return 0.35;
+}
+
 console.log(`[PiAPI Service] Loaded API Key status: ${PIAPI_API_KEY ? `Present (Length: ${PIAPI_API_KEY.length}, Prefix: ${PIAPI_API_KEY.substring(0, 8)}...)` : 'Missing'}`);
 
 async function _fetchImageAsBase64(url: string): Promise<string> {
@@ -171,6 +178,7 @@ export const piapiService = {
     let reqBody: Record<string, unknown> | undefined;
 
     const isFloorplanJob = String(options?.jobType || "").toLowerCase().includes("floorplan") || String(options?.jobType || "").toLowerCase().includes("masterplan");
+    const imageStrength = getImageToImageStrength(String(options?.jobType || ""));
 
     const isNanoModel = model === "nano-banana-2" || 
                         model === "igen-image-flash" || 
@@ -196,7 +204,7 @@ export const piapiService = {
           resolution: "1K",
           number_of_images: options?.numImages || 1,
           seed: randomSeed,
-          ...(hasImage ? { image: options.image, strength: isFloorplanJob ? 0.85 : 0.35 } : {}),
+          ...(hasImage ? { image: options.image, strength: imageStrength } : {}),
         },
       };
     } else {
@@ -226,7 +234,7 @@ export const piapiService = {
           number_of_images: options?.numImages || 1,
           seed: randomSeed,
           ...(options?.image ? { image: options.image } : {}),
-          ...(hasImage ? { strength: isFloorplanJob ? 0.85 : 0.35 } : {}),
+          ...(hasImage ? { strength: imageStrength } : {}),
         },
       };
     }

@@ -8,6 +8,10 @@ import { cloudinaryService } from "../service/cloudinary.service";
 import { emitToUser } from "../socket";
 import Joi from "joi";
 import { logger } from "../utils/logger";
+import {
+  FLOORPLAN_FURNITURE_TRANSFORM_LOCK,
+  FLOORPLAN_FURNITURE_TRANSFORM_NEGATIVE,
+} from "../../src/shared/floorplanPromptConstraints";
 
 const createJobSchema = Joi.object({
   type: Joi.string().required().messages({ "any.required": "Loại render là bắt buộc." }),
@@ -72,7 +76,7 @@ const updateJobSchema = Joi.object({
   }),
 });
 
-function appendFloorplanCleanupDirective(type: string, prompt: string) {
+export function appendFloorplanCleanupDirective(type: string, prompt: string) {
   const normalizedType = String(type || "").toLowerCase().trim();
   if (
     normalizedType !== "floorplan to 3d" &&
@@ -84,14 +88,19 @@ function appendFloorplanCleanupDirective(type: string, prompt: string) {
   const cleanupDirective =
     " IMPORTANT: chi giu bo cuc khong gian, tuong, cua, cua so, cau thang va vi tri noi that theo ban ve. Tuyet doi khong duoc them, bot, doi cho, tach, noi, mo rong, thu hep, xoay hoac tai cau truc bat ky thanh phan kien truc nao so voi ban ve goc. Xoa hoan toan moi chu, nhan phong, so kich thuoc, hatch, net dut, ky hieu CAD, mui ten, khung ten, watermark va moi dau vet do hoa 2D cua ban ve goc. Anh cuoi phai la phoi canh 3D sach, khong con annotation hay text ky thuat.";
 
-  if (prompt.includes(cleanupDirective.trim())) {
-    return prompt;
+  const withCleanup = prompt.includes(cleanupDirective.trim())
+    ? prompt
+    : `${prompt}${cleanupDirective}`;
+  if (
+    normalizedType !== "floorplan to 3d floorplan" ||
+    withCleanup.includes(FLOORPLAN_FURNITURE_TRANSFORM_LOCK)
+  ) {
+    return withCleanup;
   }
-
-  return `${prompt}${cleanupDirective}`;
+  return `${withCleanup} ${FLOORPLAN_FURNITURE_TRANSFORM_LOCK}`;
 }
 
-function appendFloorplanNegativePrompt(type: string, prompt: string) {
+export function appendFloorplanNegativePrompt(type: string, prompt: string) {
   const normalizedType = String(type || "").toLowerCase().trim();
   if (
     normalizedType !== "floorplan to 3d" &&
@@ -103,11 +112,16 @@ function appendFloorplanNegativePrompt(type: string, prompt: string) {
   const negativePrompt =
     " Negative prompt: no text, no room labels, no dimensions, no dimension lines, no annotations, no arrows, no hatch patterns, no CAD lines, no dashed lines, no blueprint look, no technical drawing overlay, no title block, no watermark, no 2D graphic remnants, no missing walls, no extra walls, no shifted doors, no shifted windows, no altered room boundaries, no changed circulation, no invented architectural elements, no deleted architectural elements.";
 
-  if (prompt.includes(negativePrompt.trim())) {
-    return prompt;
+  const withNegative = prompt.includes(negativePrompt.trim())
+    ? prompt
+    : `${prompt}${negativePrompt}`;
+  if (
+    normalizedType !== "floorplan to 3d floorplan" ||
+    withNegative.includes(FLOORPLAN_FURNITURE_TRANSFORM_NEGATIVE)
+  ) {
+    return withNegative;
   }
-
-  return `${prompt}${negativePrompt}`;
+  return `${withNegative}, ${FLOORPLAN_FURNITURE_TRANSFORM_NEGATIVE}`;
 }
 
 function appendFloorplanCameraDirective(type: string, prompt: string, cameraAngle?: string, customCameraAngle?: string) {

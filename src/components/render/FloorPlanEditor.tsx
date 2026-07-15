@@ -23,6 +23,10 @@ import {
 import { ChooseShapeModal } from "./ChooseShapeModal";
 import { ChooseRoomsModal } from "./ChooseRoomsModal";
 import { FloorPlan3DViewer } from "./FloorPlan3DViewer";
+import {
+  FLOORPLAN_FURNITURE_TRANSFORM_LOCK,
+  FLOORPLAN_FURNITURE_TRANSFORM_NEGATIVE,
+} from "../../shared/floorplanPromptConstraints";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const METER_TO_PX = 48;
@@ -3569,6 +3573,7 @@ Strict Layout & Furniture Preservation Guidelines:
 - The floorplan consists of these rooms and layout: ${roomsDesc}. Each room must retain its specific function, placement, and interior elements as defined in the preview.
 - The input image is a floorplan preview. You MUST strictly preserve the exact room layout, wall positions, doors, windows and furniture arrangement.
 - Do NOT add, remove, or rearrange any furniture.
+- ${FLOORPLAN_FURNITURE_TRANSFORM_LOCK}
 - Keep all architectural proportions correct.
 - The result should look like a high-quality 3D floorplan render, with clear floor surfaces, walls, and subtle shadows.
 - Focus on the floorplan and spatial organization, not on photographic interior detail.
@@ -3577,7 +3582,7 @@ Requirements:
 - Crisp presentation with clean lines, subtle ambient lighting, and clear separation between floors, walls, and furniture.
 - Soft shadows that enhance depth without being overly photorealistic.
 - Avoid realistic photographic staging, people, or repeated interior decoration details.
-- Output should resemble a professional 3D floorplan/axonometric render, not a typical interior photograph. Negative prompt: white clay model, monochrome, grayscale, raw plaster, all-white rendering, untextured model.`
+- Output should resemble a professional 3D floorplan/axonometric render, not a typical interior photograph. Negative prompt: white clay model, monochrome, grayscale, raw plaster, all-white rendering, untextured model, ${FLOORPLAN_FURNITURE_TRANSFORM_NEGATIVE}.`
         : `You are a professional 3D architectural visualizer.
 Your task is to transform the provided 3D spatial layout preview of the [${roomForRender}] into a hyper-realistic, photorealistic interior render.
 Style: ${currentRoom?.style || selectedStyle || gatherInfo.extras || "Modern Vietnamese contemporary"}.

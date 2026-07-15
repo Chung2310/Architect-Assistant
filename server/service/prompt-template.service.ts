@@ -1,4 +1,8 @@
 import { resolvePass3PromptTemplate } from "./prompt-template-pass3.service";
+import {
+  FLOORPLAN_FURNITURE_TRANSFORM_LOCK,
+  FLOORPLAN_FURNITURE_TRANSFORM_NEGATIVE,
+} from "../../src/shared/floorplanPromptConstraints";
 
 type InlineImageInput = {
   data: string;
@@ -226,9 +230,9 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
   const interiorPhotorealDirective = buildPhotorealismDirective(style, "interior");
   const photorealNegativePrompt = buildPhotorealNegativePrompt(style);
   const floorplanSpaceCleanupDirective = buildFloorplanCleanupDirective("space");
-  const floorplanAxonometricCleanupDirective = buildFloorplanCleanupDirective("axonometric");
+  const floorplanAxonometricCleanupDirective = `${buildFloorplanCleanupDirective("axonometric")} ${FLOORPLAN_FURNITURE_TRANSFORM_LOCK}`;
   const floorplanSpaceNegativePrompt = buildFloorplanNegativePrompt("space");
-  const floorplanAxonometricNegativePrompt = buildFloorplanNegativePrompt("axonometric");
+  const floorplanAxonometricNegativePrompt = `${buildFloorplanNegativePrompt("axonometric")}, ${FLOORPLAN_FURNITURE_TRANSFORM_NEGATIVE}`;
 
   if (activeSubTabKey.includes("render ngoai that")) {
     textPrompt += `Style ảnh: ${style}\nTone màu: ${colorTone}\nBối cảnh: ${context}\nÁnh sáng: ${lighting}\n`;
@@ -358,6 +362,8 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     }
     textPrompt += `Negative prompt ưu tiên: ${floorplanAxonometricNegativePrompt}\n`;
     systemInstruction = [
+      FLOORPLAN_FURNITURE_TRANSFORM_LOCK,
+      "MANDATORY: analyze every furniture item and state its type, quantity, exact position, relative spacing, rotation angle, facing direction, and front/back/left/right orientation; repeat these immutable attributes in the final render prompt.",
       "Bạn là chuyên gia phân tích floorplan 2D và tái dựng thành không gian 3D chính xác.",
       "BẮT BUỘC: Bạn PHẢI tuân thủ tuyệt đối 'Style góc chụp' (cameraAngleStyle) được chỉ định trong yêu cầu để mô tả góc nhìn trong prompt cuối cùng. Nếu là 'Top-down View', prompt BẮT BUỘC phải mô tả góc nhìn thẳng đứng trực diện từ trên xuống (flat 3D floor plan layout, straight top-down view, 90-degree bird's-eye view, no perspective distortion of walls, looking directly down at the floor, orthographic layout view). Nếu là 'Phối cảnh Trực đo (Isometric)', prompt BẮT BUỘC phải mô tả phối cảnh trục đo 3D (3D isometric cutaway perspective, axonometric cutaway view, tilted angle view). Tuyệt đối không được nhầm lẫn giữa hai góc nhìn này.",
       "BẮT BUỘC: Hãy đọc kỹ ảnh mặt bằng đầu vào, tìm và nhận diện đúng tất cả các nhãn chữ chỉ tên/công năng phòng (ví dụ: Phòng khách, Phòng ngủ, WC, Bếp, Cầu thang...). Bạn phải mô tả chi tiết vị trí của từng khu vực chức năng này trong prompt cuối cùng để mô hình sinh ảnh xếp đúng vị trí, tuyệt đối không được tự ý đổi công năng phòng (không biến WC thành phòng ngủ, không vẽ nhầm phòng ngủ thành phòng khách).",

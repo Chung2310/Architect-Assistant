@@ -7,6 +7,11 @@ import { apiClient, ApiResponse } from "../../services/apiClient";
 import { ImageLibraryModal } from "./ImageLibraryModal";
 import { getAIClient, safeJsonParse, checkUserCredits, generateContentWithRetry, getImageBase64, handleDownload, cacheImage, uploadMedia } from "../../lib/renderUtils";
 import { convertPdfToImage } from "../../lib/pdfUtils";
+import { preprocessFloorplanImageBase64 } from "../../lib/floorplanImagePreprocessing";
+import {
+  FLOORPLAN_FURNITURE_TRANSFORM_LOCK,
+  FLOORPLAN_FURNITURE_TRANSFORM_NEGATIVE,
+} from "../../shared/floorplanPromptConstraints";
 
 interface RenderJob {
   _id?: string;
@@ -388,8 +393,21 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
     try {
       const ai = await getAIClient(promptModel);
 
-      const getImagePart = async (url: string) => {
-        const imageData = await getImageBase64(url, true);
+      const isFloorplanAnalysis =
+        activeSubTab === "Floorplan to 3D" ||
+        activeSubTab === "Floorplan to 3D Floorplan";
+      const getPromptImageData = async (url: string, preprocessFloorplan = false) => {
+        const shouldPreprocess = isFloorplanAnalysis && preprocessFloorplan;
+        const imageData = await getImageBase64(url, !shouldPreprocess);
+        if (!shouldPreprocess || !imageData.base64Data) return imageData;
+        const dataUrl = `data:${imageData.mimeType || "image/jpeg"};base64,${imageData.base64Data}`;
+        const processed = await preprocessFloorplanImageBase64(dataUrl, 1600);
+        const match = processed.match(/^data:(image\/[^;]+);base64,(.+)$/);
+        return match ? { mimeType: match[1], base64Data: match[2] } : imageData;
+      };
+
+      const getImagePart = async (url: string, preprocessFloorplan = false) => {
+        const imageData = await getPromptImageData(url, preprocessFloorplan);
         if (!imageData || !imageData.base64Data) {
           throw new Error(`Không thể tải hoặc xử lý hình ảnh: ${url}`);
         }
@@ -452,7 +470,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
             text: "Reference Image (Structure/Layout to preserve):",
           });
           for (const url of inputImages) {
-            parts.push(await getImagePart(url));
+            parts.push(await getImagePart(url, true));
           }
         }
 
@@ -534,7 +552,10 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
           }
 `;
 
-        parts.push({ text: textPrompt });
+        const finalTextPrompt = activeSubTab === "Floorplan to 3D Floorplan"
+          ? `${textPrompt}\n- Furniture transform lock: ${FLOORPLAN_FURNITURE_TRANSFORM_LOCK}\n- Negative furniture constraints: ${FLOORPLAN_FURNITURE_TRANSFORM_NEGATIVE}`
+          : textPrompt;
+        parts.push({ text: finalTextPrompt });
       }
 
       const response = await generateContentWithRetry(ai, {
@@ -555,7 +576,7 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
           cameraAngleStyle,
           images: await Promise.all(
             inputImages.map(async (url) => {
-              const imageData = await getImageBase64(url);
+              const imageData = await getPromptImageData(url, true);
               return {
                 data: imageData.base64Data,
                 mimeType: imageData.mimeType,
@@ -564,7 +585,7 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
           ),
           referenceImages: await Promise.all(
             referenceImages.map(async (url) => {
-              const imageData = await getImageBase64(url);
+              const imageData = await getPromptImageData(url);
               return {
                 data: imageData.base64Data,
                 mimeType: imageData.mimeType,
