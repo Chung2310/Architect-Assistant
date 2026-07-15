@@ -20,9 +20,9 @@ export const getAIClient = async (modelName: string) => {
 
   if (isAIStudio) {
     if (
-      modelName === "gemini-3.1-flash-image-preview" ||
-      modelName === "gemini-3-pro-image-preview" ||
-      modelName === "gemini-3.1-pro-preview" ||
+      modelName === "gemini-3.1-flash-image" ||
+      modelName === "gemini-3-pro-image" ||
+      modelName === "gemini-2.5-flash" ||
       modelName === "veo-3.1-generate-preview" ||
       modelName === "veo-3.1-lite-generate-preview"
     ) {
@@ -186,6 +186,29 @@ export const generateContentWithRetry = async (
   delay = 2000,
   timeoutMs = 180000,
 ) => {
+  const describeContents = (contents: unknown) => {
+    if (typeof contents === "string") return `string:${contents.slice(0, 120)}`;
+    if (!Array.isArray(contents)) return "non-array";
+
+    return contents
+      .map((content, index) => {
+        if (!content || typeof content !== "object" || !("parts" in content)) {
+          return `item${index}:no-parts`;
+        }
+
+        const parts = (content as { parts?: Array<Record<string, unknown>> }).parts || [];
+        const partSummary = parts.map((part) => {
+          if (typeof part?.text === "string") return "text";
+          if (part?.inlineData) return "inlineData";
+          if (part?.fileData) return "fileData";
+          return "other";
+        });
+
+        return `item${index}:${partSummary.join(",")}`;
+      })
+      .join(" | ");
+  };
+
   try {
     const res = await apiClient.get<ApiResponse<{ credits?: number }>>("/api/v1/auth/me");
     if (res.success && res.data) {
@@ -205,6 +228,7 @@ export const generateContentWithRetry = async (
   for (let i = 0; i < retries; i++) {
     let timeoutId: NodeJS.Timeout;
     try {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const timeoutPromise = new Promise((_, reject) => {
         timeoutId = setTimeout(() => reject(new Error("TIMEOUT")), timeoutMs);
       });
@@ -221,6 +245,8 @@ export const generateContentWithRetry = async (
         systemInstruction,
         generationConfig,
         config,
+        promptTemplateKey,
+        promptTemplateInput,
         ...rest
       } = params;
       const combinedConfig = {
@@ -232,6 +258,8 @@ export const generateContentWithRetry = async (
       const callParams = {
         model,
         contents,
+        promptTemplateKey,
+        promptTemplateInput,
         config: combinedConfig,
       } as Record<string, unknown>;
 
@@ -270,44 +298,45 @@ export const generateContentWithRetry = async (
         }
       }
 
-      if (modelName.startsWith("imagen-")) {
-        let prompt = "";
-        if (Array.isArray(callParams.contents)) {
-          const allParts = callParams.contents.flatMap(
-            (c: { parts?: unknown[] }) => c.parts || [],
-          );
-          const promptPart = (allParts as Array<{ text?: string }>).find((p) => p?.text);
-          prompt = promptPart ? (promptPart.text as string) : "";
-        } else if (callParams.contents && typeof callParams.contents === "object" && "parts" in callParams.contents) {
-          const contentsObj = callParams.contents as { parts?: Array<{ text?: string }> };
-          const promptPart = contentsObj.parts?.find((p) => p.text);
-          prompt = promptPart ? (promptPart.text as string) : "";
-        } else {
-          prompt =
-            typeof callParams.contents === "string" ? callParams.contents : "";
-        }
-
+      const isImagenMode = modelName.includes("image") || modelName.includes("imagen") || modelName.includes("banana");
+      if (isImagenMode) {
         const imageConfig = (callParams.config as { imageConfig?: { aspectRatio?: string; imageSize?: string } })?.imageConfig || {};
+        console.info("[AI Request] Provider route: backend Gemini native image", {
+          model: modelName,
+          hasSystemInstruction: !!systemInstruction,
+          contents: describeContents(callParams.contents),
+          aspectRatio: imageConfig.aspectRatio || "1:1",
+        });
 
-        const imageResponse = (await Promise.race([
-          ai.models.generateImages({
+        const backendRes = await apiClient.post<ApiResponse<AIResponse>>("/api/v1/gemini/generate", {
+          params: {
             model: modelName,
-            prompt: prompt,
+            contents: callParams.contents,
+            promptTemplateKey: callParams.promptTemplateKey,
+            promptTemplateInput: callParams.promptTemplateInput,
+            systemInstruction,
             config: {
-              numberOfImages: 1,
-              aspectRatio: imageConfig.aspectRatio || "1:1",
-              imageSize: imageConfig.imageSize || "1K",
-              outputMimeType: "image/png",
-            },
-          }),
-          timeoutPromise,
-        ])) as AIResponse;
+              imageConfig: {
+                aspectRatio: imageConfig.aspectRatio || "1:1",
+                imageSize: imageConfig.imageSize || "1K"
+              }
+            }
+          }
+        });
+
+        if (!backendRes || !backendRes.success) {
+          throw new Error(backendRes?.message || "Lỗi sinh ảnh từ server.");
+        }
+        const imageResponse = backendRes.data;
 
         const base64Data =
-          imageResponse.generatedImages?.[0]?.image?.imageBytes;
+          imageResponse.generatedImages?.[0]?.image?.imageBytes ||
+          imageResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
         if (!base64Data) {
           throw new Error("Không nhận được dữ liệu ảnh từ Imagen API.");
         }
+        const mimeType =
+          imageResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.mimeType || "image/png";
         result = {
           candidates: [
             {
@@ -316,7 +345,7 @@ export const generateContentWithRetry = async (
                   {
                     inlineData: {
                       data: base64Data,
-                      mimeType: "image/png",
+                      mimeType: mimeType,
                     },
                   },
                 ],
@@ -326,10 +355,19 @@ export const generateContentWithRetry = async (
           text: "",
         };
       } else {
-        const fullResult = (await Promise.race([
-          ai.models.generateContent(callParams as unknown as Parameters<typeof ai.models.generateContent>[0]),
-          timeoutPromise,
-        ])) as AIResponse;
+        console.info("[AI Request] Provider route: backend Gemini/PiAPI text-or-generic", {
+          model: modelName,
+          hasSystemInstruction: !!systemInstruction,
+          contents: describeContents(callParams.contents),
+        });
+        const backendRes = await apiClient.post<ApiResponse<AIResponse>>("/api/v1/gemini/generate", {
+          params: callParams
+        });
+
+        if (!backendRes || !backendRes.success) {
+          throw new Error(backendRes?.message || "Lỗi kết nối API Gemini.");
+        }
+        const fullResult = backendRes.data;
 
         const rawResponse = fullResult?.response || fullResult;
         let candidates = rawResponse?.candidates || [];
@@ -356,10 +394,17 @@ export const generateContentWithRetry = async (
           promptFeedback: rawResponse?.promptFeedback,
         };
         try {
-          result.text =
-            typeof rawResponse?.text === "function"
-              ? rawResponse.text()
-              : (rawResponse?.text as string) || "";
+          if (typeof rawResponse?.text === "function") {
+            result.text = rawResponse.text();
+          } else if (typeof rawResponse?.text === "string") {
+            result.text = rawResponse.text;
+          } else if (candidates && candidates[0]?.content?.parts) {
+            result.text = candidates[0].content.parts
+              .map((part: { text?: string }) => part.text || "")
+              .join("");
+          } else {
+            result.text = "";
+          }
         } catch {
           result.text = "";
         }
@@ -393,9 +438,9 @@ export const generateContentWithRetry = async (
             (params.generationConfig as { imageConfig?: { imageSize?: string } })?.imageConfig?.imageSize ||
             (params.config as { imageConfig?: { imageSize?: string } })?.imageConfig?.imageSize ||
             "1K";
-          if (modelName === "gemini-3.1-flash-image-preview") {
+          if (modelName === "gemini-3.1-flash-image") {
             cost = resolution === "2K" ? 42 : 27.5;
-          } else if (modelName === "gemini-3-pro-image-preview") {
+          } else if (modelName === "gemini-3-pro-image") {
             cost = 57;
           } else {
             cost = 27.5;
@@ -485,9 +530,10 @@ export const generateContentWithRetry = async (
             i === 1 &&
             params.model &&
             ((params.model as string) === "gemini-3.1-pro-preview" ||
-              (params.model as string).includes("pro"))
+              (params.model as string).includes("pro") ||
+              (params.model as string) === "gemini-2.5-flash")
           ) {
-            params.model = "gemini-3-flash-preview";
+            params.model = "gemini-2.5-flash";
           }
           await new Promise((res) => setTimeout(res, delay));
           delay = Math.min(delay * 1.5, 10000);
@@ -591,9 +637,9 @@ export const generateContentStreamWithRetry = async function* (
               (params.generationConfig as { imageConfig?: { imageSize?: string } })?.imageConfig?.imageSize ||
               (params.config as { imageConfig?: { imageSize?: string } })?.imageConfig?.imageSize ||
               "1K";
-            if (modelName === "gemini-3.1-flash-image-preview") {
+            if (modelName === "gemini-3.1-flash-image") {
               cost = resolution === "2K" ? 42 : 27.5;
-            } else if (modelName === "gemini-3-pro-image-preview") {
+            } else if (modelName === "gemini-3-pro-image") {
               cost = 57;
             } else {
               cost = 27.5;
@@ -670,9 +716,10 @@ export const generateContentStreamWithRetry = async function* (
             i === 1 &&
             params.model &&
             ((params.model as string) === "gemini-3.1-pro-preview" ||
-              (params.model as string).includes("pro"))
+              (params.model as string).includes("pro") ||
+              (params.model as string) === "gemini-2.5-flash")
           ) {
-            params.model = "gemini-3-flash-preview";
+            params.model = "gemini-2.5-flash";
           }
           await new Promise((res) => setTimeout(res, delay));
           delay = Math.min(delay * 1.5, 10000);

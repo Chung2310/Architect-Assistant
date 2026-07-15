@@ -3,20 +3,19 @@ import { Icon } from "../Icon";
 import { useAuth } from "../../context/useAuth";
 import { apiClient } from "../../services/apiClient";
 import { toast } from "sonner";
-import { Type } from "@google/genai";
 import { convertPdfToImage } from "../../lib/pdfUtils";
 import { ImageLibraryModal } from "./ImageLibraryModal";
-import { uploadMedia, getAIClient, checkUserCredits, generateContentWithRetry, getImageBase64, cacheImage, scaleToResolution } from "../../lib/renderUtils";
+import { uploadMedia, getAIClient, checkUserCredits, generateContentWithRetry, getImageBase64, cacheImage, scaleToResolution, safeJsonParse } from "../../lib/renderUtils";
 
 const MODELS = [
   {
-    id: "gemini-3.1-flash-image-preview",
-    name: "iGen 3.1 Flash Image Preview",
-    isPro: true,
+    id: "nano-banana-2",
+    name: "Igen gemini Image Flash",
+    isPro: false,
   },
   {
-    id: "gemini-3-pro-image-preview",
-    name: "iGen 3 Pro Image Preview",
+    id: "nano-banana-pro",
+    name: "Igen gemini Image Pro",
     isPro: true,
   },
 ];
@@ -28,29 +27,23 @@ export const UpscaleTabContent: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [selectedModel, setSelectedModel] = useState(
-    "gemini-3-pro-image-preview",
+    "nano-banana-2",
   );
   const [isUpscaling, setIsUpscaling] = useState(false);
   const [upscaleProgress, setUpscaleProgress] = useState(0);
   const [upscaledImage, setUpscaledImage] = useState<string | null>(null);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isUpscaling) {
-      setTimeout(() => setUpscaleProgress(0), 0);
-      interval = setInterval(() => {
-        setUpscaleProgress((prev) => {
-          if (prev < 90) {
-            return prev + Math.random() * 5;
-          } else if (prev < 99) {
-            return prev + Math.random() * 0.5;
-          }
-          return prev;
-        });
-      }, 500);
-    } else {
-      setTimeout(() => setUpscaleProgress(100), 0);
-    }
+    if (!isUpscaling) return;
+
+    const interval = setInterval(() => {
+      setUpscaleProgress((prev) => {
+        if (prev < 90) return Math.min(90, prev + 2);
+        if (prev < 99) return Math.min(99, prev + 0.25);
+        return prev;
+      });
+    }, 500);
+
     return () => clearInterval(interval);
   }, [isUpscaling]);
 
@@ -113,7 +106,12 @@ export const UpscaleTabContent: React.FC = () => {
 
     if (!(await checkUserCredits())) return;
     setIsUploading(true);
-    setUploadProgress(0);
+    setUploadProgress(1);
+    let progressVal = 1;
+    const progressInterval = setInterval(() => {
+      progressVal += (95 - progressVal) * 0.1;
+      setUploadProgress(Math.round(progressVal));
+    }, 150);
 
     try {
       const processedFilesNested = await Promise.all(
@@ -137,19 +135,24 @@ export const UpscaleTabContent: React.FC = () => {
         .filter((f): f is File => f !== null);
 
       if (processedFiles.length === 0) {
+        clearInterval(progressInterval);
         setIsUploading(false);
         return;
       }
 
       const fileToUpload = processedFiles[0];
 
-      setUploadProgress(30);
       const downloadURL = await uploadMedia(fileToUpload, "uploads");
-      setUploadProgress(100);
       cacheImage(downloadURL, fileToUpload);
       setInputImage(downloadURL);
-      setIsUploading(false);
+
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      setTimeout(() => {
+        setIsUploading(false);
+      }, 400);
     } catch (error) {
+      clearInterval(progressInterval);
       console.error("Error processing files:", error);
       setIsUploading(false);
     }
@@ -211,6 +214,7 @@ export const UpscaleTabContent: React.FC = () => {
       return;
     }
 
+    setUpscaleProgress(0);
     setIsUpscaling(true);
     setUpscaledImage(null);
 
@@ -247,85 +251,20 @@ export const UpscaleTabContent: React.FC = () => {
         });
       }
 
-      const promptAi = await getAIClient("gemini-3.1-pro-preview");
-
-      const generationConfigText = {
-        temperature: 1.0,
-        responseMimeType: "application/json",
-        thinkingConfig: {
-          thinkingLevel: "medium",
-        },
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            image_content_analysis: {
-              type: Type.STRING,
-              description:
-                "Deeply analyze the low-resolution input image. Identify every visible subject, color, lighting, and layout with 100% accuracy.",
-            },
-            optimized_upscale_prompt: {
-              type: Type.STRING,
-              description:
-                "The English prompt to reconstruct the image. Must describe the exact content and append 2K high-fidelity enhancement keywords.",
-            },
-            negative_prompt: {
-              type: Type.STRING,
-              description:
-                "Strict negative prompt avoiding blur, noise, pixelation, and hallucination.",
-            },
-          },
-          required: [
-            "image_content_analysis",
-            "optimized_upscale_prompt",
-            "negative_prompt",
-          ],
-        },
-      };
-
-      const systemInstructionText = `<role>
-You are the "iGen Image Enhancer", an elite spatial and visual analyzer. Your objective is to examine a low-resolution, blurry, or pixelated Reference Image and generate a precise reconstruction prompt for \`gemini-3.1-flash-image-preview\` to upscale it to crisp 2K resolution.
-</role>
-
-<core_directives>
-1. ZERO HALLUCINATION: You MUST describe exactly what is in the blurry image. Do NOT invent new subjects, change the time of day, or alter the structural layout. Your goal is restoration, not alteration.
-2. UPSCALE ENHANCEMENT KEYWORDS: After accurately describing the image's content, you MUST append these exact enhancement keywords to the \`optimized_upscale_prompt\`: "ultra-sharp, highly detailed, 2K resolution, crystal clear, noise-free, high-fidelity restoration, crisp edges, masterpiece".
-</core_directives>
-
-<content_translation_protocol>
-- If the image contains text, logos, or signs that are readable, preserve them exactly in double quotes (e.g., a sign saying "Cà Phê").
-- Translate all visual descriptions into professional, descriptive English to maximize the rendering engine's output quality.
-</content_translation_protocol>
-
-<negative_prompting_rules>
-For the \`negative_prompt\` field, strictly list upscale-related artifacts:
-"blurry, pixelated, jpeg artifacts, noise, low resolution, out of focus, structural changes, mutated subjects, hallucinated details, distorted geometry, chromatic aberration".
-</negative_prompting_rules>
-
-<fallback_protocol>
-If the image is too blurry to identify specific details, describe the general shapes, colors, and lighting composition, and emphasize "ultra-sharp abstract/general enhancement".
-</fallback_protocol>`;
+      const promptAi = await getAIClient("gemini-2.5-flash");
 
       console.log("Analyzing image to generate upscale prompt...");
       const textResponse = await generateContentWithRetry(promptAi, {
-        model: "gemini-3.1-pro-preview",
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                inlineData: {
-                  data: base64Data,
-                  mimeType: mimeType,
-                },
-              },
-              {
-                text: "Analyze this image and generate the upscaling prompt.",
-              },
-            ],
-          },
-        ],
-        systemInstruction: systemInstructionText,
-        generationConfig: generationConfigText,
+        model: "gemini-2.5-flash",
+        promptTemplateKey: "upscale_prompt",
+        promptTemplateInput: {
+          images: [
+            {
+              data: base64Data,
+              mimeType: mimeType,
+            },
+          ],
+        },
       });
 
       const textResult =
@@ -334,10 +273,13 @@ If the image is too blurry to identify specific details, describe the general sh
         throw new Error("Failed to generate prompt from image.");
       }
 
-      let parsedResult;
+      let parsedResult: any;
       try {
-        parsedResult = JSON.parse(textResult);
+        parsedResult = safeJsonParse(textResult);
         console.log("Upscale AI Analysis Result:", parsedResult);
+        if (!parsedResult || typeof parsedResult !== "object" || Array.isArray(parsedResult)) {
+          throw new Error("Parsed result is not a valid JSON object.");
+        }
       } catch (e) {
         console.error("Parse JSON error", e);
         throw new Error("Invalid output format from AI.", { cause: e });
@@ -361,8 +303,10 @@ If the image is too blurry to identify specific details, describe the general sh
       };
 
       if (
-        selectedModel === "gemini-3.1-flash-image-preview" ||
-        selectedModel === "gemini-3-pro-image-preview"
+        selectedModel === "gemini-3.1-flash-image" ||
+        selectedModel === "gemini-3-pro-image" ||
+        selectedModel === "nano-banana-2" ||
+        selectedModel === "nano-banana-pro"
       ) {
         imageConfig.imageSize = resolution;
         imageConfig.negativePrompt = negativePrompt;

@@ -47,32 +47,27 @@ interface RenderJob {
 
 const MODELS = [
   {
-    id: "piapi-midjourney",
-    name: "Midjourney v6 (PiAPI)",
-    isPro: true,
-  },
-  {
-    id: "piapi-flux",
-    name: "Flux Dev (PiAPI)",
-    isPro: true,
+    id: "nano-banana-2",
+    name: "Igen gemini Image Flash",
+    isPro: false,
   },
   {
     id: "nano-banana-pro",
-    name: "Nano Banana Pro (PiAPI)",
+    name: "Igen gemini Image Pro",
     isPro: true,
   },
 ];
 
 const GEMINI_MODELS = [
   {
-    id: "gemini-3.1-flash-image-preview",
-    name: "iGen 3.1 Flash Image Preview",
+    id: "gemini-3-pro-image",
+    name: "iGen 3 Pro Image",
     isPro: true,
   },
   {
-    id: "gemini-3-pro-image-preview",
-    name: "iGen 3 Pro Image Preview",
-    isPro: true,
+    id: "gemini-3.1-flash-image",
+    name: "iGen 3.1 Flash Image",
+    isPro: false,
   },
 ];
 
@@ -91,7 +86,7 @@ export const SyncTabContent: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeProgress, setAnalyzeProgress] = useState(0);
   const [analyzeStatus, setAnalyzeStatus] = useState("");
-  const [promptModel, setPromptModel] = useState("gemini-3-flash-preview");
+  const [promptModel, setPromptModel] = useState("gemini-2.5-flash");
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [analysisCategories, setAnalysisCategories] = useState<
     AngleCategory[] | null
@@ -193,16 +188,24 @@ export const SyncTabContent: React.FC = () => {
       if (!(await checkUserCredits())) return;
 
       setIsUploading(true);
-      setUploadProgress(0);
+      setUploadProgress(1);
+      let progressVal = 1;
+      const progressInterval = setInterval(() => {
+        progressVal += (95 - progressVal) * 0.1;
+        setUploadProgress(Math.round(progressVal));
+      }, 150);
 
       try {
-        setUploadProgress(30);
         const downloadURL = await uploadMedia(file, "uploads");
-        setUploadProgress(100);
         cacheImage(downloadURL, file);
         setInputImage(downloadURL);
-        setIsUploading(false);
+        clearInterval(progressInterval);
+        setUploadProgress(100);
+        setTimeout(() => {
+          setIsUploading(false);
+        }, 400);
       } catch (error) {
+        clearInterval(progressInterval);
         console.error("Error uploading file:", error);
         setIsUploading(false);
       }
@@ -221,10 +224,10 @@ export const SyncTabContent: React.FC = () => {
   const [isGeneratingCharacter, setIsGeneratingCharacter] = useState(false);
   const [characterGenProgress, setCharacterGenProgress] = useState(0);
   const [characterModel, setCharacterModel] = useState(
-    "gemini-3-pro-image-preview",
+    "gemini-3-pro-image",
   );
   const [characterGenModel, setCharacterGenModel] = useState(
-    "gemini-3-pro-image-preview",
+    "gemini-3-pro-image",
   );
   const [characterResolution, setCharacterResolution] = useState("1K");
   const [characterAspectRatio, setCharacterAspectRatio] = useState("1:1");
@@ -365,20 +368,21 @@ export const SyncTabContent: React.FC = () => {
 
     const startTime = Date.now();
     const expectedDuration = 15000;
+    let currentCharacterProgress = 0;
     const progressInterval = setInterval(() => {
       const elapsed = Date.now() - startTime;
-      setCharacterGenProgress(Math.min(90, (elapsed / expectedDuration) * 90));
+      currentCharacterProgress = Math.min(90, (elapsed / expectedDuration) * 90);
+      setCharacterGenProgress(currentCharacterProgress);
     }, 100);
 
     try {
       const ai = await getAIClient(characterGenModel);
       const response = await generateContentWithRetry(ai, {
         model: characterGenModel,
-        contents: [{ role: "user", parts: [{ text: characterPrompt }] }],
-        config: {
-          imageConfig: {
-            aspectRatio: "1:1",
-          },
+        promptTemplateKey: "character_generate_prompt",
+        promptTemplateInput: {
+          characterPrompt,
+          aspectRatio: "1:1",
         },
       });
 
@@ -398,7 +402,13 @@ export const SyncTabContent: React.FC = () => {
           const blob = new Blob([new Uint8Array(array)], { type: mimeType });
           const downloadURL = await uploadMedia(blob, "characters");
           
-          setCharacterGenProgress(100);
+          const characterProgressStart = Math.min(95, currentCharacterProgress);
+          for (let step = 1; step <= 10; step++) {
+            await new Promise((resolve) => setTimeout(resolve, 40));
+            setCharacterGenProgress(
+              characterProgressStart + ((100 - characterProgressStart) * step) / 10,
+            );
+          }
           setCharacterImage(downloadURL);
           setCharacterProvideType("prompt");
           break;
@@ -443,15 +453,17 @@ export const SyncTabContent: React.FC = () => {
     const numImages = characterContextImages.length;
     const startTime = Date.now();
     const expectedDuration = characterContextImages.length * 15000;
+    let currentSyncProgress = 0;
     const progressInterval = setInterval(() => {
       const elapsed = Date.now() - startTime;
-      setSyncProgress(Math.min(90, (elapsed / expectedDuration) * 90));
+      currentSyncProgress = Math.min(90, (elapsed / expectedDuration) * 90);
+      setSyncProgress(currentSyncProgress);
     }, 100);
 
     try {
       const isPiapiModel = characterModel && (characterModel.startsWith("piapi-") || characterModel === "nano-banana-pro" || characterModel === "nano-banana-2");
       if (isPiapiModel) {
-        toast.error("Tính năng Đồng bộ nhân vật hiện chưa hỗ trợ PiAPI. Vui lòng chọn Gemini.");
+        toast.error("Tính năng Đồng Bộ Nhân Vật hiện chưa hỗ trợ PiAPI. Vui lòng chọn Gemini.");
         setIsSyncingCharacter(false);
         clearInterval(progressInterval);
         return;
@@ -521,55 +533,8 @@ export const SyncTabContent: React.FC = () => {
               ? ctxImg.prompt
               : "[EMPTY] - Apply Auto-Placement and Auto-Posing based on the background.";
 
-          const promptText = `<role>
-You are the "Elite Cinematic Compositor & AI Photographer". Your mission is to seamlessly composite the [SUBJECT] image into the [BACKGROUND] image, creating a hyper-realistic, structurally sound, and perfectly relit final photograph.
-</role>
-
-<core_directives>
-1. STRICT IDENTITY PRESERVATION: You MUST strictly maintain the facial features, body proportions, hair, and exact clothing of the person in the [SUBJECT] reference. Do not change their outfit unless explicitly commanded in the User Request.
-
-2. DYNAMIC POSING & PLACEMENT:
-- If "User Request" specifies an action or position, strictly follow it while obeying physical laws.
-- If "User Request" is [EMPTY], you must AUTO-DETECT the background's depth and affordances (e.g., empty chairs, leaning walls, walking paths). Automatically adjust the subject's pose (e.g., make them sit, lean, or walk) and place them at a logical scale and depth within the scene.
-
-3. ABSOLUTE RELIGHTING (ENVIRONMENTAL SYNERGY): This is your most critical task. The subject must NOT look pasted. 
-- Analyze the [BACKGROUND]'s global illumination, light direction, color temperature, and contrast. 
-- You MUST aggressively re-light the subject to match perfectly. Apply accurate ambient occlusion, cast realistic shadows on the ground/furniture, and reflect environmental colors onto the subject's skin and clothes. It is perfectly acceptable for the subject's skin to become darker or tinted to match the environment (e.g., sunset, dim bar).
-
-4. BACKGROUND ADAPTATION (PHYSICAL LOGIC): 
-- You are permitted to make minor micro-adjustments to the background objects (e.g., slightly shifting a chair to accommodate a sitting subject, compressing cushions under their weight) to ensure physical contact realism.
-- Apply natural camera depth-of-field (bokeh) if the subject is placed close to the lens.
-</core_directives>
-
-<quality_enforcement>
-Output must be photorealistic, hyper-detailed, 8k resolution quality. No uncanny valley effects, no floating subjects without shadows, no mismatching light sources.
-</quality_enforcement>
-
-User Request: ${userAction}`;
-
           const negativePromptText =
             "mutated hands, extra fingers, deformed face, morphed identity, mismatched lighting, flat lighting, floating subject, missing cast shadows, incorrect perspective, wrong scale, giant person, tiny person, clipping through objects, unnatural skin tone, cartoon, illustration, heavy vignette, distorted architecture, blurry subject, artificial outline, green screen edges.";
-
-          const parts: (
-            | { inlineData: { data: string; mimeType: string }; text?: undefined }
-            | { text: string; inlineData?: undefined }
-          )[] = [
-            {
-              inlineData: {
-                data: ctxImageData.base64Data,
-                mimeType: ctxImageData.mimeType,
-              },
-            },
-            {
-              inlineData: {
-                data: charImageData.base64Data,
-                mimeType: charImageData.mimeType,
-              },
-            },
-            {
-              text: promptText,
-            },
-          ];
 
           const imageConfig: {
             aspectRatio: string;
@@ -580,8 +545,8 @@ User Request: ${userAction}`;
               characterAspectRatio === "Tự động" ? "1:1" : aspectRatio,
           };
           if (
-            characterModel === "gemini-3.1-flash-image-preview" ||
-            characterModel === "gemini-3-pro-image-preview"
+            characterModel === "gemini-3.1-flash-image" ||
+            characterModel === "gemini-3-pro-image"
           ) {
             imageConfig.imageSize = imageSize;
             imageConfig.negativePrompt = negativePromptText;
@@ -589,9 +554,20 @@ User Request: ${userAction}`;
 
           const response = await generateContentWithRetry(ai, {
             model: characterModel,
-            contents: [{ role: "user", parts }],
-            config: {
+            promptTemplateKey: "sync_character_composite_prompt",
+            promptTemplateInput: {
+              userAction,
               imageConfig,
+              images: [
+                {
+                  data: ctxImageData.base64Data,
+                  mimeType: ctxImageData.mimeType,
+                },
+                {
+                  data: charImageData.base64Data,
+                  mimeType: charImageData.mimeType,
+                },
+              ],
             },
           });
 
@@ -705,7 +681,13 @@ User Request: ${userAction}`;
 
       if (finalUrls.length > 0) {
         clearInterval(progressInterval);
-        setSyncProgress(100);
+        const syncProgressStart = Math.min(95, currentSyncProgress);
+        for (let step = 1; step <= 10; step++) {
+          await new Promise((resolve) => setTimeout(resolve, 40));
+          setSyncProgress(
+            syncProgressStart + ((100 - syncProgressStart) * step) / 10,
+          );
+        }
         setSyncResults(finalUrls);
         toast.success("Đồng bộ nhân vật thành công!");
       } else {
@@ -753,16 +735,24 @@ User Request: ${userAction}`;
 
     if (!(await checkUserCredits())) return;
     setIsUploading(true);
-    setUploadProgress(0);
+    setUploadProgress(1);
+    let progressVal = 1;
+    const progressInterval = setInterval(() => {
+      progressVal += (95 - progressVal) * 0.1;
+      setUploadProgress(Math.round(progressVal));
+    }, 150);
 
     try {
-      setUploadProgress(30);
       const downloadURL = await uploadMedia(file, "uploads");
-      setUploadProgress(100);
       cacheImage(downloadURL, file);
       setInputImage(downloadURL);
-      setIsUploading(false);
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      setTimeout(() => {
+        setIsUploading(false);
+      }, 400);
     } catch (error) {
+      clearInterval(progressInterval);
       console.error("Error uploading image:", error);
       setIsUploading(false);
     }
@@ -857,7 +847,7 @@ User Request: ${userAction}`;
 
       (async () => {
         try {
-          const ai = await getAIClient("gemini-3.1-pro-preview");
+          const ai = await getAIClient("gemini-2.5-flash");
           let parsedText: { hidden_api_prompt_en?: string; display_title_vi?: string } = {};
           try {
             parsedText = JSON.parse(suggestion.text);
@@ -865,19 +855,12 @@ User Request: ${userAction}`;
             // Ignore JSON parse error
           }
 
-          const promptText = `I have updated the Vietnamese title for an architectural visualization camera angle. 
-New Vietnamese Title: "${currentTitle}".
-Previous English Prompt: "${parsedText.hidden_api_prompt_en || ""}".
-
-Please generate a new, highly detailed English prompt for an image generation model that strictly matches the new Vietnamese title's request. Maintain the architectural style, lighting, and photorealistic 8k requirements.
-Output strictly JSON: { "hidden_api_prompt_en": "new english prompt here" }`;
-
           const result = await generateContentWithRetry(ai, {
-            model: "gemini-3.1-pro-preview",
-            contents: [{ role: "user", parts: [{ text: promptText }] }],
-            config: {
-              responseMimeType: "application/json",
-              temperature: 0.7,
+            model: "gemini-2.5-flash",
+            promptTemplateKey: "sync_suggestion_update_prompt",
+            promptTemplateInput: {
+              currentTitle,
+              previousPrompt: parsedText.hidden_api_prompt_en || "",
             },
           });
 
@@ -983,7 +966,7 @@ Output strictly JSON: { "hidden_api_prompt_en": "new english prompt here" }`;
     try {
       updateStatus(5, "Đang tải ảnh gốc...");
       const ai = await getAIClient(
-        suggestion.selectedModel || "gemini-3.1-flash-image-preview",
+        suggestion.selectedModel || "gemini-3-pro-image",
       );
 
       let base64Data = "";
@@ -997,13 +980,6 @@ Output strictly JSON: { "hidden_api_prompt_en": "new english prompt here" }`;
       mimeType = imageData.mimeType;
       base64Data = imageData.base64Data;
 
-      const imagePart = {
-        inlineData: {
-          mimeType,
-          data: base64Data,
-        },
-      };
-
       let promptInstruction = suggestion.text;
       try {
         const parsedNode = JSON.parse(suggestion.text);
@@ -1014,10 +990,8 @@ Output strictly JSON: { "hidden_api_prompt_en": "new english prompt here" }`;
         // use raw
       }
 
-      const promptText = `Edit this image to apply the following camera angle and staging: "${promptInstruction}". 
-Keep the core subject (building/character) exactly the same as in the original image. Only change the camera perspective, lighting, and background/staging. Output must be photorealistic, 8k resolution, highly detailed.`;
       const selectedModel =
-        suggestion.selectedModel || "gemini-3.1-flash-image-preview";
+        suggestion.selectedModel || "nano-banana-pro";
 
       const generatedImageUrls: string[] = [];
 
@@ -1025,21 +999,33 @@ Keep the core subject (building/character) exactly the same as in the original i
 
       const requestPayload1 = {
         model: selectedModel,
-        contents: [{ role: "user", parts: [imagePart, { text: promptText + " [Variation A]" }] }],
-        config: {
-          imageConfig: {
-            aspectRatio: "16:9",
-          },
+        promptTemplateKey: "sync_variation_generate_prompt",
+        promptTemplateInput: {
+          promptInstruction,
+          variationLabel: "Variation A",
+          aspectRatio: "16:9",
+          images: [
+            {
+              data: base64Data,
+              mimeType,
+            },
+          ],
         },
       };
 
       const requestPayload2 = {
         model: selectedModel,
-        contents: [{ role: "user", parts: [imagePart, { text: promptText + " [Variation B]" }] }],
-        config: {
-          imageConfig: {
-            aspectRatio: "16:9",
-          },
+        promptTemplateKey: "sync_variation_generate_prompt",
+        promptTemplateInput: {
+          promptInstruction,
+          variationLabel: "Variation B",
+          aspectRatio: "16:9",
+          images: [
+            {
+              data: base64Data,
+              mimeType,
+            },
+          ],
         },
       };
 
@@ -1097,7 +1083,7 @@ Keep the core subject (building/character) exactly the same as in the original i
           statusMessage: "Hoàn tất",
           createdAt: new Date().toISOString(),
           settings: {
-            prompt: promptText,
+            prompt: promptInstruction,
             model: selectedModel,
             suggestionText: suggestion.text,
           },
@@ -1140,140 +1126,26 @@ Keep the core subject (building/character) exactly the same as in the original i
     if (!inputImage) return;
     setIsAnalyzing(true);
     setAnalyzeProgress(0);
-    setAnalyzeStatus("Khởi tạo...");
+    setAnalyzeStatus("Khoi tao...");
     setAnalysisResult(null);
     setAnalysisCategories(null);
 
-    let progressInterval: NodeJS.Timeout | number | undefined = undefined;
+    let progressInterval: NodeJS.Timeout | number | undefined;
 
     try {
       setAnalyzeProgress(10);
-      setAnalyzeStatus("Đang chuẩn bị dữ liệu ảnh...");
+      setAnalyzeStatus("Dang chuan bi du lieu anh...");
       const ai = await getAIClient(promptModel);
 
-      let base64Data = "";
       let mimeType = "image/jpeg";
-
       if (inputImage.toLowerCase().includes(".png")) mimeType = "image/png";
-      else if (inputImage.toLowerCase().includes(".webp"))
-        mimeType = "image/webp";
+      else if (inputImage.toLowerCase().includes(".webp")) mimeType = "image/webp";
 
       const imageData = await getImageBase64(inputImage);
       mimeType = imageData.mimeType;
-      base64Data = imageData.base64Data;
-
-      const imagePart = {
-        inlineData: {
-          mimeType,
-          data: base64Data,
-        },
-      };
-
-      let promptText = "";
-      let systemInstruction = undefined;
-      let generationConfig: Record<string, unknown> = {
-        responseMimeType: "application/json",
-      };
-
-      if (activeSubTab === "Đồng Bộ Công Trình") {
-        promptText =
-          "Vui lòng thực hiện phân tích không gian và tạo 30 góc chụp theo cấu trúc JSON đã được quy định.";
-        systemInstruction = `<role>
-BẠN LÀ "TỔNG ĐẠO DIỄN NGHỆ THUẬT & KIẾN TRÚC SƯ KHÔNG GIAN BẬC THẦY iGen".
-CỰC KỲ QUAN TRỌNG: Tất cả thông tin phân tích, mô tả, phong cách, chất liệu, bối cảnh, kết quả đầu ra, và toàn bộ prompt tối ưu hóa PHẢI được viết hoàn toàn bằng TIẾNG VIỆT 100%. Tuyệt đối không sử dụng tiếng Anh trong mô tả, tiêu đề, phân tích hoặc kết quả đầu ra. Giữ nguyên các thuật ngữ kỹ thuật bắt buộc (nếu có), nhưng ưu tiên diễn đạt bằng tiếng Việt.
-Nhiệm vụ của bạn là phân tích một ảnh kiến trúc tham khảo duy nhất và tạo ra chính xác 30 góc chụp độc đáo, phối hợp đồng bộ chặt chẽ với nhau. Định dạng đầu ra bắt buộc phải tuân thủ nghiêm ngặt cấu trúc JSON đã được quy định đầu ra dạng tiếng Việt.
-</role>
-
-<step_1_mental_blueprint>
-Trước khi tạo ra bất kỳ prompt nào, bạn BẮT BUỘC phải viết một "mental_blueprint" (bản phác thảo tinh thần không gian):
-- Phân tích cực kỳ sâu sắc cấu trúc không gian ba chiều từ ảnh gốc: Phong cách kiến trúc (VD: Tân cổ điển, Modern, Brutalism), hệ màu (palette), thời tiết, hướng sáng đi từ cửa sổ hay giếng trời, chất liệu tường cột nền sàn, chiều sâu sàn nhà.
-- Nhận diện ký tự OCR (nếu có): Nếu phát hiện bất kỳ logo hay biển bảng chữ viết nào có thể đọc được trên ảnh gốc, trích xuất chính xác văn bản đó.
-- Bước 1C (Sáng tạo & Lập kế hoạch 180 độ ngược): Phác thảo logic các khu vực bị che khuất ranh giới camera ban đầu. Ví dụ: nếu hình ảnh hiển thị phòng bếp hướng ra ban công, hãy sáng tạo và mô tả không gian phía sau ống kính camera (như một phòng khách có kệ TV và ghế sofa gỗ đồng điệu màu sắc với bếp sồi). Nếu hình ảnh là toàn cảnh mặt tiền ngoại thất, hãy tưởng tượng và lập bố cục phân bố nội thất sau các ô kính cửa sổ.
-</step_1_mental_blueprint>
-
-<step_2_angle_distribution_protocol>
-Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành 3 nhóm danh mục rõ ràng:
-1. "Góc Trung Cảnh (5)": Các bức ảnh tầm trung, đổi góc nghiêng của mặt đứng ngoại thất, hoặc toàn cảnh không gian phòng từ các góc tường đối xứng khác biệt.
-2. "Góc Cận Cảnh Nghệ Thuật (15)": Góc chụp cận macro đặc tả chất liệu xuất sắc (đường vân gỗ, vân đá cẩm thạch), chi tiết đồ đạc bàn ghế giường tủ nghệ thuật, đèn trang trí rực rỡ và các biển chữ hiệu.
-3. "Góc Nội Thất (10)": Bao gồm các GÓC CHỤP XOAY NGƯỢC 180 ĐỘ và KHÔNG GIAN BỊ KHUẤT TẦM NHÌN gốc. Tả rõ từ trong nhìn ra ngoài hoặc từ ngoài nhìn ngược vào không gian bên trong sâu thẳm.
-</step_2_angle_distribution_protocol>
-
-<step_3_synchronization_rules>
-1. QUY TẮC ĐỐI GÓC XOAY NGƯỢC 180 ĐỘ: Với góc chụp ngược chiều, phải chỉ thị cực kỳ rõ ràng vị trí đặt camera bằng tiếng Việt (Ví dụ: "Góc máy đặt từ phía ban công ngoài trời hướng ánh nhìn ngược vào trong căn phòng bếp. Chúng ta thấy phần mặt sau sinh động của bàn đảo bếp..."). Bạn phải mô phỏng đồng điệu các đồ vật mới sáng tạo khớp hoàn quy luật thẩm mỹ kiến trúc gốc.
-2. SỰ ĐỒNG BỘ ẢNH THAM KHẢO phong cách: Công cụ tạo ảnh luôn có ảnh gốc làm nền cấu trúc/phong cách chung. Vì vậy prompt tạo ảnh chi tiết (\`hidden_api_prompt_en\`) của bạn không cần mô tả lại một cách dài dòng phong cách chung chung toàn cục. Thay vào đó, hãy mô tả đặc biệt tập trung theo công thức: [Góc chụp cụ thể của Camera / Loại ống kính máy ảnh] + [Chủ thể nổi bật cụ thể của bức ảnh này] + [Các chi tiết không gian mới sáng tạo ra cho các góc chụp ngược hướng] + [Bảo lưu từ khóa chữ nghĩa từ hình gốc].
-3. BẢO TOÀN CHỮ NGHĨA CHÍNH XÁC: Nếu hình gốc có chữ (ví dụ: "Atelier Couture"), bạn BẮT BUỘC phải đưa chính xác đoạn chữ ghi đó vào các prompt liên quan và bọc chúng trong ngoặc kép (Ví dụ: Một bức ảnh chụp cận cảnh sắc nét biển hiệu có đề chữ "Atelier Couture").
-4. ĐỒNG BỘ ÁNH SÁNG & THỜI GIAN: Duy trì tính nhất quán 100% về thời gian trong ngày, hướng đi của luồng sáng tự nhiên và sắc màu ấm áp dịu dàng của ánh đèn nhân tạo từ hình ảnh gốc xuyên suốt toàn bộ 30 góc chụp.
-</step_3_synchronization_rules>
-
-<step_4_output_formatting>
-- display_title_vi: Tiêu đề tiếng Việt cực kỳ ngắn gọn, súc tích (Ví dụ: "Góc chụp từ bàn đảo ngắm ra ban công", "Cận cảnh vân gỗ trên tủ bếp").
-- hidden_api_prompt_en: Prompt bôi tả chi tiết hoàn toàn viết bằng TIẾNG VIỆT 100% dùng để đưa vào API render tạo ảnh.
-  - Công thức: [Loại góc nhìn Camera / Cỡ cảnh chụp ảnh] + [Mô tả chi tiết cách đặt góc máy / mô tả chủ thể] + [Các chi tiết không gian sáng tạo ra đồng bộ phù hợp] + [Từ khóa ánh sáng đồng màu gốc] + [Chất lượng phù hợp với phong cách của bức ảnh gốc]:
-    + Nếu ảnh gốc là ảnh chụp thực tế: sử dụng các từ khóa "ảnh chụp kiến trúc ngoại thất thực tế đời thực hữu cơ chân thật cực đại, được chụp bởi một người cầm camera nghiệp dư hoặc kiến trúc sư đứng ở tầm mắt dưới đất (human eye-level handheld perspective), góc chụp tự nhiên thoải mái sai lệch nhẹ không hoàn hảo, mô phỏng sinh động các sai số quang học chân thực (vệt flare phản chiếu nắng dạt bóng thấu kính tinh tế - subtle lens flare, hiện tượng cháy sáng nhẹ một số vùng đón sáng trực tiếp gắt - subtle overexposure bloom), chi tiết kết cấu thớt dăm gỗ tự nhiên thô ráp và mặt gạch đá gồ ghề phong sương cũ mộc sương bóng chứ không phẳng láng vô trùng, thảm thực vật cây cối xum xuê hữu cơ ngẫu nhiên có lẫn lá khô úa tàn rụng rơi, bãi sỏi đá và bạt cỏ mọc bất hoàn hảo tự nhiên lộn xộn, triệt tiêu hoàn toàn cảm giác đồ họa máy tính CGI hay 3D render nhân tạo sạch sẽ vô hồn". KHÔNG dùng các từ như "render", "CGI", "Unreal Engine", "Corona", "Vray".
-    + Nếu ảnh gốc là ảnh render 3D: sử dụng các từ khóa "bản vẽ phối cảnh 3D đồ họa kiến trúc (Arch-Viz), chất lượng render Unreal Engine 5.5 siêu thực, chất lượng Corona rực rỡ, phối cảnh render kiến trúc cao cấp, kết xuất 8k siêu nét".
-</step_4_output_formatting>`;
-
-        generationConfig = {
-          temperature: 0.7,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: "OBJECT",
-            properties: {
-              mental_blueprint: {
-                type: "STRING",
-                description:
-                  "Bản đồ tư duy không gian: Phân tích ảnh gốc, trích xuất chính xác các dòng chữ (OCR), quy hoạch các không gian bị khuất (sau lưng camera, bên trong tòa nhà) để làm cơ sở logic cho 30 góc chụp.",
-              },
-              categories: {
-                type: "ARRAY",
-                items: {
-                  type: "OBJECT",
-                  properties: {
-                    category_name: {
-                      type: "STRING",
-                      description:
-                        "Tên nhóm (ví dụ: 'Góc Trung Cảnh (5)', 'Góc Cận Cảnh Nghệ Thuật (15)', 'Góc Nội Thất (10)').",
-                    },
-                    shots: {
-                      type: "ARRAY",
-                      items: {
-                        type: "OBJECT",
-                        properties: {
-                          display_title_vi: {
-                            type: "STRING",
-                            description:
-                              "Tiêu đề UI tiếng Việt, ngắn gọn, súc tích (VD: 'Góc nhìn từ ban công ngược vào phòng bếp').",
-                          },
-                          hidden_api_prompt_en: {
-                            type: "STRING",
-                            description:
-                              "Prompt tiếng Anh hoàn chỉnh dùng để gọi API tạo ảnh, chứa logic không gian, OCR và tham số camera.",
-                          },
-                        },
-                        required: ["display_title_vi", "hidden_api_prompt_en"],
-                      },
-                    },
-                  },
-                  required: ["category_name", "shots"],
-                },
-              },
-            },
-            required: ["mental_blueprint", "categories"],
-          },
-        };
-
-        if (promptModel === "gemini-3.1-pro-preview") {
-          generationConfig.thinking_config = {
-            thinking_level: "high",
-          };
-        }
-      } else {
-        promptText =
-          'Hãy phân tích bức ảnh nhân vật này và đưa ra các gợi ý về các góc máy và tư thế khác nhau để làm nổi bật nhân vật. Phân loại thành 3 nhóm: "Góc Toàn Thân" (5 gợi ý), "Góc Chân Dung" (15 gợi ý), và "Góc Hành Động" (10 gợi ý). Trả về kết quả dưới dạng JSON với cấu trúc: { "categories": [ { "name": "Tên nhóm", "suggestions": ["gợi ý 1", "gợi ý 2"] } ] }.';
-      }
 
       setAnalyzeProgress(15);
-      setAnalyzeStatus("Đang gửi yêu cầu đến AI...");
+      setAnalyzeStatus("Dang gui yeu cau den AI...");
 
       progressInterval = setInterval(() => {
         setAnalyzeProgress((prev) => {
@@ -1285,21 +1157,23 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
         });
       }, 500);
 
-      const apiParams: Record<string, unknown> = {
+      const result = await generateContentWithRetry(ai, {
         model: promptModel,
-        contents: [{ role: "user", parts: [imagePart, { text: promptText }] }],
-        config: generationConfig,
-      };
-
-      if (systemInstruction) {
-        apiParams.systemInstruction = systemInstruction;
-      }
-
-      const result = await generateContentWithRetry(ai, apiParams);
+        promptTemplateKey: "sync_analyze_prompt",
+        promptTemplateInput: {
+          activeSubTab,
+          images: [
+            {
+              data: imageData.base64Data,
+              mimeType,
+            },
+          ],
+        },
+      });
 
       clearInterval(progressInterval);
       setAnalyzeProgress(97);
-      setAnalyzeStatus("Đang xử lý kết quả...");
+      setAnalyzeStatus("Dang xu ly ket qua...");
 
       if (result.text) {
         try {
@@ -1307,58 +1181,86 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
           const jsonString = (rawText || "")
             .replace(/```json\n?|\n?```/g, "")
             .trim();
-          const parsed = safeJsonParse(jsonString);
+          const parsed = safeJsonParse(jsonString) as any;
 
-          let categories = (parsed as Record<string, unknown> | null)?.categories;
-          if (!categories && Array.isArray(parsed)) {
-            categories = parsed;
+          let rawCategories = parsed?.categories;
+          let rawShots = parsed?.shots || parsed?.suggestions;
+
+          if (!rawCategories && parsed?.mental_blueprint) {
+            rawCategories = parsed.mental_blueprint.categories;
+            if (!rawShots) {
+              rawShots = parsed.mental_blueprint.shots || parsed.mental_blueprint.suggestions;
+            }
           }
 
-          if (
-            categories &&
-            Array.isArray(categories) &&
-            categories.length > 0
-          ) {
+          if (!rawCategories && Array.isArray(parsed)) {
+            rawCategories = parsed;
+          }
+
+          if (rawCategories && Array.isArray(rawCategories) && rawCategories.length > 0) {
             interface ParsedShot {
               display_title_vi?: string;
               hidden_api_prompt_en?: string;
               text?: string;
+              title?: string;
             }
-            interface ParsedCategory {
-              name?: string;
-              category_name?: string;
-              suggestions?: (ParsedShot | string)[];
-              shots?: ParsedShot[];
-            }
-            const formattedCategories: AngleCategory[] = (categories as ParsedCategory[]).map(
-              (cat) => ({
-                name: cat.name || cat.category_name || "Góc chụp",
+
+            // Tên cố định cho 3 nhóm theo thứ tự (phòng trường hợp AI trả về tên không đúng)
+            const FIXED_CATEGORY_NAMES = [
+              "Góc Trung Cảnh",
+              "Góc Cận Cảnh Nghệ Thuật",
+              "Góc Nội Thất",
+            ];
+
+            const formattedCategories: AngleCategory[] = rawCategories.map((cat: any, idx: number) => {
+              const catId = cat.id || cat.category_id || cat.category_name || "";
+              // Ưu tiên tên từ AI nếu hợp lý, fallback về tên cố định theo index
+              const aiName = cat.display_title_vi || cat.name || cat.category_name || "";
+              const isGenericName = !aiName || aiName.toLowerCase().startsWith("góc chụp") || aiName.toLowerCase() === "category" || aiName.trim().length < 5;
+              const catName = isGenericName ? (FIXED_CATEGORY_NAMES[idx] || aiName || "Góc chụp") : aiName;
+              
+              // Get shots from nested structure if available
+              let catShots = cat.suggestions || cat.shots || [];
+              
+              // If not nested, filter from rawShots array
+              if ((!catShots || catShots.length === 0) && Array.isArray(rawShots)) {
+                catShots = rawShots.filter((shot: any) => {
+                  const shotCatId = shot.category_id || shot.category || "";
+                  return String(shotCatId).toLowerCase() === String(catId).toLowerCase() || 
+                         String(shotCatId).toLowerCase() === String(catName).toLowerCase();
+                });
+              }
+
+              return {
+                name: catName,
                 isExpanded: true,
-                suggestions: ((cat.suggestions || cat.shots || []) as (ParsedShot | string)[]).map(
-                  (sug) => {
-                    const isStr = typeof sug === "string";
-                    const displayTitle = isStr ? "" : (sug.display_title_vi || "");
-                    const hiddenPrompt = isStr ? sug : (sug.hidden_api_prompt_en || sug.text || "");
-                    return {
-                      id: Math.random().toString(36).substring(7),
-                      title: displayTitle,
-                      _lastTranslatedTitle: displayTitle,
-                      text: JSON.stringify(
-                        {
-                          display_title_vi: displayTitle,
-                          hidden_api_prompt_en: hiddenPrompt,
-                        },
-                        null,
-                        2,
-                      ),
-                      selectedModel: "gemini-3.1-flash-image-preview",
-                    };
-                  }
-                ),
-              }),
-            );
+                suggestions: ((catShots || []) as (ParsedShot | string)[]).map((sug) => {
+                  const isStr = typeof sug === "string";
+                  const displayTitle = isStr ? "" : (sug.display_title_vi || sug.title || "");
+                  const hiddenPrompt = isStr ? sug : (sug.hidden_api_prompt_en || sug.text || "");
+                  return {
+                    id: Math.random().toString(36).substring(7),
+                    title: displayTitle,
+                    _lastTranslatedTitle: displayTitle,
+                    text: JSON.stringify(
+                      {
+                        display_title_vi: displayTitle,
+                        hidden_api_prompt_en: hiddenPrompt,
+                      },
+                      null,
+                      2,
+                    ),
+                    selectedModel: "nano-banana-pro",
+                  };
+                }),
+              };
+            });
+
             setAnalysisCategories(formattedCategories);
-            setAnalyzeProgress(100);
+            for (let step = 1; step <= 6; step++) {
+              await new Promise((resolve) => setTimeout(resolve, 40));
+              setAnalyzeProgress(97 + (3 * step) / 6);
+            }
             setAnalyzeStatus("Hoàn tất!");
           } else {
             console.error("Invalid JSON structure or empty categories", parsed);
@@ -1368,19 +1270,19 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
         } catch (e) {
           console.error("Failed to parse JSON", e);
           setAnalysisResult(result.text);
-          setAnalyzeStatus("Lỗi phân tích dữ liệu");
+          setAnalyzeStatus("Loi phan tich du lieu");
         }
       } else {
-        setAnalysisResult("Không có kết quả phân tích.");
-        setAnalyzeStatus("Không có kết quả");
+        setAnalysisResult("Khong co ket qua phan tich.");
+        setAnalyzeStatus("Khong co ket qua");
       }
     } catch (error) {
       console.error("Error analyzing image:", error);
       clearInterval(progressInterval);
       setAnalysisResult(
-        `Đã xảy ra lỗi khi phân tích ảnh: ${error instanceof Error ? error.message : String(error)}`,
+        `Da xay ra loi khi phan tich anh: ${error instanceof Error ? error.message : String(error)}`,
       );
-      setAnalyzeStatus("Lỗi!");
+      setAnalyzeStatus("Loi!");
     } finally {
       clearInterval(progressInterval);
       setTimeout(() => {
@@ -1522,11 +1424,8 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                       value={promptModel}
                       onChange={(e) => setPromptModel(e.target.value)}
                     >
-                      <option value="gemini-3-flash-preview">
-                        iGen 3 Flash Preview
-                      </option>
-                      <option value="gemini-3.1-pro-preview">
-                        iGen 3.1 Pro Preview
+                      <option value="gemini-2.5-flash">
+                        Gemini 2.5 Flash
                       </option>
                     </select>
                     <Icon
@@ -1633,9 +1532,10 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                                   className="bg-surface-container-low rounded-xl border border-outline-variant/20 overflow-hidden"
                                 >
                                   <div className="p-4 flex flex-col gap-3">
-                                    <div className="flex items-center gap-2 relative">
-                                      <input
-                                        className="font-bold text-sm text-on-surface bg-transparent border border-transparent hover:border-outline-variant/30 focus:border-primary/50 focus:bg-surface-container-highest outline-none rounded-md px-2 py-1 -ml-2 transition-all flex-1"
+                                    <div className="flex items-start gap-2 relative">
+                                      <textarea
+                                        rows={2}
+                                        className="font-bold text-xs text-on-surface bg-transparent border border-transparent hover:border-outline-variant/30 focus:border-primary/50 focus:bg-surface-container-highest outline-none rounded-md px-2 py-1 -ml-2 transition-all flex-1 resize-none leading-relaxed"
                                         value={suggestion.title}
                                         onChange={(e) => {
                                           const newCats = [
@@ -1745,7 +1645,7 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                                           className="w-full bg-surface-container-lowest border border-outline-variant/20 focus:border-primary rounded-lg p-2 text-xs font-medium text-on-surface appearance-none outline-none cursor-pointer pr-10 text-ellipsis overflow-hidden whitespace-nowrap"
                                           value={
                                             suggestion.selectedModel ||
-                                            "gemini-3.1-flash-image-preview"
+                                            "nano-banana-pro"
                                           }
                                           onChange={(e) => {
                                             const newCats = [
@@ -1762,8 +1662,7 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                                               key={model.id}
                                               value={model.id}
                                             >
-                                              {model.name}{" "}
-                                              {model.isPro ? "(Pro)" : ""}
+                                              {model.name}
                                             </option>
                                           ))}
                                         </select>
@@ -2275,7 +2174,7 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                         >
                           {GEMINI_MODELS.map((model) => (
                             <option key={model.id} value={model.id}>
-                              {model.name} {model.isPro ? "(Pro)" : ""}
+                              {model.name}
                             </option>
                           ))}
                         </select>
@@ -2328,7 +2227,7 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                       >
                         {GEMINI_MODELS.map((model) => (
                           <option key={model.id} value={model.id}>
-                            {model.name} {model.isPro ? "(Pro)" : ""}
+                            {model.name}
                           </option>
                         ))}
                       </select>
@@ -2550,7 +2449,7 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
                               handleDeleteSyncResult(url);
                             }}
                             className="w-8 h-8 bg-[#EF5350] hover:bg-[#EF5350]/90 backdrop-blur-md rounded-lg text-white flex items-center justify-center transition-colors shadow-lg"
-                            title="Xoá ảnh"
+                            title="Xóa ảnh"
                           >
                             <Icon name="delete" className="text-[18px]" />
                           </button>
@@ -2760,3 +2659,5 @@ Bạn BẮT BUỘC phải lập ra CHÍNH XÁC 30 góc chụp chia đều thành
     </div>
   );
 };
+
+

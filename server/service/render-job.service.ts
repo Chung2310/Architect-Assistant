@@ -9,6 +9,7 @@ export const renderJobService = {
     subType?: string;
     inputImageUrls?: string[];
     referenceImageUrls?: string[];
+    outputImageUrls?: string[];
     prompt?: string;
     model?: string;
     resolution?: string;
@@ -22,7 +23,7 @@ export const renderJobService = {
       subType: data.subType || "",
       inputImageUrls: data.inputImageUrls || [],
       referenceImageUrls: data.referenceImageUrls || [],
-      outputImageUrls: [],
+      outputImageUrls: data.outputImageUrls || [],
       prompt: data.prompt || "",
       status: data.status || "pending",
       progress: data.progress !== undefined ? data.progress : 0,
@@ -33,8 +34,12 @@ export const renderJobService = {
     return job;
   },
 
-  async getListByUser(userId: string, limit = 50): Promise<IRenderJob[]> {
-    return RenderJobModel.find({ userId: new Types.ObjectId(userId) })
+  async getListByUser(userId: string, limit = 50, type?: string): Promise<IRenderJob[]> {
+    const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
+    if (type) {
+      filter.type = type;
+    }
+    return RenderJobModel.find(filter)
       .sort({ createdAt: -1 })
       .limit(limit);
   },

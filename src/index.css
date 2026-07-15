@@ -50,14 +50,14 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(156, 163, 175, 0.25);
   border-radius: 9999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(156, 163, 175, 0.45);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
@@ -77,3 +77,36 @@
   background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px);
   background-size: 24px 24px;
 }
+
+/* Premium smooth transitions & entrance spring animation for popovers/modals */
+@keyframes premiumPopupEntrance {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes backdropFadeIn {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(4px);
+  }
+}
+
+.animate-in {
+  animation: premiumPopupEntrance 240ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Specific smooth background fade for full-screen modals overlay */
+.backdrop-blur-sm {
+  animation: backdropFadeIn 200ms ease-out both;
+}
+
