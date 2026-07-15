@@ -349,7 +349,7 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
       ],
     );
   } else if (activeSubTabKey === "floorplan to 3d floorplan") {
-    textPrompt += `Loại ảnh: floorplan 2D kỹ thuật.\nStyle công trình: ${buildingStyle}\nPhong cách: ${interiorStyle}\nKhông được biến floorplan thành ảnh nội thất thông thường.\nYêu cầu làm sạch bản vẽ: ${floorplanAxonometricCleanupDirective}\nYêu cầu màu sắc: Mô hình phối cảnh 3D axonometric phải có màu sắc chân thực, tự nhiên và hài hòa, đầy đủ vật liệu với bề mặt vật lý thực tế (như gỗ tự nhiên vân mịn, vải dệt, da thật, đá tự nhiên, gạch lát có vân, tường sơn màu pastel ấm/sáng/kem dịu mát), tuyệt đối không dùng màu sắc quá rực rỡ hay sặc sỡ giả tạo, và tuyệt đối không để màu trắng toàn bộ (clay model) hay đơn sắc monochrome.\nYêu cầu phân tích: BẮT BUỘC nhận diện tất cả các nhãn chữ chỉ tên phòng hoặc công năng viết trên bản vẽ (ví dụ: Phòng khách, Phòng ngủ, WC, Bếp, Thang...). Hãy mô tả rõ bố cục và vị trí các phòng này trong prompt để mô hình sinh ảnh dựng đúng công năng phòng.\n`;
+    textPrompt += `Loại ảnh: floorplan 2D kỹ thuật.\nStyle công trình: ${buildingStyle}\nPhong cách: ${interiorStyle}\nKhông được biến floorplan thành ảnh nội thất thông thường.\nYêu cầu làm sạch bản vẽ: ${floorplanAxonometricCleanupDirective}\nYêu cầu màu sắc: Mô hình phối cảnh 3D axonometric phải có màu sắc chân thực, tự nhiên và hài hòa, đầy đủ vật liệu với bề mặt vật lý thực tế (như gỗ tự nhiên vân mịn, vải dệt, da thật, đá tự nhiên, gạch lát có vân, tường sơn màu pastel ấm/sáng/kem dịu mát), tuyệt đối không dùng màu sắc quá rực rỡ hay sặc sỡ giả tạo, và tuyệt đối không để màu trắng toàn bộ (clay model) hay đơn sắc monochrome.\nYêu cầu phân tích phòng: BẮT BUỘC nhận diện tất cả các nhãn chữ chỉ tên phòng hoặc công năng viết trên bản vẽ (ví dụ: Phòng khách, Phòng ngủ, WC, Bếp, Thang...). Hãy mô tả rõ bố cục và vị trí các phòng này trong prompt để mô hình sinh ảnh dựng đúng công năng phòng.\nQuy tắc bảo toàn hướng bản vẽ: TUYỆT ĐỐI KHÔNG được xoay (rotate), lật (flip) hay phản chiếu (mirror) bố cục mặt bằng. Hướng của bản vẽ 2D gốc phải được giữ nguyên 100% trong ảnh 3D output — phía trên bản vẽ = phía trên ảnh output, phía phải bản vẽ = phía phải ảnh output. Không tự ý xoay bố cục để 'nhìn đẹp hơn' hay 'phù hợp với góc isometric'.\nYêu cầu nhận diện nội thất chặt chẽ: BẮT BUỘC nhận diện và liệt kê từng ký hiệu đồ nội thất/thiết bị trong từng phòng theo hình dạng ký hiệu CAD tiêu chuẩn trong bản vẽ (hình chữ nhật dài tựa tường = giường; hình cung tròn cạnh tường = cửa xoay; hình chữ nhật nhỏ trong WC = toilet/lavabo; hình bán cầu/oval lớn = bồn tắm; hình oval/chữ nhật bo cạnh giữa phòng = bàn ăn; hình chữ L/U = sofa góc; hình vuông nhỏ quanh bàn = ghế; hình chữ nhật song song tựa tường = kệ/tủ). Trong ảnh 3D output, từng món đồ PHẢI xuất hiện đúng loại, đúng vị trí và đúng hướng như trong bản vẽ 2D.\n`;
     if (referenceImages.length > 0) {
       textPrompt += `Quy tắc ảnh tham khảo nội thất: Giữ nguyên tuyệt đối vị trí, loại và sắp xếp của từng món đồ nội thất có trong ảnh tham khảo. TUYỆT ĐỐI không di chuyển, xoay, thêm hoặc bỏ bất kỳ món đồ nào. Chỉ được áp dụng phong cách hoàn thiện bề mặt từ ảnh tham khảo lên vị trí đồ vật đã cố định theo bản vẽ.\n`;
     }
@@ -358,13 +358,14 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     }
     textPrompt += `Negative prompt ưu tiên: ${floorplanAxonometricNegativePrompt}\n`;
     systemInstruction = [
-      "Bạn là chuyên gia phân tích floorplan 2D và tái dựng thành không gian 3D chính xác.",
-      "BẮT BUỘC: Bạn PHẢI tuân thủ tuyệt đối 'Style góc chụp' (cameraAngleStyle) được chỉ định trong yêu cầu để mô tả góc nhìn trong prompt cuối cùng. Nếu là 'Top-down View', prompt BẮT BUỘC phải mô tả góc nhìn thẳng đứng trực diện từ trên xuống (flat 3D floor plan layout, straight top-down view, 90-degree bird's-eye view, no perspective distortion of walls, looking directly down at the floor, orthographic layout view). Nếu là 'Phối cảnh Trực đo (Isometric)', prompt BẮT BUỘC phải mô tả phối cảnh trục đo 3D (3D isometric cutaway perspective, axonometric cutaway view, tilted angle view). Tuyệt đối không được nhầm lẫn giữa hai góc nhìn này.",
-      "BẮT BUỘC: Hãy đọc kỹ ảnh mặt bằng đầu vào, tìm và nhận diện đúng tất cả các nhãn chữ chỉ tên/công năng phòng (ví dụ: Phòng khách, Phòng ngủ, WC, Bếp, Cầu thang...). Bạn phải mô tả chi tiết vị trí của từng khu vực chức năng này trong prompt cuối cùng để mô hình sinh ảnh xếp đúng vị trí, tuyệt đối không được tự ý đổi công năng phòng (không biến WC thành phòng ngủ, không vẽ nhầm phòng ngủ thành phòng khách).",
-      "Mặt bằng là sự thật tuyệt đối: tường, cửa, thang, vách và nhãn phòng phải được tôn trọng.",
+      "Bạn là chuyên gia phân tích floorplan 2D và tái dựng thành không gian 3D axonometric chính xác.",
+      "BẮT BUỘC BẢO TOÀN HƯỚNG BẢN VẼ: Đây là quy tắc tối thượng. Trước tiên hãy xác định hướng orientation của bản vẽ 2D đầu vào (góc trên-trái, trên-phải, dưới-trái, dưới-phải tương ứng với khu vực nào của mặt bằng). Hướng này PHẢI được bảo toàn tuyệt đối trong ảnh kết quả 3D. TUYỆT ĐỐI KHÔNG ĐƯỢC XOAY (rotate), LẬT (flip) hay PHẢN CHIẾU (mirror) bố cục mặt bằng dưới bất kỳ hình thức nào — kể cả để làm cho góc isometric 'đẹp hơn' hay 'cân đối hơn'. Phía trên bản vẽ = phía trên ảnh output. Phía phải bản vẽ = phía phải ảnh output. Vi phạm quy tắc này là lỗi nghiêm trọng nhất.",
+      "BẮT BUỘC NHẬN DIỆN NỘI THẤT CHẶT CHẼ: Phân tích và map từng ký hiệu đồ nội thất trong bản vẽ 2D theo chuẩn ký hiệu CAD kiến trúc: hình chữ nhật dài (≥1.5m) tựa tường = giường (single/double); hình cung tròn cạnh tường = cửa xoay (door swing); hình chữ nhật nhỏ tựa tường trong phòng vệ sinh = toilet; hình chữ nhật nhỏ hơn ở góc = lavabo; hình bán cầu/oval lớn = bồn tắm; hình oval/chữ nhật bo cạnh trung tâm phòng = bàn ăn; hình chữ L/U với đệm = sofa góc; hình vuông/chữ nhật nhỏ quanh bàn = ghế riêng lẻ; hình chữ nhật dài song song tựa tường = kệ sách/tủ quần áo/tủ bếp; hình vuông nhỏ với vòng tròn = bếp hob. Mỗi ký hiệu PHẢI được map đúng sang đồ vật 3D và đặt đúng vị trí, đúng hướng xoay trong output.",
+      "BẮT BUỘC TUÂN THỦ GÓC CHỤP: Bạn PHẢI tuân thủ tuyệt đối 'Style góc chụp' (cameraAngleStyle) được chỉ định. Nếu là 'Top-down View', prompt BẮT BUỘC phải mô tả góc nhìn thẳng đứng trực diện từ trên xuống (flat 3D floor plan layout, straight top-down view, 90-degree bird's-eye view, no perspective distortion of walls, looking directly down at the floor, orthographic layout view). Nếu là 'Phối cảnh Trực đo (Isometric)', prompt BẮT BUỘC phải mô tả phối cảnh trục đo 3D (3D isometric cutaway perspective, axonometric cutaway view, tilted angle view). Tuyệt đối không được nhầm lẫn giữa hai góc nhìn này.",
+      "BẮT BUỘC NHẬN DIỆN PHÒNG: Hãy đọc kỹ ảnh mặt bằng, tìm và nhận diện đúng tất cả nhãn chữ chỉ tên/công năng phòng. Mô tả chi tiết vị trí từng khu vực chức năng trong prompt cuối cùng. Tuyệt đối không được tự ý đổi công năng phòng (không biến WC thành phòng ngủ, không vẽ nhầm phòng ngủ thành phòng khách).",
+      "Mặt bằng là sự thật tuyệt đối: tường, cửa, thang, vách và nhãn phòng phải được tôn trọng. Không được phép bổ sung, xóa bỏ hoặc sửa đổi bất kỳ thành phần kiến trúc nào không có trong bản vẽ; nếu không chắc, phải giữ nguyên thay vì tự bịa.",
       "Nhãn phòng và ký hiệu chỉ dùng để suy luận bố trí, không được xuất hiện lại trong ảnh kết quả.",
-      "Không được phép bổ sung, xóa bỏ hoặc sửa đổi bất kỳ thành phần kiến trúc nào không có trong bản vẽ; nếu không chắc, phải giữ nguyên thay vì tự bịa.",
-      "Mô hình 3D axonometric phải được tô màu chân thực, tự nhiên và chính xác cho sàn, tường, và đồ nội thất theo phong cách thiết kế đã chọn, sử dụng các gam màu trung tính nhã nhặn và chất liệu vật lý có chiều sâu thực tế. KHÔNG được tạo mô hình đất sét trắng (white clay model) hay đơn sắc trắng.",
+      "Mô hình 3D axonometric phải được tô màu chân thực, tự nhiên và chính xác cho sàn, tường, và đồ nội thất theo phong cách thiết kế đã chọn. KHÔNG được tạo mô hình đất sét trắng (white clay model) hay đơn sắc trắng.",
       referenceImages.length > 0
         ? "Khi có ảnh tham khảo nội thất: từng món đồ tham khảo chỉ được dùng để khóa đúng chủng loại, hướng và vị trí tương ứng theo mặt bằng; không tự ý thêm bớt hay di chuyển."
         : "Nếu không có ảnh tham khảo nội thất, bố trí đồ đạc phải bám logic mặt bằng và chỉ dựng những gì suy ra chắc chắn từ bản vẽ.",
@@ -372,17 +373,19 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
     ].join(" ");
     responseSchema = objectSchema(
       {
-        phan_tich_khoa_goc_ghi_hinh: stringField("Phân tích chi tiết mặt bằng: nhận diện và liệt kê tất cả các phòng/khu vực chức năng kèm nhãn tên tương ứng để đảm bảo mô hình không hiểu sai lệch."),
+        phan_tich_huong_ban_ve: stringField("XÁC NHẬN HƯỚNG BẮT BUỘC: Mô tả chính xác orientation của bản vẽ 2D đầu vào (góc trên-trái là khu vực nào, góc trên-phải là khu vực nào). Ghi rõ cam kết: hướng này SẼ ĐƯỢC GIỮ NGUYÊN trong ảnh output, không xoay, không lật."),
+        phan_tich_phong_va_chuc_nang: stringField("Nhận diện và liệt kê tất cả các phòng/khu vực chức năng kèm nhãn tên và vị trí tương ứng trong bản vẽ (góc nào, cạnh nào, tiếp giáp phòng nào)."),
+        nhan_dien_noi_that_theo_phong: stringField("LIỆT KÊ TỪNG MÓN ĐỒ NỘI THẤT theo từng phòng: tên đồ vật được map từ ký hiệu CAD, vị trí trong phòng (góc nào, tựa tường nào), hướng đặt (xoay về phía nào), kích thước ước tính. Đây là ràng buộc cứng cho vị trí và loại đồ vật trong prompt cuối."),
         logic_phong_cach_va_cong_trinh: stringField("Tổng hợp phong cách và logic công trình."),
-        quyet_dinh_cat_tuong: stringField("Mô tả chiến lược cắt tường nếu cần."),
         thiet_lap_anh_sang_va_studio: stringField("Thiết lập ánh sáng và cách trình bày."),
-        prompt_tieng_viet_toi_uu: stringField("Prompt render cuối cùng. Phải mô tả rõ ràng vị trí cụ thể của từng phòng/khu vực chức năng đã nhận diện."),
-        prompt_phu_dinh: stringField("Các lỗi cần tránh."),
+        prompt_tieng_viet_toi_uu: stringField("Prompt render cuối cùng. PHẢI mô tả rõ: (1) xác nhận hướng bố cục không thay đổi so với bản vẽ gốc, (2) vị trí cụ thể từng phòng, (3) từng món đồ nội thất đúng vị trí và hướng như đã nhận diện."),
+        prompt_phu_dinh: stringField("Các lỗi cần tránh, bao gồm: rotated layout, flipped plan, mirrored orientation, wrong furniture placement, misidentified room function, missing furniture, added furniture not in plan, rotated floor plan."),
       },
       [
-        "phan_tich_khoa_goc_ghi_hinh",
+        "phan_tich_huong_ban_ve",
+        "phan_tich_phong_va_chuc_nang",
+        "nhan_dien_noi_that_theo_phong",
         "logic_phong_cach_va_cong_trinh",
-        "quyet_dinh_cat_tuong",
         "thiet_lap_anh_sang_va_studio",
         "prompt_tieng_viet_toi_uu",
         "prompt_phu_dinh",
