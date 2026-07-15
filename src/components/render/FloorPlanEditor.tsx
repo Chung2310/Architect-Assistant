@@ -6433,7 +6433,6 @@ Requirements:
             ref={stageRef}
             width={stageSize.w}
             height={stageSize.h}
-            onWheel={handleWheel}
             onMouseDown={handleStageMouseDown}
             onMouseMove={handleStageMouseMove}
             onMouseUp={handleStageMouseUp}
@@ -6738,9 +6737,9 @@ Requirements:
 
               {/* Structure Popover */}
               {activeBottomPopup === "structure" && (
-                <div className="mb-3 flex gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                <div className="mb-3 flex items-start gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
                   {/* Left panel: main options */}
-                  <div className="w-48 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1">
+                  <div className="w-48 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 h-[180px]">
                     <button
                       onMouseEnter={() => setActiveStructureCategory("door")}
                       onClick={() => setActiveStructureCategory("door")}
@@ -6801,7 +6800,7 @@ Requirements:
 
                   {/* Right panel: submenu */}
                   {activeStructureCategory && (
-                    <div className="w-56 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-100 justify-center">
+                    <div className="w-56 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-100 h-[180px] overflow-y-auto">
                       {activeStructureCategory === "door" && (
                         <>
                           <button
