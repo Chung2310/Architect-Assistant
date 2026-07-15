@@ -152,7 +152,9 @@ export const renderJobController = {
         finalPrompt = inputImageUrls.join(" ") + " " + finalPrompt;
       }
 
-      const aspect = aspectRatio || "1:1";
+      // Bỏ hậu tố nhãn tiếng Việt (vd: "4:3 (Ngang)" -> "4:3") trước khi gửi cho PiAPI,
+      // để tránh giá trị không hợp lệ bị PiAPI âm thầm mặc định về hình vuông 1:1.
+      const aspect = (aspectRatio || "").split(" ")[0].trim() || "1:1";
 
       try {
         logger.info(`[renderJobController] Creating PiAPI task for model: ${piapiModel}`);

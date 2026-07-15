@@ -179,7 +179,7 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
-  const totalCost = transactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+  const totalCost = transactions.filter(tx => tx.type !== 'topup').reduce((sum, tx) => sum + (tx.amount || 0), 0);
   const videoCost = transactions.filter(tx => tx.type === 'video').reduce((sum, tx) => sum + (tx.amount || 0), 0);
   const audioCost = transactions.filter(tx => tx.type === 'audio').reduce((sum, tx) => sum + (tx.amount || 0), 0);
   const imageCost = transactions.filter(tx => tx.type === 'image').reduce((sum, tx) => sum + (tx.amount || 0), 0);
@@ -420,7 +420,7 @@ export const AdminPanel: React.FC = () => {
                       }
                       return tx.userId && tx.userId._id === user._id;
                     });
-                    const userTotal = userTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+                    const userTotal = userTxs.filter(tx => tx.type !== 'topup').reduce((sum, tx) => sum + (tx.amount || 0), 0);
                     const userVideo = userTxs.filter(tx => tx.type === 'video').reduce((sum, tx) => sum + (tx.amount || 0), 0);
                     const userAudio = userTxs.filter(tx => tx.type === 'audio').reduce((sum, tx) => sum + (tx.amount || 0), 0);
                     const userImage = userTxs.filter(tx => tx.type === 'image').reduce((sum, tx) => sum + (tx.amount || 0), 0);

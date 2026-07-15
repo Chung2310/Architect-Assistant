@@ -8,6 +8,19 @@ const PIAPI_BASE_URL = process.env.PIAPI_BASE_URL || "https://api.piapi.ai/api/v
 
 console.log(`[PiAPI Service] Loaded API Key status: ${PIAPI_API_KEY ? `Present (Length: ${PIAPI_API_KEY.length}, Prefix: ${PIAPI_API_KEY.substring(0, 8)}...)` : 'Missing'}`);
 
+const VALID_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"];
+
+/**
+ * Chuẩn hóa aspect ratio nhận từ client (vd: "4:3 (Ngang)", "Tự động") về định dạng
+ * "W:H" mà PiAPI chấp nhận. Trả về undefined nếu không có giá trị hợp lệ, để tránh
+ * ép ảnh đầu ra về hình vuông một cách âm thầm khi bản vẽ gốc là hình chữ nhật.
+ */
+function normalizeAspectRatio(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  const stripped = raw.split(" ")[0].trim();
+  return VALID_ASPECT_RATIOS.includes(stripped) ? stripped : undefined;
+}
+
 export const piapiService = {
   /**
    * Tạo task sinh ảnh bất đồng bộ trên PiAPI
@@ -27,7 +40,7 @@ export const piapiService = {
       };
     }
 
-    const aspect = options?.aspectRatio || "1:1";
+    const aspect = normalizeAspectRatio(options?.aspectRatio) || "1:1";
     let reqBody: Record<string, unknown> | undefined;
 
     if (model === "nano-banana-pro" || model === "nano-banana-2") {

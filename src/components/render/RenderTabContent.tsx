@@ -473,6 +473,7 @@ ${
 - Loại phòng: ${roomType || "Không có"}
 - Phong cách: ${interiorStyle || "Không có"}
 ${floorplanStylePrompt}- Quy tắc bố cục: giữ nguyên 100% vị trí tường, cửa, cửa sổ, và đồ đạc theo bản vẽ. KHÔNG di chuyển giường, tủ áo, bàn trang điểm, rèm, hoặc cửa sổ. KHÔNG đổi vị trí nội thất hay làm lệch bố cục mặt bằng.
+- Quy tắc tỷ lệ hình dạng: PHẢI giữ đúng tỷ lệ chiều dài/chiều rộng (aspect ratio) thực tế của mặt bằng gốc trong bản vẽ. Nếu mặt bằng là hình chữ nhật (một cạnh dài hơn cạnh kia rõ rệt), không gian 3D dựng lại BẮT BUỘC phải là hình chữ nhật với đúng tỷ lệ đó, TUYỆT ĐỐI KHÔNG được làm vuông hóa (square hóa) công trình hoặc căn phòng.
 `
       : activeSubTab === "Floorplan to 3D Floorplan"
         ? `
@@ -602,6 +603,7 @@ Mục tiêu của bạn là: đọc mặt bằng, hiểu mặt bằng, khóa m�
 MẶT BẰNG 2D LÀ NGUỒN DỮ LIỆU DUY NHẤT VÀ LÀ SỰ THẬT TUYỆT ĐỐI.
 TRƯỚC KHI DỰNG MÔ HÌNH 3D PHẢI THỰC HIỆN QUY TRÌNH PHÂN TÍCH...
 - Tường, cửa, cầu thang, ban công, phòng ốc và nhãn chữ phải khớp tuyệt đối.
+- BẮT BUỘC xác định tỷ lệ chiều dài/chiều rộng thực tế của công trình trong bản vẽ (vd: hình chữ nhật dài tỷ lệ ~2:1). Không gian 3D dựng lại PHẢI giữ đúng tỷ lệ này, TUYỆT ĐỐI KHÔNG được làm vuông hóa công trình nếu mặt bằng gốc là hình chữ nhật.
 </giao_thuc_nhan_dien_va_khoa_mat_bang_tuyet_doi>
 
 <render_quality>
@@ -609,7 +611,7 @@ Bổ sung vào prompt cuối tùy thuộc vào phong cách được chọn: Nế
 </render_quality>
 
 <negative_rules>
-Từ khóa phủ định nghiêm ngặt bằng tiếng Việt: lưới bản vẽ, mesh, chữ 2D...
+Từ khóa phủ định nghiêm ngặt bằng tiếng Việt: lưới bản vẽ, mesh, chữ 2D... Đồng thời PHẢI thêm các từ khóa phủ định "square footprint, squared building shape, distorted proportions, incorrect aspect ratio" để tránh model vẽ sai tỷ lệ hình dạng công trình.
 </negative_rules>`;
 
         responseSchema = {
@@ -647,6 +649,7 @@ Từ khóa phủ định nghiêm ngặt bằng tiếng Việt: lưới bản v�
         systemInstruction = `<vai_tro>
 BẠN LÀ CHUYÊN GIA BIÊN SOẠN PROMPT KHÔNG GIAN 3D TỪ MẶT BẰNG SIÊU THỰC.
 CỰC KỲ QUAN TRỌNG: Tất cả thông tin phân tích, mô tả, phong cách, chất liệu, bối cảnh, kết quả đầu ra, và toàn bộ prompt tối ưu hóa PHẢI được viết hoàn toàn bằng TIẾNG VIỆT 100%.
+QUY TẮC BẮT BUỘC VỀ TỶ LỆ HÌNH DẠNG: Khi phân tích mặt bằng (phan_tich_mat_bang), PHẢI xác định rõ tỷ lệ chiều dài/chiều rộng thực tế của công trình hoặc căn phòng trong bản vẽ (ví dụ: hình chữ nhật dài, tỷ lệ khoảng 2:1). Trong prompt_tieng_viet_toi_uu, PHẢI ghi rõ tỷ lệ hình dạng này và yêu cầu tuyệt đối giữ nguyên, KHÔNG được làm vuông hóa (square hóa) công trình nếu mặt bằng gốc là hình chữ nhật. Trong prompt_phu_dinh, PHẢI thêm các từ khóa phủ định như "square footprint, squared building shape, distorted proportions, incorrect aspect ratio" để tránh model AI vẽ sai tỷ lệ.
 </vai_tro>`;
 
         responseSchema = {

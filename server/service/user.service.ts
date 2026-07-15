@@ -16,7 +16,7 @@ export const userService = {
     return UserModel.findById(userId).select("-password");
   },
 
-  async updateRole(userId: string, role: "user" | "admin") {
+  async updateRole(userId: string, role: "user" | "admin" | "superadmin") {
     const user = await UserModel.findByIdAndUpdate(
       userId,
       { role },
