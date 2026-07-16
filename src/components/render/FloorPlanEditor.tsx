@@ -3943,7 +3943,7 @@ Requirements:
           prompt: renderPrompt,
           numImages: 1,
           aspectRatio: (activeTab === "visualize" && selectedCameraRoomId && cameras[selectedCameraRoomId]?.aspectRatio) || "4:3",
-          model: "nano-banana-2",
+          model: "openrouter-nano-banana-2",
           resolution: "1K",
         },
       };

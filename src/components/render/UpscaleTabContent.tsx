@@ -18,6 +18,11 @@ const MODELS = [
     name: "Igen gemini Image Pro",
     isPro: true,
   },
+  {
+    id: "openrouter-nano-banana-2",
+    name: "Igen gemini Image Pro Preview",
+    isPro: true,
+  },
 ];
 
 export const UpscaleTabContent: React.FC = () => {
@@ -27,7 +32,7 @@ export const UpscaleTabContent: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [selectedModel, setSelectedModel] = useState(
-    "nano-banana-2",
+    "openrouter-nano-banana-2",
   );
   const [isUpscaling, setIsUpscaling] = useState(false);
   const [upscaleProgress, setUpscaleProgress] = useState(0);
@@ -306,7 +311,8 @@ export const UpscaleTabContent: React.FC = () => {
         selectedModel === "gemini-3.1-flash-image" ||
         selectedModel === "gemini-3-pro-image" ||
         selectedModel === "nano-banana-2" ||
-        selectedModel === "nano-banana-pro"
+        selectedModel === "nano-banana-pro" ||
+        selectedModel === "openrouter-nano-banana-2"
       ) {
         imageConfig.imageSize = resolution;
         imageConfig.negativePrompt = negativePrompt;

@@ -1,3 +1,18 @@
+# 📅 Today - 2026-07-16
+
+## 🛠 Fixes & Improvements
+- **Feature**: Cấu hình mặc định cho tính năng "Floorplan to 3D Floorplan" trên giao diện Render.
+  1. Cập nhật `src/components/render/RenderTabContent.tsx` để đổi góc chụp mặc định thành `"Top-down View"` (được đưa lên làm tùy chọn đầu tiên trong dropdown) và model mặc định thành `"openrouter-nano-banana-2"` ("Igen gemini Image Pro Preview") khi người dùng chuyển sang tab "Floorplan to 3D Floorplan".
+  2. Xác minh dự án chạy build và lint thành công (`npm run build`, `yarn lint`).
+- **Feature**: Cấu hình mặc định mô hình "Igen gemini Image Pro Preview" (openrouter-nano-banana-2) cho toàn bộ các chức năng sinh ảnh của dự án.
+  1. Cập nhật `src/components/render/RenderTabContent.tsx` để đặt model mặc định thành `"openrouter-nano-banana-2"` cho toàn bộ sub-tabs (Render Ngoại Thất, Render Nội Thất, Render VR 360, Floorplan to 3D, Masterplan to 3D).
+  2. Cập nhật `src/components/render/EnhanceRenderTabContent.tsx` và `src/components/render/UpscaleTabContent.tsx` bổ sung model `"openrouter-nano-banana-2"` vào danh sách lựa chọn và đặt làm mặc định khi khởi tạo.
+  3. Cập nhật `src/components/render/SyncTabContent.tsx` đặt model mặc định thành `"openrouter-nano-banana-2"` cho các góc chụp bối cảnh gợi ý, đồng thời chặn mô hình này trong tính năng Đồng bộ Nhân vật (chỉ cho phép Gemini native).
+  4. Cập nhật `src/components/render/FloorPlanEditor.tsx` chuyển model 3D render mặc định sang `"openrouter-nano-banana-2"`.
+  5. Cập nhật `src/components/Render.tsx` bổ sung model `"openrouter-nano-banana-2"`, gán làm mặc định cho các tiện ích phi-mood, và chặn model này trong canvas editor (vì không hỗ trợ inpainting).
+  6. Sửa `server/service/gemini.service.ts` định tuyến cuộc gọi `/api/v1/gemini/generate` với model `"openrouter-nano-banana-2"` sang OpenRouter image generation API.
+
+
 # 📅 Today - 2026-06-23
 
 ## 🛠 Fixes & Improvements
