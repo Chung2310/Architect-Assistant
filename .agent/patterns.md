@@ -41,3 +41,11 @@
   4. Trích xuất đúng hình ảnh đầu vào (`inlineData`) từ payload ban đầu, đưa qua Cloudinary để lấy link URL rồi chuyển tiếp cho PiAPI, đảm bảo các tính năng phức tạp như inpainting/edit vẫn hoạt động.
   5. Định hình dữ liệu phản hồi trả về bao gồm cả cấu trúc `generatedImages` và `candidates` để đảm bảo tương thích 100% với cả 2 phương án hiển thị ở client-side và lưu trữ ở controller.
 
+## 🎛 Cấu Hình Mặc Định Giao Diện Theo Tab (Tab-Specific UI Default Configurations)
+- **Vấn đề**: Khi giao diện có nhiều tab con (sub-tabs) sử dụng chung một tập các biến trạng thái (state variables) như mô hình AI, góc chụp, hay độ phân giải, việc không thiết lập lại hoặc đồng bộ hóa các trạng thái này khi chuyển tab sẽ gây ra trải nghiệm không tốt cho người dùng (ví dụ: tab này vẫn hiển thị cài đặt của tab trước đó hoặc bị hiển thị sai lệch so với các tùy chọn mặc định dự kiến).
+- **Giải pháp**:
+  1. Sử dụng một `useEffect` theo dõi sự thay đổi của tab hiện tại (`activeSubTab`) để thiết lập lại và gán giá trị mặc định cụ thể cho từng tab một cách rõ ràng.
+  2. Đảm bảo các tùy chọn trong dropdown (`<select>`) có cấu trúc đồng bộ. Sắp xếp tùy chọn mặc định của tab lên vị trí đầu tiên trong dropdown để tối ưu hóa trải nghiệm thị giác và điều khiển của người dùng.
+  3. Đảm bảo giá trị mặc định được thiết lập trong trạng thái (`state`) khớp chính xác 100% với giá trị hiển thị (`value` / `option`) trong dropdown để tránh lỗi giao diện không nhất quán.
+
+

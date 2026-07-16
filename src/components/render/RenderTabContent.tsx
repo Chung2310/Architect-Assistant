@@ -43,7 +43,7 @@ const MODELS = [
   },
   {
     id: "openrouter-nano-banana-2",
-    name: "Nano Banana 2 (OpenRouter)",
+    name: "Igen gemini Image Pro Preview",
     isPro: true,
   },
 ];
@@ -101,7 +101,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
   const [isDraggingRef, setIsDraggingRef] = useState(false);
 
   const [selectedModel, setSelectedModel] = useState(
-    "nano-banana-2",
+    "openrouter-nano-banana-2",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
 
@@ -156,28 +156,28 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
       // Set defaults based on activeSubTab
       if (activeSubTab === "Render Ngoại Thất") {
         setStyle("Ảnh chụp thực tế công trình");
-        setSelectedModel("nano-banana-2");
+        setSelectedModel("openrouter-nano-banana-2");
       } else if (activeSubTab === "Render Nội Thất") {
         setStyle("Ảnh chụp thực tế nội thất");
-        setSelectedModel("nano-banana-2");
+        setSelectedModel("openrouter-nano-banana-2");
       } else if (activeSubTab === "Render VR 360") {
         setStyle("Ảnh Panorama 360 độ");
         setAspectRatio("21:9 (Panorama)");
-        setSelectedModel("nano-banana-2");
+        setSelectedModel("openrouter-nano-banana-2");
       } else if (activeSubTab === "Floorplan to 3D") {
         setStyle("Phối cảnh thực tế");
         setCameraAngleStyle("Ảnh cầm tay ngang tầm mắt");
-        setSelectedModel("nano-banana-2");
+        setSelectedModel("openrouter-nano-banana-2");
       } else if (activeSubTab === "Floorplan to 3D Floorplan") {
         setStyle("Ảnh phối cảnh 3D mặt bằng");
         setInteriorStyle("");
         setLighting("");
         setBuildingStyle("");
-        setCameraAngleStyle("Phối cảnh Trục đo (Isometric)");
-        setSelectedModel("nano-banana-pro");
+        setCameraAngleStyle("Top-down View");
+        setSelectedModel("openrouter-nano-banana-2");
       } else if (activeSubTab === "Masterplan to 3D") {
         setStyle("Ảnh phối cảnh 3D tổng thể");
-        setSelectedModel("nano-banana-2");
+        setSelectedModel("openrouter-nano-banana-2");
       }
     }, 0);
   }, [activeSubTab]);
@@ -472,11 +472,10 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
         if (activeSubTab === "Floorplan to 3D") {
           if (style === "Phối cảnh thực tế") {
             const selectedAngleValue = customCameraAngle || cameraAngle;
-            floorplanStylePrompt = `- Kiểu chụp: ${
-              selectedAngleValue 
-                ? `${selectedAngleValue} (Bắt buộc dựng đúng góc chụp này, loại bỏ hoàn toàn mọi góc chụp mặc định khác hoặc góc chụp từ cửa ra vào)` 
+            floorplanStylePrompt = `- Kiểu chụp: ${selectedAngleValue
+                ? `${selectedAngleValue} (Bắt buộc dựng đúng góc chụp này, loại bỏ hoàn toàn mọi góc chụp mặc định khác hoặc góc chụp từ cửa ra vào)`
                 : "Ảnh phối cảnh thực tế ở ngang tầm mắt, góc nhìn tự nhiên của người đứng trong không gian"
-            }, không dùng góc panorama hoặc góc quá cao nếu bản vẽ không yêu cầu.
+              }, không dùng góc panorama hoặc góc quá cao nếu bản vẽ không yêu cầu.
 - Tiêu điểm ảnh: phân tích bản vẽ để xác định chính xác các không gian, đồ đạc, cửa mở và hướng nhìn thực sự có trong đầu vào; nếu có ảnh tham chiếu thì chỉ dùng để khóa đúng loại đồ và vị trí cần giữ. Không tự giả định loại phòng hoặc thêm món đồ đặc thù ngoài dữ liệu đầu vào.
 - Bố cục: giữ nguyên 100% vị trí đồ đạc, tường ngăn, cửa và lối đi theo bản vẽ gốc; không thêm đồ đạc mới, không dịch chuyển nội thất sang khu vực khác.
 `;
@@ -943,13 +942,12 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                 setActiveSubTab(tab.id);
               }
             }}
-            className={`flex items-center justify-center gap-1.5 w-[180px] py-2 rounded-full text-xs lg:text-[13px] font-semibold transition-all whitespace-nowrap ${
-              tab.isLocked
+            className={`flex items-center justify-center gap-1.5 w-[180px] py-2 rounded-full text-xs lg:text-[13px] font-semibold transition-all whitespace-nowrap ${tab.isLocked
                 ? "opacity-60 text-on-surface-variant/70 hover:bg-surface-container-low"
                 : activeSubTab === tab.id
-                ? "bg-primary text-white shadow-md"
-                : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low"
-            }`}
+                  ? "bg-primary text-white shadow-md"
+                  : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low"
+              }`}
           >
             <Icon name={tab.icon} className="text-[16px]" />
             {tab.id}
@@ -987,8 +985,8 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
             </div>
             <div
               className={`min-h-[12rem] max-h-[30rem] h-auto border-2 border-dashed rounded-xl flex flex-col items-center justify-center text-center group transition-colors cursor-pointer relative overflow-hidden ${isDragging
-                  ? "border-primary bg-primary/10"
-                  : "border-outline-variant/40 hover:border-primary/50 bg-surface-container-low/50 hover:bg-surface-container-low"
+                ? "border-primary bg-primary/10"
+                : "border-outline-variant/40 hover:border-primary/50 bg-surface-container-low/50 hover:bg-surface-container-low"
                 }`}
               onClick={() => fileInputRef.current?.click()}
               onDrop={handleDrop}
@@ -1085,8 +1083,8 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                 </div>
                 <div
                   className={`min-h-[5rem] max-h-[15rem] h-auto border border-dashed rounded-lg flex flex-col items-center justify-center text-center cursor-pointer transition-colors relative overflow-hidden group ${isDraggingRef
-                      ? "border-primary bg-primary/10"
-                      : "border-outline-variant/40 hover:border-primary/50 bg-surface-container-low/30 hover:bg-surface-container-low"
+                    ? "border-primary bg-primary/10"
+                    : "border-outline-variant/40 hover:border-primary/50 bg-surface-container-low/30 hover:bg-surface-container-low"
                     }`}
                   onClick={() => refInputRef.current?.click()}
                   onDrop={handleDropRef}
@@ -1270,8 +1268,8 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                         value={cameraAngleStyle}
                         onChange={(e) => setCameraAngleStyle(e.target.value)}
                       >
-                        <option>Phối cảnh Trục đo (Isometric)</option>
                         <option>Top-down View</option>
+                        <option>Phối cảnh Trục đo (Isometric)</option>
                       </select>
                       <Icon
                         name="keyboard_arrow_down"
@@ -1795,8 +1793,8 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                       key={num}
                       onClick={() => setNumImages(num)}
                       className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-colors ${numImages === num
-                          ? "bg-primary text-white shadow-sm"
-                          : "text-on-surface-variant hover:text-on-surface"
+                        ? "bg-primary text-white shadow-sm"
+                        : "text-on-surface-variant hover:text-on-surface"
                         }`}
                     >
                       {num}
@@ -2081,8 +2079,8 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                           key={item.id}
                           onClick={() => setSelectedResultId(item.id)}
                           className={`relative shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden border-2 transition-all ${selectedItem?.id === item.id
-                              ? "border-primary shadow-md scale-100"
-                              : "border-transparent opacity-60 hover:opacity-100 hover:scale-105"
+                            ? "border-primary shadow-md scale-100"
+                            : "border-transparent opacity-60 hover:opacity-100 hover:scale-105"
                             }`}
                         >
                           {item.status === "pending" ? (
@@ -2163,8 +2161,8 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                     key={item.id}
                     onClick={() => setSelectedResultId(item.id)}
                     className={`w-40 h-40 flex-shrink-0 rounded-xl overflow-hidden border-2 transition-all ${selectedItem?.id === item.id
-                        ? "border-primary shadow-md"
-                        : "border-outline-variant/20 hover:border-primary/50"
+                      ? "border-primary shadow-md"
+                      : "border-outline-variant/20 hover:border-primary/50"
                       }`}
                   >
                     {item.status === "pending" ? (

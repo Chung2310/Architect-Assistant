@@ -17,6 +17,11 @@ const MODELS = [
     name: "Igen gemini Image Pro",
     isPro: true,
   },
+  {
+    id: "openrouter-nano-banana-2",
+    name: "Igen gemini Image Pro Preview",
+    isPro: true,
+  },
 ];
 
 const RESOLUTIONS = [
@@ -122,7 +127,7 @@ export const EnhanceRenderTabContent: React.FC = () => {
   const [promptProgress, setPromptProgress] = useState(0);
   const [smoothPromptProgress, setSmoothPromptProgress] = useState(0);
   const [selectedModel, setSelectedModel] = useState(
-    "nano-banana-2",
+    "openrouter-nano-banana-2",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
   const [numImages, setNumImages] = useState(1);

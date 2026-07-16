@@ -12,3 +12,4 @@ firebase-applet-config.json
 .gemini
 .claude
 .cursor 
+dist/

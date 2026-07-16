@@ -39,6 +39,11 @@ const TABS = [
 
 const MODELS = [
   {
+    id: "openrouter-nano-banana-2",
+    name: "Igen gemini Image Pro Preview",
+    isPro: true,
+  },
+  {
     id: "nano-banana-2",
     name: "Igen gemini Image Flash",
     isPro: false,
@@ -863,7 +868,7 @@ ${cropInfo}
     setResultImage(null);
 
     // Kiểm tra nếu chọn PiAPI model cho trình chỉnh sửa canvas
-    const isPiapiModel = selectedModel && (selectedModel.startsWith("piapi-") || selectedModel === "nano-banana-pro" || selectedModel === "nano-banana-2");
+    const isPiapiModel = selectedModel && (selectedModel.startsWith("piapi-") || selectedModel === "nano-banana-pro" || selectedModel === "nano-banana-2" || selectedModel === "openrouter-nano-banana-2");
     if (isPiapiModel) {
       toast.error("Trình chỉnh sửa ảnh vẽ đè/canvas hiện chưa hỗ trợ PiAPI. Vui lòng chọn Gemini.");
       setIsRendering(false);
@@ -5413,7 +5418,7 @@ const UtilitiesTabContent: React.FC = () => {
       const modelToUse =
         activeUtility === "mood"
           ? utilityModel
-          : "nano-banana-2";
+          : "openrouter-nano-banana-2";
       const ai = await getAIClient(modelToUse);
       const imageData = await getImageBase64(inputImage, true);
 

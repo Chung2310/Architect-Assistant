@@ -56,6 +56,11 @@ const MODELS = [
     name: "Igen gemini Image Pro",
     isPro: true,
   },
+  {
+    id: "openrouter-nano-banana-2",
+    name: "Igen gemini Image Pro Preview",
+    isPro: true,
+  },
 ];
 
 const GEMINI_MODELS = [
@@ -461,7 +466,7 @@ export const SyncTabContent: React.FC = () => {
     }, 100);
 
     try {
-      const isPiapiModel = characterModel && (characterModel.startsWith("piapi-") || characterModel === "nano-banana-pro" || characterModel === "nano-banana-2");
+      const isPiapiModel = characterModel && (characterModel.startsWith("piapi-") || characterModel === "nano-banana-pro" || characterModel === "nano-banana-2" || characterModel === "openrouter-nano-banana-2");
       if (isPiapiModel) {
         toast.error("Tính năng Đồng Bộ Nhân Vật hiện chưa hỗ trợ PiAPI. Vui lòng chọn Gemini.");
         setIsSyncingCharacter(false);
@@ -991,7 +996,7 @@ export const SyncTabContent: React.FC = () => {
       }
 
       const selectedModel =
-        suggestion.selectedModel || "nano-banana-pro";
+        suggestion.selectedModel || "openrouter-nano-banana-2";
 
       const generatedImageUrls: string[] = [];
 
@@ -1250,7 +1255,7 @@ export const SyncTabContent: React.FC = () => {
                       null,
                       2,
                     ),
-                    selectedModel: "nano-banana-pro",
+                    selectedModel: "openrouter-nano-banana-2",
                   };
                 }),
               };
@@ -1645,7 +1650,7 @@ export const SyncTabContent: React.FC = () => {
                                           className="w-full bg-surface-container-lowest border border-outline-variant/20 focus:border-primary rounded-lg p-2 text-xs font-medium text-on-surface appearance-none outline-none cursor-pointer pr-10 text-ellipsis overflow-hidden whitespace-nowrap"
                                           value={
                                             suggestion.selectedModel ||
-                                            "nano-banana-pro"
+                                            "openrouter-nano-banana-2"
                                           }
                                           onChange={(e) => {
                                             const newCats = [
