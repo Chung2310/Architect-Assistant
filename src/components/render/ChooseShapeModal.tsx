@@ -494,10 +494,6 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
                 className={`px-3 py-1.5 rounded-lg border font-bold ${placements.some(p => p.type === "deck") ? "bg-emerald-950/20 border-emerald-800/40 text-emerald-400" : "bg-[#1d1d1f] border-[#2d2d30] text-slate-400 hover:bg-[#252526]"}`}>
                 Sân gỗ
               </button>
-              <button onClick={() => handleTogglePlacement("porch", "Hiên trước")}
-                className={`px-3 py-1.5 rounded-lg border font-bold ${placements.some(p => p.type === "porch") ? "bg-emerald-950/20 border-emerald-800/40 text-emerald-400" : "bg-[#1d1d1f] border-[#2d2d30] text-slate-400 hover:bg-[#252526]"}`}>
-                Hiên trước
-              </button>
             </div>
             <div className="text-xs text-slate-500 font-semibold">
               {localWidth}m × {localLength}m = <span className="text-[#00B5CD]">{(localWidth * localLength).toFixed(0)} m²</span>
