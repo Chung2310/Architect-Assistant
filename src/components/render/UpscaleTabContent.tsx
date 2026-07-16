@@ -389,7 +389,7 @@ export const UpscaleTabContent: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 p-6 flex flex-col gap-6 overflow-y-auto">
+    <div className="p-6 flex flex-col gap-6">
       <div className="flex flex-col lg:flex-row gap-6">
         {/* Left Column */}
         <div className="w-full lg:w-[380px] flex flex-col gap-6 shrink-0">
@@ -525,7 +525,7 @@ export const UpscaleTabContent: React.FC = () => {
         </div>
 
         {/* Right Column */}
-        <div className="flex-1 bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-6 shadow-sm flex flex-col min-h-[500px]">
+        <div className="flex-1 bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-6 shadow-sm flex flex-col min-h-[550px]">
           <h3 className="text-base font-bold text-on-surface mb-4">
             3. Kết Quả Upscale
           </h3>
