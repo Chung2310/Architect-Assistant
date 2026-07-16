@@ -1460,7 +1460,7 @@ export function isFurnitureCollidingWithDoor(
 export function resolveFurnitureDoorCollisions(
   rooms: Room[],
   openings: Opening[],
-  wallThickness: number = 100
+  _wallThickness: number = 100
 ): Room[] {
   // Keep all furniture intact as requested by the user. Do not delete any colliding furniture.
   return rooms;
@@ -1538,7 +1538,7 @@ export function adjustRoomsToFitShape(rooms: Room[], shape: string, landW: numbe
         if (ry + rh > c.y2) {
           const y = c.y2;
           const h = (ry + rh) - c.y2;
-          if (h >= 0.5) candidates.push({ x: rx, y: ry, w: rw, h, area: rw * h });
+          if (h >= 0.5) candidates.push({ x: rx, y, w: rw, h, area: rw * h });
         }
 
         if (candidates.length > 0) {
@@ -2695,6 +2695,7 @@ export const FloorPlanEditor: React.FC = () => {
 
   useEffect(() => {
     if (activeTab === "visualize") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchRenderJobs();
     }
   }, [activeTab, fetchRenderJobs]);
@@ -3479,8 +3480,7 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
   };
 
   // ── Canvas zoom / pan ───────────────────────────────────────────────────
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleWheel = (e: any) => {
+  const _handleWheel = (e: any) => {
     e.evt.preventDefault();
     const scaleBy = 1.12;
     const stage = e.target.getStage();
@@ -3846,8 +3846,7 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
         }
       }
 
-      const selectedModel = "gemini-3.1-flash-image-preview";
-      const ai = await getAIClient(selectedModel);
+
       const roomsDesc = floorPlan.rooms.map((r) => `${r.name} (${(r.w * r.h).toFixed(1)}m²)`).join(", ");
       const roomForRender = roomIdForPrompt
         ? floorPlan.rooms.find((r) => r.id === roomIdForPrompt)?.name || "Phòng khách"
@@ -5237,7 +5236,7 @@ Requirements:
   };
 
   // ── Render Furniture Vector for Room ───────────────────────────────────
-  const renderFurnitureForRoom = (room: Room, scale: number) => {
+  const _renderFurnitureForRoom = (room: Room, scale: number) => {
     const rx = pan.x + room.x * scale;
     const ry = pan.y + room.y * scale;
     const rw = room.w * scale;
@@ -5504,7 +5503,7 @@ Requirements:
     roomId: string,
     targetType: "style" | "flooring" | "walls" | "ceiling" | "doors" | "windows",
     value: string,
-    isColor = false
+    _isColor = false
   ) => {
     if (floorPlan) {
       pushHistory(floorPlan);
@@ -5682,7 +5681,7 @@ Requirements:
     flipX: boolean = false
   ): { x: number; y: number; rotation: number } => {
     const SNAP_RADIUS = snapRadius;
-    const thick = 0; // Snap exactly on the centerline of the wall boundary
+
 
     let bestDist = SNAP_RADIUS;
     let bestX = px;
@@ -5794,7 +5793,7 @@ Requirements:
   const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
   const [furnitureSearch, setFurnitureSearch] = useState("");
 
-  const handleAddRoomManually = (roomName: string) => {
+  const _handleAddRoomManually = (roomName: string) => {
     if (!floorPlan) {
       toast.error("Vui lòng tạo mặt bằng trước!");
       return;
@@ -6331,7 +6330,7 @@ Requirements:
           {/* Wall lines with smart gaps where doors/windows overlap */}
           {(() => {
             const lines = [];
-            const threshold = 0.08;
+
 
             // 1. TOP WALL (y = room.y, local Y = ry)
             const wallThreshold = 0.15; // Increased threshold for alignment safety

@@ -2064,7 +2064,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     }
   }, [activeCamera, floorPlan, renderMode]);
 
-  const handleZoomIn = () => {
+  const _handleZoomIn = () => {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
@@ -2074,7 +2074,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     controls.update();
   };
 
-  const handleZoomOut = () => {
+  const _handleZoomOut = () => {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
@@ -2084,7 +2084,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     controls.update();
   };
 
-  const handleResetCamera = () => {
+  const _handleResetCamera = () => {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
