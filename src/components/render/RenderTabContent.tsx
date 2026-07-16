@@ -1266,7 +1266,15 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                       <select
                         className="w-full bg-surface-container-low/50 border border-outline-variant/20 focus:border-primary rounded-lg p-3 text-sm text-on-surface appearance-none outline-none cursor-pointer pr-10 text-ellipsis overflow-hidden whitespace-nowrap"
                         value={cameraAngleStyle}
-                        onChange={(e) => setCameraAngleStyle(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCameraAngleStyle(val);
+                          if (val === "Top-down View") {
+                            setSelectedModel("openrouter-nano-banana-2");
+                          } else if (val === "Phối cảnh Trục đo (Isometric)") {
+                            setSelectedModel("nano-banana-pro");
+                          }
+                        }}
                       >
                         <option>Top-down View</option>
                         <option>Phối cảnh Trục đo (Isometric)</option>
