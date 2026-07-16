@@ -27,7 +27,7 @@ var import_path2 = __toESM(require("path"), 1);
 var import_http = require("http");
 var import_cookie_parser = __toESM(require("cookie-parser"), 1);
 var import_swagger_ui_express = __toESM(require("swagger-ui-express"), 1);
-var import_dotenv2 = __toESM(require("dotenv"), 1);
+var import_dotenv3 = __toESM(require("dotenv"), 1);
 
 // server/utils/logger.ts
 var import_winston = __toESM(require("winston"), 1);
@@ -817,7 +817,7 @@ var renderJobService = {
 // server/controller/user.controller.ts
 var import_joi2 = __toESM(require("joi"), 1);
 var roleSchema = import_joi2.default.object({
-  role: import_joi2.default.string().valid("user", "admin").required().messages({
+  role: import_joi2.default.string().valid("user", "admin", "superadmin").required().messages({
     "any.only": "Vai tr\xF2 kh\xF4ng h\u1EE3p l\u1EC7.",
     "any.required": "Vai tr\xF2 l\xE0 b\u1EAFt bu\u1ED9c."
   })
@@ -954,13 +954,15 @@ var userController = {
       return;
     }
     try {
+      const amount = req.body.amount;
+      const type = amount < 0 ? "deduct" : "topup";
       const user = await userService.updateCredits(
         req.params.id,
-        req.body.amount,
-        "topup",
+        Math.abs(amount),
+        type,
         "Admin Top-up"
       );
-      logger.info(`[userController.updateCredits] Updated credits for user: ${req.params.id} by: ${req.body.amount}`);
+      logger.info(`[userController.updateCredits] Updated credits for user: ${req.params.id} by: ${amount}`);
       res.json({ success: true, data: user });
     } catch (error2) {
       logger.error(`[userController.updateCredits] Error: ${error2}`);
@@ -1111,6 +1113,12 @@ import_dotenv.default.config();
 var PIAPI_API_KEY = process.env.PIAPI_API_KEY || "";
 var PIAPI_BASE_URL = process.env.PIAPI_BASE_URL || "https://api.piapi.ai/api/v1";
 console.log(`[PiAPI Service] Loaded API Key status: ${PIAPI_API_KEY ? `Present (Length: ${PIAPI_API_KEY.length}, Prefix: ${PIAPI_API_KEY.substring(0, 8)}...)` : "Missing"}`);
+var VALID_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"];
+function normalizeAspectRatio(raw) {
+  if (!raw) return void 0;
+  const stripped = raw.split(" ")[0].trim();
+  return VALID_ASPECT_RATIOS.includes(stripped) ? stripped : void 0;
+}
 var piapiService = {
   /**
    * Tạo task sinh ảnh bất đồng bộ trên PiAPI
@@ -1242,7 +1250,7 @@ var piapiService = {
         mockUrl: `https://picsum.photos/seed/${seed}/1024/1024`
       };
     }
-    const aspect = options?.aspectRatio || "1:1";
+    const aspect = normalizeAspectRatio(options?.aspectRatio) || "1:1";
     const randomSeed = Math.floor(Math.random() * 2147483647);
     let reqBody;
     const isFloorplanJob = String(options?.jobType || "").toLowerCase().includes("floorplan") || String(options?.jobType || "").toLowerCase().includes("masterplan");
@@ -2491,6 +2499,61 @@ Quy t\u1EAFc tr\u1EA3 l\u1EDDi:
   }
 };
 
+// server/service/openrouter.service.ts
+var import_dotenv2 = __toESM(require("dotenv"), 1);
+import_dotenv2.default.config();
+var OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
+var OPENROUTER_BASE_URL = process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
+console.log(`[OpenRouter Service] Loaded API Key status: ${OPENROUTER_API_KEY ? `Present (Length: ${OPENROUTER_API_KEY.length}, Prefix: ${OPENROUTER_API_KEY.substring(0, 8)}...)` : "Missing"}`);
+var NANO_BANANA_2_MODEL = "google/gemini-3-pro-image-preview";
+var openrouterService = {
+  /**
+   * Sinh ảnh đồng bộ bằng OpenRouter (chat completion trả ảnh trực tiếp trong response,
+   * không có task_id để poll như PiAPI).
+   */
+  async generateImage(prompt, _model, options) {
+    if (!OPENROUTER_API_KEY) {
+      console.log(`[OpenRouter Image Generation] Running in MOCK mode (No OPENROUTER_API_KEY).`);
+      const seed = Math.floor(Math.random() * 1e6);
+      return { url: `https://picsum.photos/seed/${seed}/1024/1024`, isMock: true };
+    }
+    const content = [{ type: "text", text: prompt }];
+    if (options?.image) {
+      content.push({ type: "image_url", image_url: { url: options.image } });
+    }
+    const reqBody = {
+      model: NANO_BANANA_2_MODEL,
+      messages: [{ role: "user", content }],
+      modalities: ["image", "text"]
+    };
+    try {
+      console.log(`[OpenRouter Image Generation] Requesting image. Body:`, JSON.stringify(reqBody, null, 2));
+      const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`
+        },
+        body: JSON.stringify(reqBody)
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`OpenRouter request failed: ${response.status} - ${errorText}`);
+      }
+      const json = await response.json();
+      console.log(`[OpenRouter Image Generation] Response:`, JSON.stringify(json, null, 2));
+      const url = json.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+      if (!url) {
+        throw new Error("Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c \u1EA3nh t\u1EEB OpenRouter. Ki\u1EC3m tra l\u1EA1i \u0111\u1ECBnh d\u1EA1ng response.");
+      }
+      return { url, isMock: false };
+    } catch (error) {
+      console.error("[OpenRouter Image Generation] Error:", error);
+      throw error;
+    }
+  }
+};
+
 // server/socket.ts
 var import_socket = require("socket.io");
 var io = null;
@@ -2793,7 +2856,7 @@ var renderJobController = {
       ];
       const isGeminiNativeModel = GEMINI_NATIVE_MODELS.includes(model);
       let piapiModel = model || "piapi-flux";
-      if (!isGeminiNativeModel && !piapiModel.startsWith("piapi-") && piapiModel !== "nano-banana-pro" && piapiModel !== "nano-banana-2" && piapiModel !== "igen-image-flash") {
+      if (!isGeminiNativeModel && !piapiModel.startsWith("piapi-") && piapiModel !== "nano-banana-pro" && piapiModel !== "nano-banana-2" && piapiModel !== "igen-image-flash" && piapiModel !== "openrouter-nano-banana-2") {
         piapiModel = "piapi-flux";
       }
       logger.info(`[renderJobController.createJob] Model: ${model} | piapiModel: ${piapiModel} | type: ${req.body.type}`);
@@ -2820,7 +2883,7 @@ Negative prompt: ${parsedNegativePrompt}`;
       const cameraAngleStyle = req.body.settings?.cameraAngleStyle;
       finalPrompt = appendFloorplanCameraDirective(req.body.type, finalPrompt, cameraAngle, customCameraAngle);
       finalPrompt = appendFloorplan3DFloorplanCameraDirective(req.body.type, finalPrompt, cameraAngleStyle);
-      const aspect = aspectRatio || "1:1";
+      const aspect = (aspectRatio || "").split(" ")[0].trim() || "1:1";
       const isGeminiModel = isGeminiNativeModel;
       if (isGeminiModel) {
         try {
@@ -2856,6 +2919,22 @@ Negative prompt: ${parsedNegativePrompt}`;
         } catch (apiErr) {
           logger.error(`[renderJobController] Failed to generate Gemini image: ${apiErr}`);
           res.status(500).json({ success: false, message: "Kh\xF4ng th\u1EC3 t\u1EA1o \u1EA3nh t\u1EEB Gemini: " + apiErr.message });
+          return;
+        }
+      } else if (piapiModel === "openrouter-nano-banana-2") {
+        try {
+          logger.info(`[renderJobController] Generating image via OpenRouter (nano-banana 2)`);
+          const genResult = await openrouterService.generateImage(finalPrompt, piapiModel, {
+            aspectRatio: aspect,
+            image: inputImageUrls?.[0]
+          });
+          const uploadedUrl = await cloudinaryService.uploadMedia(genResult.url, "renders");
+          outputImageUrls = [uploadedUrl];
+          status = "completed";
+          progress = 100;
+        } catch (apiErr) {
+          logger.error(`[renderJobController] Failed to generate image via OpenRouter: ${apiErr}`);
+          res.status(500).json({ success: false, message: "Kh\xF4ng th\u1EC3 t\u1EA1o \u1EA3nh qua OpenRouter: " + apiErr.message });
           return;
         }
       } else {
@@ -3617,7 +3696,9 @@ Phong c\xE1ch: ${interiorStyle}
 Kh\xF4ng \u0111\u01B0\u1EE3c bi\u1EBFn floorplan th\xE0nh \u1EA3nh n\u1ED9i th\u1EA5t th\xF4ng th\u01B0\u1EDDng.
 Y\xEAu c\u1EA7u l\xE0m s\u1EA1ch b\u1EA3n v\u1EBD: ${floorplanAxonometricCleanupDirective}
 Y\xEAu c\u1EA7u m\xE0u s\u1EAFc: M\xF4 h\xECnh ph\u1ED1i c\u1EA3nh 3D axonometric ph\u1EA3i c\xF3 m\xE0u s\u1EAFc ch\xE2n th\u1EF1c, t\u1EF1 nhi\xEAn v\xE0 h\xE0i h\xF2a, \u0111\u1EA7y \u0111\u1EE7 v\u1EADt li\u1EC7u v\u1EDBi b\u1EC1 m\u1EB7t v\u1EADt l\xFD th\u1EF1c t\u1EBF (nh\u01B0 g\u1ED7 t\u1EF1 nhi\xEAn v\xE2n m\u1ECBn, v\u1EA3i d\u1EC7t, da th\u1EADt, \u0111\xE1 t\u1EF1 nhi\xEAn, g\u1EA1ch l\xE1t c\xF3 v\xE2n, t\u01B0\u1EDDng s\u01A1n m\xE0u pastel \u1EA5m/s\xE1ng/kem d\u1ECBu m\xE1t), tuy\u1EC7t \u0111\u1ED1i kh\xF4ng d\xF9ng m\xE0u s\u1EAFc qu\xE1 r\u1EF1c r\u1EE1 hay s\u1EB7c s\u1EE1 gi\u1EA3 t\u1EA1o, v\xE0 tuy\u1EC7t \u0111\u1ED1i kh\xF4ng \u0111\u1EC3 m\xE0u tr\u1EAFng to\xE0n b\u1ED9 (clay model) hay \u0111\u01A1n s\u1EAFc monochrome.
-Y\xEAu c\u1EA7u ph\xE2n t\xEDch: B\u1EAET BU\u1ED8C nh\u1EADn di\u1EC7n t\u1EA5t c\u1EA3 c\xE1c nh\xE3n ch\u1EEF ch\u1EC9 t\xEAn ph\xF2ng ho\u1EB7c c\xF4ng n\u0103ng vi\u1EBFt tr\xEAn b\u1EA3n v\u1EBD (v\xED d\u1EE5: Ph\xF2ng kh\xE1ch, Ph\xF2ng ng\u1EE7, WC, B\u1EBFp, Thang...). H\xE3y m\xF4 t\u1EA3 r\xF5 b\u1ED1 c\u1EE5c v\xE0 v\u1ECB tr\xED c\xE1c ph\xF2ng n\xE0y trong prompt \u0111\u1EC3 m\xF4 h\xECnh sinh \u1EA3nh d\u1EF1ng \u0111\xFAng c\xF4ng n\u0103ng ph\xF2ng.
+Y\xEAu c\u1EA7u ph\xE2n t\xEDch ph\xF2ng: B\u1EAET BU\u1ED8C nh\u1EADn di\u1EC7n t\u1EA5t c\u1EA3 c\xE1c nh\xE3n ch\u1EEF ch\u1EC9 t\xEAn ph\xF2ng ho\u1EB7c c\xF4ng n\u0103ng vi\u1EBFt tr\xEAn b\u1EA3n v\u1EBD (v\xED d\u1EE5: Ph\xF2ng kh\xE1ch, Ph\xF2ng ng\u1EE7, WC, B\u1EBFp, Thang...). H\xE3y m\xF4 t\u1EA3 r\xF5 b\u1ED1 c\u1EE5c v\xE0 v\u1ECB tr\xED c\xE1c ph\xF2ng n\xE0y trong prompt \u0111\u1EC3 m\xF4 h\xECnh sinh \u1EA3nh d\u1EF1ng \u0111\xFAng c\xF4ng n\u0103ng ph\xF2ng.
+Quy t\u1EAFc b\u1EA3o to\xE0n h\u01B0\u1EDBng b\u1EA3n v\u1EBD: TUY\u1EC6T \u0110\u1ED0I KH\xD4NG \u0111\u01B0\u1EE3c xoay (rotate), l\u1EADt (flip) hay ph\u1EA3n chi\u1EBFu (mirror) b\u1ED1 c\u1EE5c m\u1EB7t b\u1EB1ng. H\u01B0\u1EDBng c\u1EE7a b\u1EA3n v\u1EBD 2D g\u1ED1c ph\u1EA3i \u0111\u01B0\u1EE3c gi\u1EEF nguy\xEAn 100% trong \u1EA3nh 3D output \u2014 ph\xEDa tr\xEAn b\u1EA3n v\u1EBD = ph\xEDa tr\xEAn \u1EA3nh output, ph\xEDa ph\u1EA3i b\u1EA3n v\u1EBD = ph\xEDa ph\u1EA3i \u1EA3nh output. Kh\xF4ng t\u1EF1 \xFD xoay b\u1ED1 c\u1EE5c \u0111\u1EC3 'nh\xECn \u0111\u1EB9p h\u01A1n' hay 'ph\xF9 h\u1EE3p v\u1EDBi g\xF3c isometric'.
+Y\xEAu c\u1EA7u nh\u1EADn di\u1EC7n n\u1ED9i th\u1EA5t ch\u1EB7t ch\u1EBD: B\u1EAET BU\u1ED8C nh\u1EADn di\u1EC7n v\xE0 li\u1EC7t k\xEA t\u1EEBng k\xFD hi\u1EC7u \u0111\u1ED3 n\u1ED9i th\u1EA5t/thi\u1EBFt b\u1ECB trong t\u1EEBng ph\xF2ng theo h\xECnh d\u1EA1ng k\xFD hi\u1EC7u CAD ti\xEAu chu\u1EA9n trong b\u1EA3n v\u1EBD (h\xECnh ch\u1EEF nh\u1EADt d\xE0i t\u1EF1a t\u01B0\u1EDDng = gi\u01B0\u1EDDng; h\xECnh cung tr\xF2n c\u1EA1nh t\u01B0\u1EDDng = c\u1EEDa xoay; h\xECnh ch\u1EEF nh\u1EADt nh\u1ECF trong WC = toilet/lavabo; h\xECnh b\xE1n c\u1EA7u/oval l\u1EDBn = b\u1ED3n t\u1EAFm; h\xECnh oval/ch\u1EEF nh\u1EADt bo c\u1EA1nh gi\u1EEFa ph\xF2ng = b\xE0n \u0103n; h\xECnh ch\u1EEF L/U = sofa g\xF3c; h\xECnh vu\xF4ng nh\u1ECF quanh b\xE0n = gh\u1EBF; h\xECnh ch\u1EEF nh\u1EADt song song t\u1EF1a t\u01B0\u1EDDng = k\u1EC7/t\u1EE7). Trong \u1EA3nh 3D output, t\u1EEBng m\xF3n \u0111\u1ED3 PH\u1EA2I xu\u1EA5t hi\u1EC7n \u0111\xFAng lo\u1EA1i, \u0111\xFAng v\u1ECB tr\xED v\xE0 \u0111\xFAng h\u01B0\u1EDBng nh\u01B0 trong b\u1EA3n v\u1EBD 2D.
 `;
     if (referenceImages.length > 0) {
       textPrompt += `Quy t\u1EAFc \u1EA3nh tham kh\u1EA3o n\u1ED9i th\u1EA5t: Gi\u1EEF nguy\xEAn tuy\u1EC7t \u0111\u1ED1i v\u1ECB tr\xED, lo\u1EA1i v\xE0 s\u1EAFp x\u1EBFp c\u1EE7a t\u1EEBng m\xF3n \u0111\u1ED3 n\u1ED9i th\u1EA5t c\xF3 trong \u1EA3nh tham kh\u1EA3o. TUY\u1EC6T \u0110\u1ED0I kh\xF4ng di chuy\u1EC3n, xoay, th\xEAm ho\u1EB7c b\u1ECF b\u1EA5t k\u1EF3 m\xF3n \u0111\u1ED3 n\xE0o. Ch\u1EC9 \u0111\u01B0\u1EE3c \xE1p d\u1EE5ng phong c\xE1ch ho\xE0n thi\u1EC7n b\u1EC1 m\u1EB7t t\u1EEB \u1EA3nh tham kh\u1EA3o l\xEAn v\u1ECB tr\xED \u0111\u1ED3 v\u1EADt \u0111\xE3 c\u1ED1 \u0111\u1ECBnh theo b\u1EA3n v\u1EBD.
@@ -3630,29 +3711,32 @@ Y\xEAu c\u1EA7u ph\xE2n t\xEDch: B\u1EAET BU\u1ED8C nh\u1EADn di\u1EC7n t\u1EA5t
     textPrompt += `Negative prompt \u01B0u ti\xEAn: ${floorplanAxonometricNegativePrompt}
 `;
     systemInstruction = [
-      "B\u1EA1n l\xE0 chuy\xEAn gia ph\xE2n t\xEDch floorplan 2D v\xE0 t\xE1i d\u1EF1ng th\xE0nh kh\xF4ng gian 3D ch\xEDnh x\xE1c.",
-      "B\u1EAET BU\u1ED8C: B\u1EA1n PH\u1EA2I tu\xE2n th\u1EE7 tuy\u1EC7t \u0111\u1ED1i 'Style g\xF3c ch\u1EE5p' (cameraAngleStyle) \u0111\u01B0\u1EE3c ch\u1EC9 \u0111\u1ECBnh trong y\xEAu c\u1EA7u \u0111\u1EC3 m\xF4 t\u1EA3 g\xF3c nh\xECn trong prompt cu\u1ED1i c\xF9ng. N\u1EBFu l\xE0 'Top-down View', prompt B\u1EAET BU\u1ED8C ph\u1EA3i m\xF4 t\u1EA3 g\xF3c nh\xECn th\u1EB3ng \u0111\u1EE9ng tr\u1EF1c di\u1EC7n t\u1EEB tr\xEAn xu\u1ED1ng (flat 3D floor plan layout, straight top-down view, 90-degree bird's-eye view, no perspective distortion of walls, looking directly down at the floor, orthographic layout view). N\u1EBFu l\xE0 'Ph\u1ED1i c\u1EA3nh Tr\u1EF1c \u0111o (Isometric)', prompt B\u1EAET BU\u1ED8C ph\u1EA3i m\xF4 t\u1EA3 ph\u1ED1i c\u1EA3nh tr\u1EE5c \u0111o 3D (3D isometric cutaway perspective, axonometric cutaway view, tilted angle view). Tuy\u1EC7t \u0111\u1ED1i kh\xF4ng \u0111\u01B0\u1EE3c nh\u1EA7m l\u1EABn gi\u1EEFa hai g\xF3c nh\xECn n\xE0y.",
-      "B\u1EAET BU\u1ED8C: H\xE3y \u0111\u1ECDc k\u1EF9 \u1EA3nh m\u1EB7t b\u1EB1ng \u0111\u1EA7u v\xE0o, t\xECm v\xE0 nh\u1EADn di\u1EC7n \u0111\xFAng t\u1EA5t c\u1EA3 c\xE1c nh\xE3n ch\u1EEF ch\u1EC9 t\xEAn/c\xF4ng n\u0103ng ph\xF2ng (v\xED d\u1EE5: Ph\xF2ng kh\xE1ch, Ph\xF2ng ng\u1EE7, WC, B\u1EBFp, C\u1EA7u thang...). B\u1EA1n ph\u1EA3i m\xF4 t\u1EA3 chi ti\u1EBFt v\u1ECB tr\xED c\u1EE7a t\u1EEBng khu v\u1EF1c ch\u1EE9c n\u0103ng n\xE0y trong prompt cu\u1ED1i c\xF9ng \u0111\u1EC3 m\xF4 h\xECnh sinh \u1EA3nh x\u1EBFp \u0111\xFAng v\u1ECB tr\xED, tuy\u1EC7t \u0111\u1ED1i kh\xF4ng \u0111\u01B0\u1EE3c t\u1EF1 \xFD \u0111\u1ED5i c\xF4ng n\u0103ng ph\xF2ng (kh\xF4ng bi\u1EBFn WC th\xE0nh ph\xF2ng ng\u1EE7, kh\xF4ng v\u1EBD nh\u1EA7m ph\xF2ng ng\u1EE7 th\xE0nh ph\xF2ng kh\xE1ch).",
-      "M\u1EB7t b\u1EB1ng l\xE0 s\u1EF1 th\u1EADt tuy\u1EC7t \u0111\u1ED1i: t\u01B0\u1EDDng, c\u1EEDa, thang, v\xE1ch v\xE0 nh\xE3n ph\xF2ng ph\u1EA3i \u0111\u01B0\u1EE3c t\xF4n tr\u1ECDng.",
+      "B\u1EA1n l\xE0 chuy\xEAn gia ph\xE2n t\xEDch floorplan 2D v\xE0 t\xE1i d\u1EF1ng th\xE0nh kh\xF4ng gian 3D axonometric ch\xEDnh x\xE1c.",
+      "B\u1EAET BU\u1ED8C B\u1EA2O TO\xC0N H\u01AF\u1EDANG B\u1EA2N V\u1EBC: \u0110\xE2y l\xE0 quy t\u1EAFc t\u1ED1i th\u01B0\u1EE3ng. Tr\u01B0\u1EDBc ti\xEAn h\xE3y x\xE1c \u0111\u1ECBnh h\u01B0\u1EDBng orientation c\u1EE7a b\u1EA3n v\u1EBD 2D \u0111\u1EA7u v\xE0o (g\xF3c tr\xEAn-tr\xE1i, tr\xEAn-ph\u1EA3i, d\u01B0\u1EDBi-tr\xE1i, d\u01B0\u1EDBi-ph\u1EA3i t\u01B0\u01A1ng \u1EE9ng v\u1EDBi khu v\u1EF1c n\xE0o c\u1EE7a m\u1EB7t b\u1EB1ng). H\u01B0\u1EDBng n\xE0y PH\u1EA2I \u0111\u01B0\u1EE3c b\u1EA3o to\xE0n tuy\u1EC7t \u0111\u1ED1i trong \u1EA3nh k\u1EBFt qu\u1EA3 3D. TUY\u1EC6T \u0110\u1ED0I KH\xD4NG \u0110\u01AF\u1EE2C XOAY (rotate), L\u1EACT (flip) hay PH\u1EA2N CHI\u1EBEU (mirror) b\u1ED1 c\u1EE5c m\u1EB7t b\u1EB1ng d\u01B0\u1EDBi b\u1EA5t k\u1EF3 h\xECnh th\u1EE9c n\xE0o \u2014 k\u1EC3 c\u1EA3 \u0111\u1EC3 l\xE0m cho g\xF3c isometric '\u0111\u1EB9p h\u01A1n' hay 'c\xE2n \u0111\u1ED1i h\u01A1n'. Ph\xEDa tr\xEAn b\u1EA3n v\u1EBD = ph\xEDa tr\xEAn \u1EA3nh output. Ph\xEDa ph\u1EA3i b\u1EA3n v\u1EBD = ph\xEDa ph\u1EA3i \u1EA3nh output. Vi ph\u1EA1m quy t\u1EAFc n\xE0y l\xE0 l\u1ED7i nghi\xEAm tr\u1ECDng nh\u1EA5t.",
+      "B\u1EAET BU\u1ED8C NH\u1EACN DI\u1EC6N N\u1ED8I TH\u1EA4T CH\u1EB6T CH\u1EBC: Ph\xE2n t\xEDch v\xE0 map t\u1EEBng k\xFD hi\u1EC7u \u0111\u1ED3 n\u1ED9i th\u1EA5t trong b\u1EA3n v\u1EBD 2D theo chu\u1EA9n k\xFD hi\u1EC7u CAD ki\u1EBFn tr\xFAc: h\xECnh ch\u1EEF nh\u1EADt d\xE0i (\u22651.5m) t\u1EF1a t\u01B0\u1EDDng = gi\u01B0\u1EDDng (single/double); h\xECnh cung tr\xF2n c\u1EA1nh t\u01B0\u1EDDng = c\u1EEDa xoay (door swing); h\xECnh ch\u1EEF nh\u1EADt nh\u1ECF t\u1EF1a t\u01B0\u1EDDng trong ph\xF2ng v\u1EC7 sinh = toilet; h\xECnh ch\u1EEF nh\u1EADt nh\u1ECF h\u01A1n \u1EDF g\xF3c = lavabo; h\xECnh b\xE1n c\u1EA7u/oval l\u1EDBn = b\u1ED3n t\u1EAFm; h\xECnh oval/ch\u1EEF nh\u1EADt bo c\u1EA1nh trung t\xE2m ph\xF2ng = b\xE0n \u0103n; h\xECnh ch\u1EEF L/U v\u1EDBi \u0111\u1EC7m = sofa g\xF3c; h\xECnh vu\xF4ng/ch\u1EEF nh\u1EADt nh\u1ECF quanh b\xE0n = gh\u1EBF ri\xEAng l\u1EBB; h\xECnh ch\u1EEF nh\u1EADt d\xE0i song song t\u1EF1a t\u01B0\u1EDDng = k\u1EC7 s\xE1ch/t\u1EE7 qu\u1EA7n \xE1o/t\u1EE7 b\u1EBFp; h\xECnh vu\xF4ng nh\u1ECF v\u1EDBi v\xF2ng tr\xF2n = b\u1EBFp hob. M\u1ED7i k\xFD hi\u1EC7u PH\u1EA2I \u0111\u01B0\u1EE3c map \u0111\xFAng sang \u0111\u1ED3 v\u1EADt 3D v\xE0 \u0111\u1EB7t \u0111\xFAng v\u1ECB tr\xED, \u0111\xFAng h\u01B0\u1EDBng xoay trong output.",
+      "B\u1EAET BU\u1ED8C TU\xC2N TH\u1EE6 G\xD3C CH\u1EE4P: B\u1EA1n PH\u1EA2I tu\xE2n th\u1EE7 tuy\u1EC7t \u0111\u1ED1i 'Style g\xF3c ch\u1EE5p' (cameraAngleStyle) \u0111\u01B0\u1EE3c ch\u1EC9 \u0111\u1ECBnh. N\u1EBFu l\xE0 'Top-down View', prompt B\u1EAET BU\u1ED8C ph\u1EA3i m\xF4 t\u1EA3 g\xF3c nh\xECn th\u1EB3ng \u0111\u1EE9ng tr\u1EF1c di\u1EC7n t\u1EEB tr\xEAn xu\u1ED1ng (flat 3D floor plan layout, straight top-down view, 90-degree bird's-eye view, no perspective distortion of walls, looking directly down at the floor, orthographic layout view). N\u1EBFu l\xE0 'Ph\u1ED1i c\u1EA3nh Tr\u1EF1c \u0111o (Isometric)', prompt B\u1EAET BU\u1ED8C ph\u1EA3i m\xF4 t\u1EA3 ph\u1ED1i c\u1EA3nh tr\u1EE5c \u0111o 3D (3D isometric cutaway perspective, axonometric cutaway view, tilted angle view). Tuy\u1EC7t \u0111\u1ED1i kh\xF4ng \u0111\u01B0\u1EE3c nh\u1EA7m l\u1EABn gi\u1EEFa hai g\xF3c nh\xECn n\xE0y.",
+      "B\u1EAET BU\u1ED8C NH\u1EACN DI\u1EC6N PH\xD2NG: H\xE3y \u0111\u1ECDc k\u1EF9 \u1EA3nh m\u1EB7t b\u1EB1ng, t\xECm v\xE0 nh\u1EADn di\u1EC7n \u0111\xFAng t\u1EA5t c\u1EA3 nh\xE3n ch\u1EEF ch\u1EC9 t\xEAn/c\xF4ng n\u0103ng ph\xF2ng. M\xF4 t\u1EA3 chi ti\u1EBFt v\u1ECB tr\xED t\u1EEBng khu v\u1EF1c ch\u1EE9c n\u0103ng trong prompt cu\u1ED1i c\xF9ng. Tuy\u1EC7t \u0111\u1ED1i kh\xF4ng \u0111\u01B0\u1EE3c t\u1EF1 \xFD \u0111\u1ED5i c\xF4ng n\u0103ng ph\xF2ng (kh\xF4ng bi\u1EBFn WC th\xE0nh ph\xF2ng ng\u1EE7, kh\xF4ng v\u1EBD nh\u1EA7m ph\xF2ng ng\u1EE7 th\xE0nh ph\xF2ng kh\xE1ch).",
+      "M\u1EB7t b\u1EB1ng l\xE0 s\u1EF1 th\u1EADt tuy\u1EC7t \u0111\u1ED1i: t\u01B0\u1EDDng, c\u1EEDa, thang, v\xE1ch v\xE0 nh\xE3n ph\xF2ng ph\u1EA3i \u0111\u01B0\u1EE3c t\xF4n tr\u1ECDng. Kh\xF4ng \u0111\u01B0\u1EE3c ph\xE9p b\u1ED5 sung, x\xF3a b\u1ECF ho\u1EB7c s\u1EEDa \u0111\u1ED5i b\u1EA5t k\u1EF3 th\xE0nh ph\u1EA7n ki\u1EBFn tr\xFAc n\xE0o kh\xF4ng c\xF3 trong b\u1EA3n v\u1EBD; n\u1EBFu kh\xF4ng ch\u1EAFc, ph\u1EA3i gi\u1EEF nguy\xEAn thay v\xEC t\u1EF1 b\u1ECBa.",
       "Nh\xE3n ph\xF2ng v\xE0 k\xFD hi\u1EC7u ch\u1EC9 d\xF9ng \u0111\u1EC3 suy lu\u1EADn b\u1ED1 tr\xED, kh\xF4ng \u0111\u01B0\u1EE3c xu\u1EA5t hi\u1EC7n l\u1EA1i trong \u1EA3nh k\u1EBFt qu\u1EA3.",
-      "Kh\xF4ng \u0111\u01B0\u1EE3c ph\xE9p b\u1ED5 sung, x\xF3a b\u1ECF ho\u1EB7c s\u1EEDa \u0111\u1ED5i b\u1EA5t k\u1EF3 th\xE0nh ph\u1EA7n ki\u1EBFn tr\xFAc n\xE0o kh\xF4ng c\xF3 trong b\u1EA3n v\u1EBD; n\u1EBFu kh\xF4ng ch\u1EAFc, ph\u1EA3i gi\u1EEF nguy\xEAn thay v\xEC t\u1EF1 b\u1ECBa.",
-      "M\xF4 h\xECnh 3D axonometric ph\u1EA3i \u0111\u01B0\u1EE3c t\xF4 m\xE0u ch\xE2n th\u1EF1c, t\u1EF1 nhi\xEAn v\xE0 ch\xEDnh x\xE1c cho s\xE0n, t\u01B0\u1EDDng, v\xE0 \u0111\u1ED3 n\u1ED9i th\u1EA5t theo phong c\xE1ch thi\u1EBFt k\u1EBF \u0111\xE3 ch\u1ECDn, s\u1EED d\u1EE5ng c\xE1c gam m\xE0u trung t\xEDnh nh\xE3 nh\u1EB7n v\xE0 ch\u1EA5t li\u1EC7u v\u1EADt l\xFD c\xF3 chi\u1EC1u s\xE2u th\u1EF1c t\u1EBF. KH\xD4NG \u0111\u01B0\u1EE3c t\u1EA1o m\xF4 h\xECnh \u0111\u1EA5t s\xE9t tr\u1EAFng (white clay model) hay \u0111\u01A1n s\u1EAFc tr\u1EAFng.",
+      "M\xF4 h\xECnh 3D axonometric ph\u1EA3i \u0111\u01B0\u1EE3c t\xF4 m\xE0u ch\xE2n th\u1EF1c, t\u1EF1 nhi\xEAn v\xE0 ch\xEDnh x\xE1c cho s\xE0n, t\u01B0\u1EDDng, v\xE0 \u0111\u1ED3 n\u1ED9i th\u1EA5t theo phong c\xE1ch thi\u1EBFt k\u1EBF \u0111\xE3 ch\u1ECDn. KH\xD4NG \u0111\u01B0\u1EE3c t\u1EA1o m\xF4 h\xECnh \u0111\u1EA5t s\xE9t tr\u1EAFng (white clay model) hay \u0111\u01A1n s\u1EAFc tr\u1EAFng.",
       referenceImages.length > 0 ? "Khi c\xF3 \u1EA3nh tham kh\u1EA3o n\u1ED9i th\u1EA5t: t\u1EEBng m\xF3n \u0111\u1ED3 tham kh\u1EA3o ch\u1EC9 \u0111\u01B0\u1EE3c d\xF9ng \u0111\u1EC3 kh\xF3a \u0111\xFAng ch\u1EE7ng lo\u1EA1i, h\u01B0\u1EDBng v\xE0 v\u1ECB tr\xED t\u01B0\u01A1ng \u1EE9ng theo m\u1EB7t b\u1EB1ng; kh\xF4ng t\u1EF1 \xFD th\xEAm b\u1EDBt hay di chuy\u1EC3n." : "N\u1EBFu kh\xF4ng c\xF3 \u1EA3nh tham kh\u1EA3o n\u1ED9i th\u1EA5t, b\u1ED1 tr\xED \u0111\u1ED3 \u0111\u1EA1c ph\u1EA3i b\xE1m logic m\u1EB7t b\u1EB1ng v\xE0 ch\u1EC9 d\u1EF1ng nh\u1EEFng g\xEC suy ra ch\u1EAFc ch\u1EAFn t\u1EEB b\u1EA3n v\u1EBD.",
       "T\u1EA5t c\u1EA3 \u0111\u1EA7u ra b\u1EB1ng ti\u1EBFng Vi\u1EC7t, \u01B0u ti\xEAn prompt cu\u1ED1i d\xF9ng \u0111\u01B0\u1EE3c ngay."
     ].join(" ");
     responseSchema = objectSchema(
       {
-        phan_tich_khoa_goc_ghi_hinh: stringField("Ph\xE2n t\xEDch chi ti\u1EBFt m\u1EB7t b\u1EB1ng: nh\u1EADn di\u1EC7n v\xE0 li\u1EC7t k\xEA t\u1EA5t c\u1EA3 c\xE1c ph\xF2ng/khu v\u1EF1c ch\u1EE9c n\u0103ng k\xE8m nh\xE3n t\xEAn t\u01B0\u01A1ng \u1EE9ng \u0111\u1EC3 \u0111\u1EA3m b\u1EA3o m\xF4 h\xECnh kh\xF4ng hi\u1EC3u sai l\u1EC7ch."),
+        phan_tich_huong_ban_ve: stringField("X\xC1C NH\u1EACN H\u01AF\u1EDANG B\u1EAET BU\u1ED8C: M\xF4 t\u1EA3 ch\xEDnh x\xE1c orientation c\u1EE7a b\u1EA3n v\u1EBD 2D \u0111\u1EA7u v\xE0o (g\xF3c tr\xEAn-tr\xE1i l\xE0 khu v\u1EF1c n\xE0o, g\xF3c tr\xEAn-ph\u1EA3i l\xE0 khu v\u1EF1c n\xE0o). Ghi r\xF5 cam k\u1EBFt: h\u01B0\u1EDBng n\xE0y S\u1EBC \u0110\u01AF\u1EE2C GI\u1EEE NGUY\xCAN trong \u1EA3nh output, kh\xF4ng xoay, kh\xF4ng l\u1EADt."),
+        phan_tich_phong_va_chuc_nang: stringField("Nh\u1EADn di\u1EC7n v\xE0 li\u1EC7t k\xEA t\u1EA5t c\u1EA3 c\xE1c ph\xF2ng/khu v\u1EF1c ch\u1EE9c n\u0103ng k\xE8m nh\xE3n t\xEAn v\xE0 v\u1ECB tr\xED t\u01B0\u01A1ng \u1EE9ng trong b\u1EA3n v\u1EBD (g\xF3c n\xE0o, c\u1EA1nh n\xE0o, ti\u1EBFp gi\xE1p ph\xF2ng n\xE0o)."),
+        nhan_dien_noi_that_theo_phong: stringField("LI\u1EC6T K\xCA T\u1EEANG M\xD3N \u0110\u1ED2 N\u1ED8I TH\u1EA4T theo t\u1EEBng ph\xF2ng: t\xEAn \u0111\u1ED3 v\u1EADt \u0111\u01B0\u1EE3c map t\u1EEB k\xFD hi\u1EC7u CAD, v\u1ECB tr\xED trong ph\xF2ng (g\xF3c n\xE0o, t\u1EF1a t\u01B0\u1EDDng n\xE0o), h\u01B0\u1EDBng \u0111\u1EB7t (xoay v\u1EC1 ph\xEDa n\xE0o), k\xEDch th\u01B0\u1EDBc \u01B0\u1EDBc t\xEDnh. \u0110\xE2y l\xE0 r\xE0ng bu\u1ED9c c\u1EE9ng cho v\u1ECB tr\xED v\xE0 lo\u1EA1i \u0111\u1ED3 v\u1EADt trong prompt cu\u1ED1i."),
         logic_phong_cach_va_cong_trinh: stringField("T\u1ED5ng h\u1EE3p phong c\xE1ch v\xE0 logic c\xF4ng tr\xECnh."),
-        quyet_dinh_cat_tuong: stringField("M\xF4 t\u1EA3 chi\u1EBFn l\u01B0\u1EE3c c\u1EAFt t\u01B0\u1EDDng n\u1EBFu c\u1EA7n."),
         thiet_lap_anh_sang_va_studio: stringField("Thi\u1EBFt l\u1EADp \xE1nh s\xE1ng v\xE0 c\xE1ch tr\xECnh b\xE0y."),
-        prompt_tieng_viet_toi_uu: stringField("Prompt render cu\u1ED1i c\xF9ng. Ph\u1EA3i m\xF4 t\u1EA3 r\xF5 r\xE0ng v\u1ECB tr\xED c\u1EE5 th\u1EC3 c\u1EE7a t\u1EEBng ph\xF2ng/khu v\u1EF1c ch\u1EE9c n\u0103ng \u0111\xE3 nh\u1EADn di\u1EC7n."),
-        prompt_phu_dinh: stringField("C\xE1c l\u1ED7i c\u1EA7n tr\xE1nh.")
+        prompt_tieng_viet_toi_uu: stringField("Prompt render cu\u1ED1i c\xF9ng. PH\u1EA2I m\xF4 t\u1EA3 r\xF5: (1) x\xE1c nh\u1EADn h\u01B0\u1EDBng b\u1ED1 c\u1EE5c kh\xF4ng thay \u0111\u1ED5i so v\u1EDBi b\u1EA3n v\u1EBD g\u1ED1c, (2) v\u1ECB tr\xED c\u1EE5 th\u1EC3 t\u1EEBng ph\xF2ng, (3) t\u1EEBng m\xF3n \u0111\u1ED3 n\u1ED9i th\u1EA5t \u0111\xFAng v\u1ECB tr\xED v\xE0 h\u01B0\u1EDBng nh\u01B0 \u0111\xE3 nh\u1EADn di\u1EC7n."),
+        prompt_phu_dinh: stringField("C\xE1c l\u1ED7i c\u1EA7n tr\xE1nh, bao g\u1ED3m: rotated layout, flipped plan, mirrored orientation, wrong furniture placement, misidentified room function, missing furniture, added furniture not in plan, rotated floor plan.")
       },
       [
-        "phan_tich_khoa_goc_ghi_hinh",
+        "phan_tich_huong_ban_ve",
+        "phan_tich_phong_va_chuc_nang",
+        "nhan_dien_noi_that_theo_phong",
         "logic_phong_cach_va_cong_trinh",
-        "quyet_dinh_cat_tuong",
         "thiet_lap_anh_sang_va_studio",
         "prompt_tieng_viet_toi_uu",
         "prompt_phu_dinh"
@@ -4972,7 +5056,7 @@ var pollingService = {
 };
 
 // server.ts
-import_dotenv2.default.config();
+import_dotenv3.default.config();
 async function startServer() {
   await connectDB();
   pollingService.init();

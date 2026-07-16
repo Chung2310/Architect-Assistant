@@ -174,8 +174,8 @@ Bạn cần tôi hỗ trợ thông tin gì hôm nay?`
   }, []);
 
   return (
-    <div className="h-full flex flex-col bg-surface overflow-hidden">
-      <div className="max-w-7xl mx-auto w-full h-full flex flex-col p-8">
+    <div className="min-h-full flex flex-col bg-surface">
+      <div className="max-w-7xl mx-auto w-full flex flex-col p-8">
         {/* Page Header */}
         <div className="relative mb-8 z-40 flex items-center justify-center min-h-[64px]">
           <div className="absolute left-0 top-0 flex items-center gap-4">
@@ -273,7 +273,7 @@ Bạn cần tôi hỗ trợ thông tin gì hôm nay?`
         </div>
 
         {/* Content Container */}
-        <div className="flex-1 bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden flex flex-col relative">
+        <div className="bg-surface-container-lowest rounded-xl shadow-sm flex flex-col relative">
           {activeTab === "Render" && <RenderTabContent isAdmin={isAdmin} />}
           {activeTab === "Cải thiện Render" && <EnhanceRenderTabContent />}
           {activeTab === "Upscale" && <UpscaleTabContent />}
@@ -1552,7 +1552,7 @@ ${cropInfo}
   };
 
   return (
-    <div className="flex-1 flex flex-col p-8 gap-8 overflow-y-auto">
+    <div className="flex flex-col p-8 gap-8">
       {/* Sub-tabs */}
       <div className="flex items-center justify-center gap-4 flex-wrap">
         {subTabs.map((tab) => (
@@ -4676,7 +4676,7 @@ const LayoutTabContent: React.FC = () => {
   ];
 
   return (
-    <div className="flex-1 flex flex-col p-8 gap-8 overflow-y-auto">
+    <div className="flex flex-col p-8 gap-8">
       <div className="flex flex-col lg:flex-row gap-8 flex-1 min-h-[600px] items-start">
         {/* Left Sidebar */}
         <div className="w-full lg:w-[380px] flex flex-col gap-6 shrink-0">
@@ -6416,7 +6416,7 @@ const UtilitiesTabContent: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 p-6 overflow-y-auto bg-surface flex flex-col">
+    <div className="p-6 bg-surface flex flex-col">
       {activeUtility ? (
         renderUtilityContent()
       ) : (
