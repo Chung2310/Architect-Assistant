@@ -25,11 +25,6 @@ import { RenderTabContent } from "./render/RenderTabContent";
 import { EnhanceRenderTabContent } from "./render/EnhanceRenderTabContent";
 import { UpscaleTabContent } from "./render/UpscaleTabContent";
 import { SyncTabContent } from "./render/SyncTabContent";
-import {
-  createScrollTracker,
-  INITIAL_RENDER_HEADER_EXPANDED,
-  trackRenderHeaderIntent,
-} from "./render/renderHeaderState";
 
 
 const TABS = [
@@ -183,89 +178,9 @@ Bạn cần tôi hỗ trợ thông tin gì hôm nay?`
     return () => window.removeEventListener("igenNavigate", handleNavigate);
   }, []);
 
-  const [isHeaderExpanded, setIsHeaderExpanded] = useState(
-    INITIAL_RENDER_HEADER_EXPANDED,
-  );
-  const contentAreaRef = useRef<HTMLDivElement>(null);
-  const scrollTrackerRef = useRef(createScrollTracker());
-  const lastTouchYRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    const contentArea = contentAreaRef.current;
-    if (!contentArea) return;
-
-    const applyScrollIntent = (deltaY: number) => {
-      const result = trackRenderHeaderIntent(scrollTrackerRef.current, deltaY);
-      scrollTrackerRef.current = result.tracker;
-
-      if (result.visibility !== null) {
-        setIsHeaderExpanded(result.visibility);
-      }
-    };
-
-    const handleWheel = (event: WheelEvent) => {
-      applyScrollIntent(event.deltaY);
-    };
-
-    const handleTouchStart = (event: TouchEvent) => {
-      lastTouchYRef.current = event.touches[0]?.clientY ?? null;
-    };
-
-    const handleTouchMove = (event: TouchEvent) => {
-      const currentY = event.touches[0]?.clientY;
-      const previousY = lastTouchYRef.current;
-      if (currentY === undefined || previousY === null) return;
-
-      applyScrollIntent(previousY - currentY);
-      lastTouchYRef.current = currentY;
-    };
-
-    const handleTouchEnd = () => {
-      lastTouchYRef.current = null;
-    };
-
-    contentArea.addEventListener("wheel", handleWheel, {
-      capture: true,
-      passive: true,
-    });
-    contentArea.addEventListener("touchstart", handleTouchStart, {
-      capture: true,
-      passive: true,
-    });
-    contentArea.addEventListener("touchmove", handleTouchMove, {
-      capture: true,
-      passive: true,
-    });
-    contentArea.addEventListener("touchend", handleTouchEnd, {
-      capture: true,
-      passive: true,
-    });
-
-    return () => {
-      contentArea.removeEventListener("wheel", handleWheel, {
-        capture: true,
-      });
-      contentArea.removeEventListener("touchstart", handleTouchStart, {
-        capture: true,
-      });
-      contentArea.removeEventListener("touchmove", handleTouchMove, {
-        capture: true,
-      });
-      contentArea.removeEventListener("touchend", handleTouchEnd, {
-        capture: true,
-      });
-    };
-  }, []);
-
   return (
-    <div className="h-full flex flex-col bg-surface overflow-hidden">
-      <div className="max-w-7xl mx-auto w-full h-full flex flex-col p-8">
-        {/* Page Header + Tabs Navigation */}
-        <div
-          className={`transition-all duration-300 ease-in-out motion-reduce:transition-none overflow-hidden ${
-            isHeaderExpanded ? "max-h-[420px] opacity-100" : "max-h-0 opacity-0"
-          }`}
-        >
+    <div className="min-h-full flex flex-col bg-surface">
+      <div className="max-w-7xl mx-auto w-full flex flex-col p-8">
         {/* Page Header */}
         <div className="relative mb-8 z-40 flex items-center justify-center min-h-[64px]">
           <div className="absolute left-0 top-0 flex items-center gap-4">
@@ -361,13 +276,9 @@ Bạn cần tôi hỗ trợ thông tin gì hôm nay?`
             );
           })}
         </div>
-        </div>
 
         {/* Content Container */}
-        <div
-          ref={contentAreaRef}
-          className="flex-1 bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden flex flex-col relative"
-        >
+        <div className="bg-surface-container-lowest rounded-xl shadow-sm flex flex-col relative">
           {activeTab === "Render" && <RenderTabContent isAdmin={isAdmin} />}
           {activeTab === "Cải thiện Render" && <EnhanceRenderTabContent />}
           {activeTab === "Upscale" && <UpscaleTabContent />}
@@ -1646,7 +1557,7 @@ ${cropInfo}
   };
 
   return (
-    <div className="flex-1 flex flex-col p-8 gap-8 overflow-y-auto">
+    <div className="flex flex-col p-8 gap-8">
       {/* Sub-tabs */}
       <div className="flex items-center justify-center gap-4 flex-wrap">
         {subTabs.map((tab) => (
@@ -4770,7 +4681,7 @@ const LayoutTabContent: React.FC = () => {
   ];
 
   return (
-    <div className="flex-1 flex flex-col p-8 gap-8 overflow-y-auto">
+    <div className="flex flex-col p-8 gap-8">
       <div className="flex flex-col lg:flex-row gap-8 flex-1 min-h-[600px] items-start">
         {/* Left Sidebar */}
         <div className="w-full lg:w-[380px] flex flex-col gap-6 shrink-0">
@@ -6510,7 +6421,7 @@ const UtilitiesTabContent: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 p-6 overflow-y-auto bg-surface flex flex-col">
+    <div className="p-6 bg-surface flex flex-col">
       {activeUtility ? (
         renderUtilityContent()
       ) : (
