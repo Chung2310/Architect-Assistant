@@ -32,6 +32,8 @@ interface ChooseRoomsModalProps {
   onClose: () => void;
   floorsCount: number;
   initialSelection?: Record<number, RoomSelection[]>;
+  landWidth?: number;
+  landLength?: number;
   onConfirm: (roomsString: string, roomSelection: Record<number, RoomSelection[]>) => void;
 }
 
@@ -58,18 +60,84 @@ const ROOM_META: Record<
   "Phòng kho bếp (Pantry)": { label: "Phòng kho bếp (Pantry)", icon: Package },
   "Phòng giặt ủi": { label: "Phòng giặt ủi", icon: WashingMachine },
   "Phòng kỹ thuật": { label: "Phòng kỹ thuật", icon: Settings },
-  "Lối vào / Sảnh đón (Entry)": { label: "Lối vào / Sảnh đón (Entry)", icon: Home },
   "Sảnh phụ (Mudroom)": { label: "Sảnh phụ (Mudroom)", icon: Home },
-  "Hiên trước (Porch)": { label: "Hiên trước (Porch)", icon: Home },
 };
 
 const ALL_ROOM_NAMES = Object.keys(ROOM_META);
+
+const getDefaultRoomsForArea = (floorsCount: number, landWidth?: number, landLength?: number): Record<number, RoomSelection[]> => {
+  const width = landWidth || 5;
+  const length = landLength || 15;
+  const landArea = width * length;
+
+  const defaults: Record<number, RoomSelection[]> = {};
+
+  for (let f = 1; f <= floorsCount; f++) {
+    if (landArea < 45) {
+      // Small land area: 2-3 essential rooms
+      if (f === 1) {
+        defaults[f] = [
+          { name: "Phòng bếp", count: 1 },
+          { name: "Phòng khách", count: 1 },
+          { name: "Phòng tắm lớn", count: 1 },
+        ];
+      } else {
+        defaults[f] = [
+          { name: "Phòng ngủ", count: 1 },
+          { name: "Phòng tắm lớn", count: 1 },
+          { name: "Ban công", count: 1 },
+        ];
+      }
+    } else if (landArea < 90) {
+      // Medium land area: 4-5 rooms
+      if (f === 1) {
+        defaults[f] = [
+          { name: "Phòng bếp", count: 1 },
+          { name: "Phòng khách", count: 1 },
+          { name: "Phòng tắm lớn", count: 1 },
+          { name: "Phòng ăn", count: 1 },
+        ];
+      } else {
+        defaults[f] = [
+          { name: "Phòng ngủ", count: 2 },
+          { name: "Phòng tắm lớn", count: 1 },
+          { name: "Ban công", count: 1 },
+          { name: "Phòng vệ sinh phụ", count: 1 },
+        ];
+      }
+    } else {
+      // Large land area: 5-6 rooms
+      if (f === 1) {
+        defaults[f] = [
+          { name: "Phòng bếp", count: 1 },
+          { name: "Phòng khách", count: 1 },
+          { name: "Phòng tắm lớn", count: 1 },
+          { name: "Phòng ăn", count: 1 },
+          { name: "Nhà xe / Gara", count: 1 },
+        ];
+      } else {
+        defaults[f] = [
+          { name: "Phòng ngủ", count: 2 },
+          { name: "Phòng tắm lớn", count: 1 },
+          { name: "Phòng sinh hoạt chung", count: 1 },
+          { name: "Ban công", count: 1 },
+          { name: "Phòng vệ sinh phụ", count: 1 },
+          { name: "Phòng làm việc", count: 1 },
+        ];
+      }
+    }
+  }
+
+  return defaults;
+};
 
 export const ChooseRoomsModal: React.FC<ChooseRoomsModalProps> = ({
   isOpen,
   onClose,
   floorsCount,
   initialSelection,
+  landWidth,
+  landLength,
   onConfirm,
 }) => {
   const [roomsByFloor, setRoomsByFloor] = useState<Record<number, RoomSelection[]>>({});
@@ -83,33 +151,13 @@ export const ChooseRoomsModal: React.FC<ChooseRoomsModalProps> = ({
       if (initialSelection && Object.keys(initialSelection).length > 0) {
         setRoomsByFloor(JSON.parse(JSON.stringify(initialSelection)));
       } else {
-        const defaults: Record<number, RoomSelection[]> = {};
-        for (let f = 1; f <= floorsCount; f++) {
-          if (f === 1) {
-            defaults[f] = [
-              { name: "Phòng bếp", count: 1 },
-              { name: "Phòng khách", count: 1 },
-              { name: "Phòng tắm lớn", count: 1 },
-              { name: "Phòng ăn", count: 1 },
-              { name: "Nhà xe / Gara", count: 1 },
-            ];
-          } else {
-            defaults[f] = [
-              { name: "Phòng ngủ", count: 2 },
-              { name: "Phòng tắm lớn", count: 1 },
-              { name: "Phòng sinh hoạt chung", count: 1 },
-              { name: "Ban công", count: 1 },
-              { name: "Phòng vệ sinh phụ", count: 1 },
-              { name: "Phòng làm việc", count: 1 },
-            ];
-          }
-        }
+        const defaults = getDefaultRoomsForArea(floorsCount, landWidth, landLength);
         setRoomsByFloor(defaults);
       }
       setActiveDropdownFloor(null);
     }, 0);
     return () => clearTimeout(timer);
-  }, [isOpen, floorsCount, initialSelection]);
+  }, [isOpen, floorsCount, initialSelection, landWidth, landLength]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -172,27 +220,7 @@ export const ChooseRoomsModal: React.FC<ChooseRoomsModalProps> = ({
   };
 
   const handleReset = () => {
-    const defaults: Record<number, RoomSelection[]> = {};
-    for (let f = 1; f <= floorsCount; f++) {
-      if (f === 1) {
-        defaults[f] = [
-          { name: "Phòng bếp", count: 1 },
-          { name: "Phòng khách", count: 1 },
-          { name: "Phòng tắm lớn", count: 1 },
-          { name: "Phòng ăn", count: 1 },
-          { name: "Nhà xe / Gara", count: 1 },
-        ];
-      } else {
-        defaults[f] = [
-          { name: "Phòng ngủ", count: 2 },
-          { name: "Phòng tắm lớn", count: 1 },
-          { name: "Phòng sinh hoạt chung", count: 1 },
-          { name: "Ban công", count: 1 },
-          { name: "Phòng vệ sinh phụ", count: 1 },
-          { name: "Phòng làm việc", count: 1 },
-        ];
-      }
-    }
+    const defaults = getDefaultRoomsForArea(floorsCount, landWidth, landLength);
     setRoomsByFloor(defaults);
     setActiveDropdownFloor(null);
   };

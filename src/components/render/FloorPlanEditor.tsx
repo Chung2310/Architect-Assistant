@@ -1689,13 +1689,38 @@ export function adjustRoomsToFitShape(rooms: Room[], shape: string, landW: numbe
     }
   }
 
-  return adjusted.map(room => ({
-    ...room,
-    x: parseFloat(room.x.toFixed(2)),
-    y: parseFloat(room.y.toFixed(2)),
-    w: parseFloat(Math.max(0.5, room.w).toFixed(2)),
-    h: parseFloat(Math.max(0.5, room.h).toFixed(2)),
-  }));
+  return adjusted.map(room => {
+    let rx = Math.max(0, room.x);
+    let ry = Math.max(0, room.y);
+    let rw = Math.max(0.5, room.w);
+    let rh = Math.max(0.5, room.h);
+
+    if (rx + rw > landW) {
+      if (rw > 0.5) {
+        rw = Math.max(0.5, landW - rx);
+      }
+      if (rx + rw > landW) {
+        rx = Math.max(0, landW - rw);
+      }
+    }
+
+    if (ry + rh > landL) {
+      if (rh > 0.5) {
+        rh = Math.max(0.5, landL - ry);
+      }
+      if (ry + rh > landL) {
+        ry = Math.max(0, landL - rh);
+      }
+    }
+
+    return {
+      ...room,
+      x: parseFloat(rx.toFixed(2)),
+      y: parseFloat(ry.toFixed(2)),
+      w: parseFloat(rw.toFixed(2)),
+      h: parseFloat(rh.toFixed(2)),
+    };
+  });
 }
 
 export function isDoorCollidingWithAnyFurniture(
@@ -2122,7 +2147,7 @@ export const FloorPlanEditor: React.FC = () => {
     
     const newProject = {
       id: newId,
-      name: "Untitled Project",
+      name: "Dự án chưa có tiêu đề",
       floorPlans: [],
       activeFloorIndex: 0,
       gatherInfo: {},
@@ -3224,7 +3249,10 @@ QUY TẮC THIẾT KẾ BẮT BUỘC (TUÂN THỦ TUYỆT ĐỐI):
 ${boundaryInstruction}
      + Phải phân bổ kích thước sao cho các phòng ghép sát nhau khít hoàn toàn và cùng chạm đến ranh giới. Ví dụ, nếu phòng bên cạnh kéo dài chạm biên ranh giới, thì phòng song song bên cạnh cũng phải được tăng chiều rộng hoặc chiều dài để chạm sát biên ranh giới tương ứng, không được để thụt ngắn hơn tạo ra khoảng đất trống thừa ở biên.
    - TUYỆT ĐỐI KHÔNG CHỒNG ĐÈ: Các phòng phải tiếp giáp khít nhau qua cạnh tường chung, tuyệt đối không chồng chéo, không đè lên nhau (overlap), và không được trùng lấn tọa độ.
-   - PHÂN BỔ TỶ LỆ DIỆN TÍCH THÔNG MINH: Cân đối kích thước hợp lý cho các phòng yêu cầu (ví dụ: Phòng ngủ từ 12m² - 18m², Toilet/WC chỉ nên nhỏ gọn từ 2.2m² - 4m²). Không được làm Toilet quá to bằng phòng ngủ.
+   - PHÂN BỔ TỶ LỆ DIỆN TÍCH THÔNG MINH & XỬ LÝ THEO DIỆN TÍCH ĐẤT (ĐẶC BIỆT QUAN TRỌNG):
+     + Cân đối kích thước hợp lý cho các phòng yêu cầu (ví dụ: Phòng ngủ từ 12m² - 18m², Toilet/WC chỉ nên nhỏ gọn từ 2.2m² - 4m²). Không được làm Toilet quá to bằng phòng ngủ.
+     + NẾU ĐẤT RỘNG NHƯNG ÍT PHÒNG: Phải tăng mạnh kích thước của từng phòng lên tương ứng (ví dụ: làm phòng khách rộng 30-50m², phòng ngủ 20-30m², bếp 18-25m²) để đảm bảo các phòng ghép lại bao phủ toàn bộ 100% diện tích đất, tuyệt đối không được để lại khoảng trống thừa hay thiếu đất.
+     + NẾU ĐẤT HẸP / DIỆN TÍCH BÉ: Phải chủ động thu nhỏ diện tích các phòng xuống dưới mức kích thước khuyến nghị (ví dụ: phòng ngủ chỉ cần 8-10m², WC 2-3m²) để tất cả các phòng xếp khít nhau vừa vặn trong ranh giới đất, đảm bảo giữ nguyên hình dạng ranh giới đất đã chọn, tuyệt đối không thiết kế các phòng quá to vượt ra ngoài biên hoặc chồng đè lên nhau.
 
 2. KÍCH THƯỚC TỐI THIỂU BẮT BUỘC CHO TỪNG LOẠI PHÒNG (phải đảm bảo đủ diện tích để bố trí nội thất):
    - Phòng khách (living room): tối thiểu 3.0m x 4.0m (12m²), ưu tiên 4m x 5m trở lên
@@ -9828,6 +9856,8 @@ Requirements:
         onClose={() => setShowRoomsModal(false)}
         floorsCount={gatherInfo.floors || 1}
         initialSelection={gatherInfo.roomSelection}
+        landWidth={gatherInfo.landWidth}
+        landLength={gatherInfo.landLength}
         onConfirm={(roomsString, roomSelection) =>
           handleRoomsSelected(roomsString, roomSelection)
         }
