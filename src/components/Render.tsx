@@ -39,6 +39,11 @@ const TABS = [
 
 const MODELS = [
   {
+    id: "openrouter-nano-banana-2",
+    name: "Igen gemini Image Pro Preview",
+    isPro: true,
+  },
+  {
     id: "nano-banana-2",
     name: "Igen gemini Image Flash",
     isPro: false,
@@ -174,8 +179,8 @@ Bạn cần tôi hỗ trợ thông tin gì hôm nay?`
   }, []);
 
   return (
-    <div className="h-full flex flex-col bg-surface overflow-hidden">
-      <div className="max-w-7xl mx-auto w-full h-full flex flex-col p-8">
+    <div className="min-h-full flex flex-col bg-surface">
+      <div className="max-w-7xl mx-auto w-full flex flex-col p-8">
         {/* Page Header */}
         <div className="relative mb-8 z-40 flex items-center justify-center min-h-[64px]">
           <div className="absolute left-0 top-0 flex items-center gap-4">
@@ -199,6 +204,46 @@ Bạn cần tôi hỗ trợ thông tin gì hôm nay?`
             <p className="text-xs font-bold text-on-surface-variant/60 tracking-widest uppercase mt-1 text-center">
               Powered by iGen Vision Engine
             </p>
+            {/* Social links */}
+            <div className="flex items-center gap-3 mt-2">
+              {/* Website */}
+              <a
+                href="https://io.igentechsolutions.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Website iGen"
+                className="w-7 h-7 flex items-center justify-center rounded-full text-on-surface-variant/50 hover:text-primary hover:bg-surface-container-low transition-all"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                </svg>
+              </a>
+              {/* Facebook */}
+              <a
+                href="https://www.facebook.com/profile.php?id=61576982896992"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Facebook iGen"
+                className="w-7 h-7 flex items-center justify-center rounded-full text-on-surface-variant/50 hover:text-[#1877f2] hover:bg-surface-container-low transition-all"
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                </svg>
+              </a>
+              {/* TikTok */}
+              <a
+                href="https://www.tiktok.com/@igen.technology.99"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="TikTok iGen"
+                className="w-7 h-7 flex items-center justify-center rounded-full text-on-surface-variant/50 hover:text-on-surface hover:bg-surface-container-low transition-all"
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                  <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.32 6.32 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V9.02a8.17 8.17 0 0 0 4.78 1.52V7.09a4.85 4.85 0 0 1-1.01-.4z"/>
+                </svg>
+              </a>
+            </div>
           </div>
         </div>
 
@@ -233,7 +278,7 @@ Bạn cần tôi hỗ trợ thông tin gì hôm nay?`
         </div>
 
         {/* Content Container */}
-        <div className="flex-1 bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden flex flex-col relative">
+        <div className="bg-surface-container-lowest rounded-xl shadow-sm flex flex-col relative">
           {activeTab === "Render" && <RenderTabContent isAdmin={isAdmin} />}
           {activeTab === "Cải thiện Render" && <EnhanceRenderTabContent />}
           {activeTab === "Upscale" && <UpscaleTabContent />}
@@ -823,7 +868,7 @@ ${cropInfo}
     setResultImage(null);
 
     // Kiểm tra nếu chọn PiAPI model cho trình chỉnh sửa canvas
-    const isPiapiModel = selectedModel && (selectedModel.startsWith("piapi-") || selectedModel === "nano-banana-pro" || selectedModel === "nano-banana-2");
+    const isPiapiModel = selectedModel && (selectedModel.startsWith("piapi-") || selectedModel === "nano-banana-pro" || selectedModel === "nano-banana-2" || selectedModel === "openrouter-nano-banana-2");
     if (isPiapiModel) {
       toast.error("Trình chỉnh sửa ảnh vẽ đè/canvas hiện chưa hỗ trợ PiAPI. Vui lòng chọn Gemini.");
       setIsRendering(false);
@@ -1512,7 +1557,7 @@ ${cropInfo}
   };
 
   return (
-    <div className="flex-1 flex flex-col p-8 gap-8 overflow-y-auto">
+    <div className="flex flex-col p-8 gap-8">
       {/* Sub-tabs */}
       <div className="flex items-center justify-center gap-4 flex-wrap">
         {subTabs.map((tab) => (
@@ -4636,7 +4681,7 @@ const LayoutTabContent: React.FC = () => {
   ];
 
   return (
-    <div className="flex-1 flex flex-col p-8 gap-8 overflow-y-auto">
+    <div className="flex flex-col p-8 gap-8">
       <div className="flex flex-col lg:flex-row gap-8 flex-1 min-h-[600px] items-start">
         {/* Left Sidebar */}
         <div className="w-full lg:w-[380px] flex flex-col gap-6 shrink-0">
@@ -5373,7 +5418,7 @@ const UtilitiesTabContent: React.FC = () => {
       const modelToUse =
         activeUtility === "mood"
           ? utilityModel
-          : "nano-banana-2";
+          : "openrouter-nano-banana-2";
       const ai = await getAIClient(modelToUse);
       const imageData = await getImageBase64(inputImage, true);
 
@@ -6376,7 +6421,7 @@ const UtilitiesTabContent: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 p-6 overflow-y-auto bg-surface flex flex-col">
+    <div className="p-6 bg-surface flex flex-col">
       {activeUtility ? (
         renderUtilityContent()
       ) : (

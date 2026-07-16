@@ -1,5 +1,6 @@
 # 📋 Danh sách Nhiệm vụ (Tasks)
 
+- [x] Sửa phần input của Floorplan to 3D floorplan thành mặc định là Topdown view ("Top-down View") và model mặc định là "Igen gemini Image Pro Preview" ("openrouter-nano-banana-2").
 - [x] Chẩn đoán nguyên nhân gốc rễ của việc build bị treo khi chạy lệnh `yarn install` (biên dịch mã nguồn C++ của thư viện `canvas`).
 - [x] Kiểm tra toàn bộ backend và frontend để xác nhận xem gói npm `canvas` có được import ở đâu không (không được import ở bất kỳ đâu).
 - [x] Xóa bỏ `"canvas"` khỏi danh sách dependencies trong `package.json`.
@@ -17,6 +18,7 @@
 - [x] Loại bỏ lớp chặn cứng (guard error) đối với các model `nano-banana-2` và `igen-image-flash` trong `piapi.service.ts` để cho phép gọi PiAPI khi xảy ra lỗi.
 - [x] Khóa cơ chế nạp API Key cá nhân từ DB, bắt buộc 100% cuộc gọi sử dụng API Key trong `.env` và ngăn chặn lưu key cá nhân của user.
 - [x] Định tuyến cứng mọi yêu cầu sinh ảnh Native của Gemini sang mô hình `gemini-3-pro-image` để vượt qua giới hạn bằng 0 của mô hình Flash trên tài khoản Paid Tier 1.
+- [x] Cập nhật mặc định "Igen gemini Image Pro Preview" (openrouter-nano-banana-2) cho tất cả các tính năng render, upscale, enhance, sync và tiện ích khác.
 
 
 

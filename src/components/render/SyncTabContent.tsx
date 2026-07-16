@@ -56,6 +56,11 @@ const MODELS = [
     name: "Igen gemini Image Pro",
     isPro: true,
   },
+  {
+    id: "openrouter-nano-banana-2",
+    name: "Igen gemini Image Pro Preview",
+    isPro: true,
+  },
 ];
 
 const GEMINI_MODELS = [
@@ -461,7 +466,7 @@ export const SyncTabContent: React.FC = () => {
     }, 100);
 
     try {
-      const isPiapiModel = characterModel && (characterModel.startsWith("piapi-") || characterModel === "nano-banana-pro" || characterModel === "nano-banana-2");
+      const isPiapiModel = characterModel && (characterModel.startsWith("piapi-") || characterModel === "nano-banana-pro" || characterModel === "nano-banana-2" || characterModel === "openrouter-nano-banana-2");
       if (isPiapiModel) {
         toast.error("Tính năng Đồng Bộ Nhân Vật hiện chưa hỗ trợ PiAPI. Vui lòng chọn Gemini.");
         setIsSyncingCharacter(false);
@@ -991,7 +996,7 @@ export const SyncTabContent: React.FC = () => {
       }
 
       const selectedModel =
-        suggestion.selectedModel || "nano-banana-pro";
+        suggestion.selectedModel || "openrouter-nano-banana-2";
 
       const generatedImageUrls: string[] = [];
 
@@ -1250,7 +1255,7 @@ export const SyncTabContent: React.FC = () => {
                       null,
                       2,
                     ),
-                    selectedModel: "nano-banana-pro",
+                    selectedModel: "openrouter-nano-banana-2",
                   };
                 }),
               };
@@ -1294,7 +1299,7 @@ export const SyncTabContent: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col">
       <div className="flex justify-center pt-6 pb-2 shrink-0">
         <div className="flex bg-surface-container-low rounded-full p-1 border border-outline-variant/20">
           {subTabs.map((tab) => (
@@ -1327,7 +1332,7 @@ export const SyncTabContent: React.FC = () => {
         </p>
       </div>
 
-      <div className="flex-1 p-6 pt-0 flex flex-col gap-6 overflow-y-auto">
+      <div className="p-6 pt-0 flex flex-col gap-6">
         {activeSubTab === "Đồng Bộ Công Trình" ? (
           <div className="flex flex-col lg:flex-row gap-6">
             {/* Left Column */}
@@ -1491,7 +1496,7 @@ export const SyncTabContent: React.FC = () => {
             </div>
 
             {/* Right Column */}
-            <div className="flex-1 bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-6 shadow-sm flex flex-col min-h-[400px] overflow-hidden">
+            <div className="flex-1 bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-6 shadow-sm flex flex-col min-h-[550px] overflow-hidden">
               <h3 className="text-base font-bold text-on-surface mb-4 shrink-0">
                 3. Gợi Ý Các Góc Chụp
               </h3>
@@ -1645,7 +1650,7 @@ export const SyncTabContent: React.FC = () => {
                                           className="w-full bg-surface-container-lowest border border-outline-variant/20 focus:border-primary rounded-lg p-2 text-xs font-medium text-on-surface appearance-none outline-none cursor-pointer pr-10 text-ellipsis overflow-hidden whitespace-nowrap"
                                           value={
                                             suggestion.selectedModel ||
-                                            "nano-banana-pro"
+                                            "openrouter-nano-banana-2"
                                           }
                                           onChange={(e) => {
                                             const newCats = [
@@ -2321,7 +2326,7 @@ export const SyncTabContent: React.FC = () => {
             </div>
 
             {/* Right Column */}
-            <div className="flex-1 bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-6 shadow-sm flex flex-col min-h-[400px]">
+            <div className="flex-1 bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-6 shadow-sm flex flex-col min-h-[550px]">
               <h3 className="text-base font-bold text-on-surface mb-4">
                 3. Kết Quả
               </h3>

@@ -167,7 +167,7 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
           return { ...p, x, y, angle };
         }));
       } else {
-        setPlacements([{ id: "door", type: "door", label: "Front door", x: a.x + dx * 0.5, y: a.y + dy * 0.5, angle: Math.atan2(dy, dx) * (180 / Math.PI) }]);
+        setPlacements([{ id: "door", type: "door", label: "Cửa chính", x: a.x + dx * 0.5, y: a.y + dy * 0.5, angle: Math.atan2(dy, dx) * (180 / Math.PI) }]);
       }
     }, 0);
     return () => clearTimeout(timer);
@@ -304,10 +304,10 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
         {/* Header */}
         <div className="px-6 py-4 border-b border-[#2d2d30] flex items-center justify-between shrink-0">
           <div className="flex items-center gap-4">
-            <h2 className="text-base font-bold tracking-wide text-slate-100">Choose Shape</h2>
+            <h2 className="text-base font-bold tracking-wide text-slate-100">Chọn hình dạng đất</h2>
             {/* Dimension inputs */}
             <div className="flex items-center gap-2 text-xs">
-              <span className="text-slate-500">W:</span>
+              <span className="text-slate-500">Rộng:</span>
               <input
                 type="number"
                 value={widthInput}
@@ -319,7 +319,7 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
                 }}
                 className="w-16 bg-[#1d1d1f] border border-[#2d2d30] rounded-lg px-2 py-1 text-[#00B5CD] font-bold focus:outline-none focus:border-[#00B5CD] text-center"
               />
-              <span className="text-slate-500">m × L:</span>
+              <span className="text-slate-500">m × Dài:</span>
               <input
                 type="number"
                 value={lengthInput}
@@ -374,7 +374,7 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
 
               {/* Centroid label */}
               <g transform={`translate(${centroid.x}, ${centroid.y})`} className="pointer-events-none">
-                <text textAnchor="middle" y="-6" className="text-[11px] font-semibold fill-slate-400 tracking-wide">Living space</text>
+                <text textAnchor="middle" y="-6" className="text-[11px] font-semibold fill-slate-400 tracking-wide">Diện tích sử dụng</text>
                 <text textAnchor="middle" y="12" className="text-[14px] font-bold fill-[#00B5CD]">{fmtSqFt(area)}</text>
                 <text textAnchor="middle" y="26" className="text-[10px] fill-slate-500">{area.toFixed(1)} m²</text>
               </g>
@@ -455,48 +455,44 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
             {/* Floating rotate/flip buttons */}
             <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-2">
               <button onClick={() => setRotation(r => (r + 90) % 360)}
-                className="w-8 h-8 rounded-full bg-[#171718]/85 backdrop-blur border border-[#2d2d30] flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#252526] transition-all" title="Rotate">
+                className="w-8 h-8 rounded-full bg-[#171718]/85 backdrop-blur border border-[#2d2d30] flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#252526] transition-all" title="Xoay">
                 <RotateCw className="w-4 h-4" />
               </button>
               <button onClick={() => setFlipH(h => !h)}
-                className="w-8 h-8 rounded-full bg-[#171718]/85 backdrop-blur border border-[#2d2d30] flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#252526] transition-all" title="Flip Horizontal">
+                className="w-8 h-8 rounded-full bg-[#171718]/85 backdrop-blur border border-[#2d2d30] flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#252526] transition-all" title="Lật ngang">
                 <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round"><line x1="2" y1="12" x2="22" y2="12" /><path d="M7 6l-5 5 5 5" /><path d="M17 6l5 5-5 5" /></svg>
               </button>
               <button onClick={() => setFlipV(v => !v)}
-                className="w-8 h-8 rounded-full bg-[#171718]/85 backdrop-blur border border-[#2d2d30] flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#252526] transition-all" title="Flip Vertical">
+                className="w-8 h-8 rounded-full bg-[#171718]/85 backdrop-blur border border-[#2d2d30] flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#252526] transition-all" title="Lật dọc">
                 <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round"><line x1="12" y1="2" x2="12" y2="22" /><path d="M6 7l5-5 5 5" /><path d="M6 17l5 5 5-5" /></svg>
               </button>
             </div>
 
             {/* Resize hint */}
             <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[10px] text-slate-600 pointer-events-none">
-              Drag <span className="text-[#00B5CD]">→</span> right handle to resize width · <span className="text-[#00B5CD]">↓</span> bottom handle to resize length
+              Kéo <span className="text-[#00B5CD]">→</span> tay cầm bên phải để đổi chiều rộng · <span className="text-[#00B5CD]">↓</span> tay cầm bên dưới để đổi chiều dài
             </div>
           </div>
 
           {/* Placement toolbar */}
           <div className="px-6 py-3 bg-[#111112] border-t border-b border-[#2d2d30] flex flex-wrap items-center justify-between gap-4 text-xs z-20 shrink-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-slate-500 font-semibold uppercase tracking-wider text-[10px]">Place:</span>
-              <button onClick={() => handleTogglePlacement("door", "Front door")}
+              <span className="text-slate-500 font-semibold uppercase tracking-wider text-[10px]">Đặt vị trí:</span>
+              <button onClick={() => handleTogglePlacement("door", "Cửa chính")}
                 className={`px-3 py-1.5 rounded-lg border font-bold ${placements.some(p => p.type === "door") ? "bg-[#00B5CD]/10 border-[#00B5CD] text-[#00B5CD]" : "bg-[#1d1d1f] border-[#2d2d30] text-slate-400 hover:bg-[#252526]"}`}>
-                Front door
+                Cửa chính
               </button>
-              <button onClick={() => handleTogglePlacement("garage_1", "1-car garage")}
+              <button onClick={() => handleTogglePlacement("garage_1", "Nhà xe (1)")}
                 className={`px-3 py-1.5 rounded-lg border font-bold ${placements.some(p => p.type === "garage_1") ? "bg-slate-800 border-slate-600 text-slate-300" : "bg-[#1d1d1f] border-[#2d2d30] text-slate-400 hover:bg-[#252526]"}`}>
-                Garage (1)
+                Nhà xe (1)
               </button>
-              <button onClick={() => handleTogglePlacement("garage_2", "2-car garage")}
+              <button onClick={() => handleTogglePlacement("garage_2", "Nhà xe (2)")}
                 className={`px-3 py-1.5 rounded-lg border font-bold ${placements.some(p => p.type === "garage_2") ? "bg-slate-800 border-slate-600 text-slate-300" : "bg-[#1d1d1f] border-[#2d2d30] text-slate-400 hover:bg-[#252526]"}`}>
-                Garage (2)
+                Nhà xe (2)
               </button>
-              <button onClick={() => handleTogglePlacement("deck", "Deck / balcony")}
+              <button onClick={() => handleTogglePlacement("deck", "Sân gỗ")}
                 className={`px-3 py-1.5 rounded-lg border font-bold ${placements.some(p => p.type === "deck") ? "bg-emerald-950/20 border-emerald-800/40 text-emerald-400" : "bg-[#1d1d1f] border-[#2d2d30] text-slate-400 hover:bg-[#252526]"}`}>
-                Deck
-              </button>
-              <button onClick={() => handleTogglePlacement("porch", "Front porch")}
-                className={`px-3 py-1.5 rounded-lg border font-bold ${placements.some(p => p.type === "porch") ? "bg-emerald-950/20 border-emerald-800/40 text-emerald-400" : "bg-[#1d1d1f] border-[#2d2d30] text-slate-400 hover:bg-[#252526]"}`}>
-                Porch
+                Sân gỗ
               </button>
             </div>
             <div className="text-xs text-slate-500 font-semibold">
@@ -506,7 +502,7 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
 
           {/* Shape grid */}
           <div className="p-4 bg-[#141415] space-y-2 shrink-0">
-            <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px] px-2 block">Select Base Layout Shape</span>
+            <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px] px-2 block">Chọn hình dạng móng đất gốc</span>
             <div className="flex gap-3 overflow-x-auto py-1 px-2">
               {SHAPE_TEMPLATES.map((item, idx) => {
                 const isSelected = selectedIdx === idx;
@@ -528,10 +524,10 @@ export const ChooseShapeModal: React.FC<ChooseShapeModalProps> = ({
         {/* Footer */}
         <div className="px-6 py-4 border-t border-[#2d2d30] bg-[#111112] flex items-center justify-center gap-4 shrink-0">
           <button onClick={onClose} className="px-8 py-2.5 rounded-full border border-[#2d2d30] hover:bg-slate-800 text-slate-300 font-bold text-xs">
-            Cancel
+            Hủy
           </button>
           <button onClick={handleUseShape} className="px-8 py-2.5 rounded-full bg-[#00B5CD] hover:bg-[#00B5CD]/90 text-white font-bold text-xs shadow-lg shadow-[#00B5CD]/10">
-            Use this shape
+            Sử dụng hình dạng này
           </button>
         </div>
       </div>

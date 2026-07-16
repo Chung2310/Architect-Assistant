@@ -8,7 +8,20 @@ const PIAPI_BASE_URL = process.env.PIAPI_BASE_URL || "https://api.piapi.ai/api/v
 
 console.log(`[PiAPI Service] Loaded API Key status: ${PIAPI_API_KEY ? `Present (Length: ${PIAPI_API_KEY.length}, Prefix: ${PIAPI_API_KEY.substring(0, 8)}...)` : 'Missing'}`);
 
-async function fetchImageAsBase64(url: string): Promise<string> {
+const VALID_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"];
+
+/**
+ * Chuẩn hóa aspect ratio nhận từ client (vd: "4:3 (Ngang)", "Tự động") về định dạng
+ * "W:H" mà PiAPI chấp nhận. Trả về undefined nếu không có giá trị hợp lệ, để tránh
+ * ép ảnh đầu ra về hình vuông một cách âm thầm khi bản vẽ gốc là hình chữ nhật.
+ */
+function normalizeAspectRatio(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  const stripped = raw.split(" ")[0].trim();
+  return VALID_ASPECT_RATIOS.includes(stripped) ? stripped : undefined;
+}
+
+async function _fetchImageAsBase64(url: string): Promise<string> {
   // If it's already a base64 Data URI, return as-is
   if (url.startsWith("data:")) return url;
 
@@ -74,19 +87,13 @@ export const piapiService = {
       const content: any[] = [{ type: "text", text: prompt }];
 
       if (options?.image) {
-        try {
-          console.log(`[OpenRouter Image Task] Converting image to base64 for OpenRouter: ${options.image}`);
-          const base64Image = await fetchImageAsBase64(options.image);
-          content.push({
-            type: "image_url",
-            image_url: {
-              url: base64Image
-            }
-          });
-        } catch (fetchErr) {
-          console.error(`[OpenRouter Image Task] Failed to convert image to base64:`, fetchErr);
-          throw fetchErr;
-        }
+        console.log(`[OpenRouter Image Task] Passing image URL directly to OpenRouter: ${options.image}`);
+        content.push({
+          type: "image_url",
+          image_url: {
+            url: options.image
+          }
+        });
       }
 
       const body: Record<string, any> = {
@@ -172,7 +179,7 @@ export const piapiService = {
       };
     }
 
-    const aspect = options?.aspectRatio || "1:1";
+    const aspect = normalizeAspectRatio(options?.aspectRatio) || "1:1";
     const randomSeed = Math.floor(Math.random() * 2147483647);
     let reqBody: Record<string, unknown> | undefined;
 

@@ -258,9 +258,93 @@ export const geminiService = {
     logger.info(
       `[Gemini Service] Request summary - model: ${modelName}, hasSystemInstruction: ${!!systemInstruction}, contents: ${summarizeContents(params.contents)}`
     );
-
-
     // ─── XỬ LÝ MODEL HÌNH ẢNH / VIDEO QUA PIAPI ─────────────────────────────────
+    if (modelName === "openrouter-nano-banana-2") {
+      const { contents, generationConfig, config: reqConfig } = params;
+      const openRouterKey = process.env.OPENROUTER_API_KEY || "";
+      if (!openRouterKey) {
+        throw new Error("Không tìm thấy OpenRouter API Key.");
+      }
+
+      let promptText = "";
+      let inputImageBase64 = "";
+      let inputImageMimeType = "";
+
+      const contentsArray = Array.isArray(contents)
+        ? contents
+        : (contents && contents.parts ? [{ parts: contents.parts }] : []);
+
+      for (const content of contentsArray) {
+        if (content.parts && Array.isArray(content.parts)) {
+          for (const part of content.parts) {
+            if (part.text) {
+              promptText += part.text + "\n";
+            } else if (part.inlineData && part.inlineData.data) {
+              inputImageBase64 = part.inlineData.data;
+              inputImageMimeType = part.inlineData.mimeType || "image/jpeg";
+            }
+          }
+        }
+      }
+      promptText = promptText.trim();
+      if (systemInstruction) {
+        promptText = `${String(systemInstruction).trim()}\n\n${promptText}`.trim();
+      }
+
+      let aspectRatio = "1:1";
+      const mergedConfig = { ...(generationConfig || {}), ...(reqConfig || {}) };
+      const imageConfig = mergedConfig?.imageConfig || {};
+      if (imageConfig.aspectRatio) {
+        aspectRatio = imageConfig.aspectRatio;
+      }
+
+      logger.info(`[Gemini Service] Provider: OpenRouter image. Model: openrouter-nano-banana-2, Aspect: ${aspectRatio}`);
+      const openRouterModel = "google/gemini-3-pro-image-preview";
+      const imgUrl = await callOpenRouterImage(
+        promptText,
+        openRouterModel,
+        openRouterKey,
+        aspectRatio,
+        inputImageBase64 || undefined,
+        inputImageMimeType || undefined
+      );
+
+      const imgFetchRes = await fetch(imgUrl);
+      if (!imgFetchRes.ok) {
+        throw new Error(`Failed to download OpenRouter generated image: ${imgFetchRes.status}`);
+      }
+      const arrayBuffer = await imgFetchRes.arrayBuffer();
+      const base64 = Buffer.from(arrayBuffer).toString("base64");
+      const mimeType = imgFetchRes.headers.get("content-type") || "image/png";
+
+      return {
+        generatedImages: [
+          {
+            image: {
+              imageBytes: base64,
+              mimeType: mimeType,
+            }
+          }
+        ],
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  inlineData: {
+                    data: base64,
+                    mimeType: mimeType
+                  }
+                }
+              ],
+              role: "model"
+            },
+            finishReason: "STOP"
+          }
+        ]
+      };
+    }
+
     if (piapiKey && (isImageModel || isVideoModel) && !isGeminiNativeImageModel) {
       const { contents, generationConfig, config: reqConfig } = params;
 

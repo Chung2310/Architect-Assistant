@@ -17,6 +17,11 @@ const MODELS = [
     name: "Igen gemini Image Pro",
     isPro: true,
   },
+  {
+    id: "openrouter-nano-banana-2",
+    name: "Igen gemini Image Pro Preview",
+    isPro: true,
+  },
 ];
 
 const RESOLUTIONS = [
@@ -122,7 +127,7 @@ export const EnhanceRenderTabContent: React.FC = () => {
   const [promptProgress, setPromptProgress] = useState(0);
   const [smoothPromptProgress, setSmoothPromptProgress] = useState(0);
   const [selectedModel, setSelectedModel] = useState(
-    "nano-banana-2",
+    "openrouter-nano-banana-2",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
   const [numImages, setNumImages] = useState(1);
@@ -1154,16 +1159,16 @@ ${
         </div>
 
         {/* Right Sidebar (Kết Quả Render, Lịch Sử) */}
-        <div className="flex-1 flex flex-col gap-6 min-w-0 lg:sticky lg:top-4 lg:h-[calc(100vh-32px)]">
+        <div className="flex-1 flex flex-col gap-6 min-w-0">
           {/* Kết Quả */}
-          <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 flex flex-col p-6 shadow-sm flex-1 min-h-0 overflow-hidden">
+          <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 flex flex-col p-6 shadow-sm flex-1 min-h-[550px] overflow-hidden">
             <h3 className="text-base font-bold text-on-surface mb-4 shrink-0">
               Kết Quả Cải Thiện Render
             </h3>
 
             <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
               {currentResultItems.length === 0 && !selectedItem ? (
-                <div className="flex-1 bg-surface-container-low/50 rounded-xl flex flex-col items-center justify-center text-center border border-outline-variant/10 min-h-0">
+                <div className="w-full h-[460px] bg-surface-container-low/50 rounded-xl flex flex-col items-center justify-center text-center border border-outline-variant/10">
                   <Icon
                     name="image"
                     className="text-4xl text-on-surface-variant/30 mb-4"
@@ -1175,7 +1180,7 @@ ${
               ) : (
                 <>
                   {/* Large Preview */}
-                  <div className="w-full flex-1 min-h-0 relative bg-surface-container-low/30 rounded-xl overflow-hidden border border-outline-variant/10 shadow-sm mb-4 flex items-center justify-center">
+                  <div className="w-full h-[460px] relative bg-surface-container-low/30 rounded-xl overflow-hidden border border-outline-variant/10 shadow-sm mb-4 flex items-center justify-center">
                     {selectedItem?.status === "pending" ? (
                       <>
                         {selectedItem.url && (

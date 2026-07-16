@@ -28,6 +28,9 @@ import { FloorPlan3DViewer } from "./FloorPlan3DViewer";
 const METER_TO_PX = 48;
 const _GRID_SIZE = 0.5;
 const PEN_CURSOR = "crosshair";
+const MIN_STAGE_WIDTH = 320;
+const MIN_STAGE_HEIGHT = 240;
+const SMALL_STAGE_TOAST_ID = "floor-plan-stage-too-small";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 export interface FurnitureItem {
@@ -70,6 +73,8 @@ export interface Opening {
   w: number;
   rotation: number;
   style?: string;
+  flipX?: boolean;
+  flipY?: boolean;
 }
 
 export interface FloorPlanData {
@@ -114,6 +119,103 @@ const CHECKLIST_STEPS: { key: GatherStep; label: string }[] = [
   { key: "rooms", label: "Phòng yêu cầu" },
   { key: "extras", label: "Yêu cầu bổ sung" },
 ];
+
+const GATHER_STEP_ORDER: Exclude<GatherStep, "done">[] = [
+  "floors",
+  "area",
+  "shape",
+  "rooms",
+  "extras",
+];
+
+function hasGatherStepValue(info: GatherInfo, step: Exclude<GatherStep, "done">): boolean {
+  switch (step) {
+    case "floors":
+      return Number.isFinite(info.floors) && (info.floors ?? 0) > 0;
+    case "area":
+      return Boolean(info.area?.trim()) || Boolean(info.landWidth && info.landLength);
+    case "shape":
+      return Boolean(info.shape?.trim());
+    case "rooms":
+      return Boolean(info.rooms?.trim());
+    case "extras":
+      // "Không có" vẫn là một câu trả lời hợp lệ, không được hỏi lại.
+      return typeof info.extras === "string" && info.extras.trim().length > 0;
+  }
+}
+
+function getNextGatherStep(info: GatherInfo): GatherStep {
+  return GATHER_STEP_ORDER.find((step) => !hasGatherStepValue(info, step)) ?? "done";
+}
+
+function getCompletedGatherSteps(info: GatherInfo): Set<GatherStep> {
+  return new Set(GATHER_STEP_ORDER.filter((step) => hasGatherStepValue(info, step)));
+}
+
+function getGatherStepPrompt(step: GatherStep, info: GatherInfo, needsClarification = false): string {
+  const prefix = needsClarification ? "Mình chưa nhận ra thông tin này. " : "";
+
+  switch (step) {
+    case "floors":
+      return `${prefix}Công trình của bạn có **bao nhiêu tầng**? Ví dụ: 1 tầng, 2 tầng.`;
+    case "area":
+      return `${prefix}Tiếp theo, **diện tích một sàn** là bao nhiêu? iGen hỗ trợ từ **20 m² đến 2.000 m²** (Ví dụ: 100m²).`;
+    case "shape":
+      return "__SHAPE_PICKER__";
+    case "rooms":
+      return "__ROOM_PICKER__";
+    case "extras":
+      return `${prefix}Cuối cùng, bạn có **yêu cầu bổ sung** nào không (phong cách, sân vườn, gara, hướng cửa...)? Nếu không, hãy trả lời “Không”.`;
+    case "done":
+      return `Đã đủ thông tin cho phương án ${info.floors ?? 1} tầng. Mình bắt đầu tạo mặt bằng nhé!`;
+  }
+}
+
+function mergeGatheredInput(info: GatherInfo, extracted: Record<string, unknown>, text: string, expectedStep: GatherStep): GatherInfo {
+  const next: GatherInfo = { ...info };
+  const floors = Number(extracted.floors);
+  const landWidth = Number(extracted.landWidth);
+  const landLength = Number(extracted.landLength);
+
+  if (Number.isInteger(floors) && floors > 0 && floors <= 4) next.floors = floors;
+  if (extracted.area != null && String(extracted.area).trim()) next.area = String(extracted.area).trim();
+  if (Number.isFinite(landWidth) && landWidth > 0) next.landWidth = landWidth;
+  if (Number.isFinite(landLength) && landLength > 0) next.landLength = landLength;
+  if (extracted.shape != null && String(extracted.shape).trim()) next.shape = String(extracted.shape).trim();
+  if (extracted.rooms != null && String(extracted.rooms).trim()) next.rooms = String(extracted.rooms).trim();
+  if (extracted.extras != null && String(extracted.extras).trim()) next.extras = String(extracted.extras).trim();
+
+  // Các câu trả lời ngắn, đúng bước vẫn được hiểu ngay cả khi model bỏ sót.
+  if (expectedStep === "floors" && !next.floors) {
+    const match = text.match(/^(?:nhà\s*)?(\d{1,2})\s*(?:tầng)?[.!]?$/i);
+    if (match) {
+      const val = Number(match[1]);
+      if (val >= 1 && val <= 4) {
+        next.floors = val;
+      }
+    }
+  }
+
+  if (expectedStep === "area" && !hasGatherStepValue(next, "area")) {
+    const squareMetres = text.match(/(\d+(?:[.,]\d+)?)\s*(?:m\s*[²2]|mét\s*vuông)/i);
+    const plainNumber = text.match(/^\s*(\d+(?:[.,]\d+)?)\s*$/);
+    if (squareMetres) {
+      next.area = `${Number(squareMetres[1].replace(",", "."))}m²`;
+    } else if (plainNumber) {
+      next.area = `${Number(plainNumber[1].replace(",", "."))}m²`;
+    }
+  }
+
+  if (expectedStep === "rooms" && !hasGatherStepValue(next, "rooms") && text.trim().length >= 3) {
+    next.rooms = text.trim();
+  }
+
+  if (expectedStep === "extras" && !hasGatherStepValue(next, "extras")) {
+    next.extras = /^(không|không có|ko|k|no)[.!]?$/i.test(text.trim()) ? "Không có" : text.trim();
+  }
+
+  return next;
+}
 
 // ── Helper: parse user text for numbers ──────────────────────────────────
 function _extractDimensions(text: string): { w?: number; l?: number } {
@@ -242,7 +344,6 @@ const FURNITURE_METADATA: Record<string, {
     ],
     styles: [
       { name: "Giường bọc nệm hiện đại", value: "padded" },
-      { name: "Giường chân gỗ Scandinavian", value: "wooden" },
       { name: "Giường bệt kiểu Nhật", value: "tatami" }
     ]
   },
@@ -1037,6 +1138,910 @@ const FURNITURE_CATEGORIES = [
   }
 ];
 
+// Helper to convert hex to HSV
+const hexToHsv = (hex: string): { h: number; s: number; v: number } => {
+  let r: number, g: number, b: number;
+  const cleanHex = hex.replace("#", "").trim();
+  if (cleanHex.length === 6) {
+    r = parseInt(cleanHex.substring(0, 2), 16);
+    g = parseInt(cleanHex.substring(2, 4), 16);
+    b = parseInt(cleanHex.substring(4, 6), 16);
+  } else if (cleanHex.length === 3) {
+    r = parseInt(cleanHex.substring(0, 1) + cleanHex.substring(0, 1), 16);
+    g = parseInt(cleanHex.substring(1, 2) + cleanHex.substring(1, 2), 16);
+    b = parseInt(cleanHex.substring(2, 3) + cleanHex.substring(2, 3), 16);
+  } else {
+    return { h: 0, s: 1, v: 1 };
+  }
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const v = max;
+  const d = max - min;
+  const s = max === 0 ? 0 : d / max;
+  let h = 0;
+  if (max !== min) {
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h /= 6;
+  }
+  return { h: Math.round(h * 360), s, v };
+};
+
+// Helper to convert HSV to hex
+const hsvToHex = (h: number, s: number, v: number): string => {
+  let r = 0, g = 0, b = 0;
+  const i = Math.floor(h / 60);
+  const f = h / 60 - i;
+  const p = v * (1 - s);
+  const q = v * (1 - f * s);
+  const t = v * (1 - (1 - f) * s);
+  switch (i % 6) {
+    case 0: r = v; g = t; b = p; break;
+    case 1: r = q; g = v; b = p; break;
+    case 2: r = p; g = v; b = t; break;
+    case 3: r = p; g = q; b = v; break;
+    case 4: r = t; g = p; b = v; break;
+    case 5: r = v; g = p; b = q; break;
+  }
+  const toHex = (x: number) => {
+    const hex = Math.round(x * 255).toString(16);
+    return hex.length === 1 ? "0" + hex : hex;
+  };
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+};
+
+
+// ── Get optimal door flips (hinge and swing direction) based on adjacent rooms ──
+export function getOptimalDoorFlips(
+  x: number,
+  y: number,
+  rotation: number,
+  style: string | undefined,
+  rooms: Room[]
+): { flipX: boolean; flipY: boolean } {
+  if (style === "sliding" || style === "garage") {
+    return { flipX: false, flipY: false };
+  }
+
+  const threshold = 0.15;
+  const adjacentRooms = [];
+
+  for (const r of rooms) {
+    if (Math.abs(y - r.y) < threshold && x >= r.x - threshold && x <= r.x + r.w + threshold) {
+      adjacentRooms.push({ room: r, wall: "top" });
+    }
+    if (Math.abs(y - (r.y + r.h)) < threshold && x >= r.x - threshold && x <= r.x + r.w + threshold) {
+      adjacentRooms.push({ room: r, wall: "bottom" });
+    }
+    if (Math.abs(x - r.x) < threshold && y >= r.y - threshold && y <= r.y + r.h + threshold) {
+      adjacentRooms.push({ room: r, wall: "left" });
+    }
+    if (Math.abs(x - (r.x + r.w)) < threshold && y >= r.y - threshold && y <= r.y + r.h + threshold) {
+      adjacentRooms.push({ room: r, wall: "right" });
+    }
+  }
+
+  if (adjacentRooms.length === 0) {
+    return { flipX: false, flipY: false };
+  }
+
+  const getRoomPriority = (name: string): number => {
+    const n = name.toLowerCase();
+    if (n.includes("tắm") || n.includes("wc") || n.includes("toilet") || n.includes("vệ sinh")) return 1;
+    if (n.includes("khách") || n.includes("living") || n.includes("sảnh") || n.includes("lối vào") || n.includes("entry")) return 2;
+    if (n.includes("bếp") || n.includes("kitchen") || n.includes("ăn") || n.includes("dining")) return 3;
+    if (n.includes("ngủ") || n.includes("bed") || n.includes("làm việc") || n.includes("office") || n.includes("thờ") || n.includes("gym")) return 4;
+    return 2;
+  };
+
+  adjacentRooms.sort((a, b) => getRoomPriority(b.room.name) - getRoomPriority(a.room.name));
+  
+  const target = adjacentRooms[0];
+  const r = target.room;
+  const wall = target.wall;
+
+  let flipX = false;
+  let flipY = false;
+
+  if (wall === "top") {
+    flipY = true;
+    const distToLeft = Math.abs(x - r.x);
+    const distToRight = Math.abs(x - (r.x + r.w));
+    if (distToRight < distToLeft) {
+      flipX = true;
+    }
+  } else if (wall === "bottom") {
+    flipY = false;
+    const distToLeft = Math.abs(x - r.x);
+    const distToRight = Math.abs(x - (r.x + r.w));
+    if (distToRight < distToLeft) {
+      flipX = true;
+    }
+  } else if (wall === "left") {
+    flipY = false;
+    const distToTop = Math.abs(y - r.y);
+    const distToBottom = Math.abs(y - (r.y + r.h));
+    if (distToBottom < distToTop) {
+      flipX = true;
+    }
+  } else if (wall === "right") {
+    flipY = true;
+    const distToTop = Math.abs(y - r.y);
+    const distToBottom = Math.abs(y - (r.y + r.h));
+    if (distToBottom < distToTop) {
+      flipX = true;
+    }
+  }
+
+  return { flipX, flipY };
+}
+
+export function subtractIntervals(
+  segment: { start: number; end: number },
+  gaps: { start: number; end: number }[]
+): { start: number; end: number }[] {
+  let segments = [segment];
+  for (const gap of gaps) {
+    const nextSegments = [];
+    for (const seg of segments) {
+      if (gap.end <= seg.start || gap.start >= seg.end) {
+        nextSegments.push(seg);
+      } else {
+        if (gap.start > seg.start) {
+          nextSegments.push({ start: seg.start, end: gap.start });
+        }
+        if (gap.end < seg.end) {
+          nextSegments.push({ start: gap.end, end: seg.end });
+        }
+      }
+    }
+    segments = nextSegments;
+  }
+  return segments;
+}
+
+export function isFurnitureColliding(f1: any, f2: any): boolean {
+  const isRotated1 = (f1.rotation || 0) % 180 !== 0;
+  const w1 = isRotated1 ? f1.h : f1.w;
+  const h1 = isRotated1 ? f1.w : f1.h;
+
+  const isRotated2 = (f2.rotation || 0) % 180 !== 0;
+  const w2 = isRotated2 ? f2.h : f2.w;
+  const h2 = isRotated2 ? f2.w : f2.h;
+
+  const minX1 = f1.x - w1 / 2;
+  const maxX1 = f1.x + w1 / 2;
+  const minY1 = f1.y - h1 / 2;
+  const maxY1 = f1.y + h1 / 2;
+
+  const minX2 = f2.x - w2 / 2;
+  const maxX2 = f2.x + w2 / 2;
+  const minY2 = f2.y - h2 / 2;
+  const maxY2 = f2.y + h2 / 2;
+
+  const buffer = 0.02;
+  return !(maxX1 <= minX2 + buffer || minX1 >= maxX2 - buffer || maxY1 <= minY2 + buffer || minY1 >= maxY2 - buffer);
+}
+
+export function findNonCollidingPosition(
+  item: any,
+  initX: number,
+  initY: number,
+  otherFurniture: any[],
+  roomW: number,
+  roomH: number,
+  wallThickness: number
+): { x: number; y: number } {
+  const M = Math.max(0.18, (wallThickness / 1000) / 2 + 0.10);
+  const isRotated = (item.rotation || 0) % 180 !== 0;
+  const w = isRotated ? item.h : item.w;
+  const h = isRotated ? item.w : item.h;
+
+  let collides = false;
+  const dummyItem = { ...item, x: initX, y: initY };
+  for (const other of otherFurniture) {
+    if (isFurnitureColliding(dummyItem, other)) {
+      collides = true;
+      break;
+    }
+  }
+  if (!collides) {
+    return { x: initX, y: initY };
+  }
+
+  const step = 0.05;
+  const maxSearchSteps = 60;
+
+  for (let r = 1; r <= maxSearchSteps; r++) {
+    const offset = r * step;
+    const candidates = [
+      { x: initX + offset, y: initY },
+      { x: initX - offset, y: initY },
+      { x: initX,          y: initY + offset },
+      { x: initX,          y: initY - offset },
+      { x: initX + offset, y: initY + offset },
+      { x: initX - offset, y: initY + offset },
+      { x: initX + offset, y: initY - offset },
+      { x: initX - offset, y: initY - offset },
+    ];
+
+    for (const cand of candidates) {
+      const minCandX = cand.x - w / 2;
+      const maxCandX = cand.x + w / 2;
+      const minCandY = cand.y - h / 2;
+      const maxCandY = cand.y + h / 2;
+
+      if (
+        minCandX >= M &&
+        maxCandX <= roomW - M &&
+        minCandY >= M &&
+        maxCandY <= roomH - M
+      ) {
+        const testItem = { ...item, x: cand.x, y: cand.y };
+        let hasCollision = false;
+        for (const other of otherFurniture) {
+          if (isFurnitureColliding(testItem, other)) {
+            hasCollision = true;
+            break;
+          }
+        }
+        if (!hasCollision) {
+          return { x: Math.round(cand.x * 20) / 20, y: Math.round(cand.y * 20) / 20 };
+        }
+      }
+    }
+  }
+
+  return { x: initX, y: initY };
+}
+
+export function isFurnitureCollidingWithDoor(
+  f: FurnitureItem,
+  fX: number,
+  fY: number,
+  open: Opening
+): boolean {
+  if (open.type !== "door") return false;
+  let dx1: number;
+  let dx2: number;
+  let dy1: number;
+  let dy2: number;
+  const ow = open.w;
+
+  if (open.rotation === 0) {
+    if (open.flipX) {
+      dx1 = open.x - ow;
+      dx2 = open.x;
+    } else {
+      dx1 = open.x;
+      dx2 = open.x + ow;
+    }
+    if (open.flipY) {
+      dy1 = open.y;
+      dy2 = open.y + ow;
+    } else {
+      dy1 = open.y - ow;
+      dy2 = open.y;
+    }
+  } else {
+    if (open.flipY) {
+      dx1 = open.x - ow;
+      dx2 = open.x;
+    } else {
+      dx1 = open.x;
+      dx2 = open.x + ow;
+    }
+    if (open.flipX) {
+      dy1 = open.y - ow;
+      dy2 = open.y;
+    } else {
+      dy1 = open.y;
+      dy2 = open.y + ow;
+    }
+  }
+
+  const buffer = 0.10;
+  dx1 -= buffer;
+  dx2 += buffer;
+  dy1 -= buffer;
+  dy2 += buffer;
+
+  const fx1 = fX - f.w / 2;
+  const fx2 = fX + f.w / 2;
+  const fy1 = fY - f.h / 2;
+  const fy2 = fY + f.h / 2;
+
+  return !(fx2 <= dx1 || fx1 >= dx2 || fy2 <= dy1 || fy1 >= dy2);
+}
+
+export function resolveFurnitureDoorCollisions(
+  rooms: Room[],
+  openings: Opening[],
+  wallThickness: number = 100
+): Room[] {
+  // Keep all furniture intact as requested by the user. Do not delete any colliding furniture.
+  return rooms;
+}
+
+interface Cutout {
+  x1: number;
+  x2: number;
+  y1: number;
+  y2: number;
+}
+
+export function getCutoutsForShape(shapeName: string, landW: number, landL: number): Cutout[] {
+  const normName = shapeName.toLowerCase();
+  const cutouts: Cutout[] = [];
+  
+  if (normName.includes("l-shape") || normName.includes("chữ l") || normName.includes("l shape")) {
+    if (normName.includes("bottom-left")) {
+      cutouts.push({ x1: 0, x2: 0.35 * landW, y1: 0.65 * landL, y2: landL });
+    } else if (normName.includes("bottom-right")) {
+      cutouts.push({ x1: 0.65 * landW, x2: landW, y1: 0.65 * landL, y2: landL });
+    } else {
+      // Top-Right default
+      cutouts.push({ x1: 0.65 * landW, x2: landW, y1: 0, y2: 0.35 * landL });
+    }
+  } else if (normName.includes("u-shape") || normName.includes("chữ u") || normName.includes("u shape")) {
+    cutouts.push({ x1: 0.3 * landW, x2: 0.7 * landW, y1: 0.8 * landL, y2: landL });
+  } else if (normName.includes("t-shape") || normName.includes("chữ t") || normName.includes("t shape")) {
+    cutouts.push({ x1: 0, x2: 0.25 * landW, y1: 0, y2: 0.35 * landL });
+    cutouts.push({ x1: 0.75 * landW, x2: landW, y1: 0, y2: 0.35 * landL });
+  } else if (normName.includes("h-shape") || normName.includes("chữ h") || normName.includes("h shape")) {
+    cutouts.push({ x1: 0.3 * landW, x2: 0.7 * landW, y1: 0, y2: 0.25 * landL });
+    cutouts.push({ x1: 0.3 * landW, x2: 0.7 * landW, y1: 0.75 * landL, y2: landL });
+  } else if (normName.includes("cross") || normName.includes("chữ thập")) {
+    cutouts.push({ x1: 0, x2: 0.3 * landW, y1: 0, y2: 0.3 * landL });
+    cutouts.push({ x1: 0.7 * landW, x2: landW, y1: 0, y2: 0.3 * landL });
+    cutouts.push({ x1: 0, x2: 0.3 * landW, y1: 0.7 * landL, y2: landL });
+    cutouts.push({ x1: 0.7 * landW, x2: landW, y1: 0.7 * landL, y2: landL });
+  }
+  return cutouts;
+}
+
+export function adjustRoomsToFitShape(rooms: Room[], shape: string, landW: number, landL: number): Room[] {
+  if (rooms.length === 0) return [];
+
+  const cutouts = getCutoutsForShape(shape, landW, landL);
+
+  // 1. Crop rooms to stay out of cutouts and stay inside land boundary
+  const adjusted = rooms.map(room => {
+    let rx = Math.max(0, Math.min(landW, room.x));
+    let ry = Math.max(0, Math.min(landL, room.y));
+    let rw = Math.max(0.5, Math.min(landW - rx, room.w));
+    let rh = Math.max(0.5, Math.min(landL - ry, room.h));
+
+    for (const c of cutouts) {
+      const overlapX = Math.min(rx + rw, c.x2) - Math.max(rx, c.x1);
+      const overlapY = Math.min(ry + rh, c.y2) - Math.max(ry, c.y1);
+
+      if (overlapX > 0 && overlapY > 0) {
+        const candidates: { x: number; y: number; w: number; h: number; area: number }[] = [];
+
+        if (rx < c.x1) {
+          const w = c.x1 - rx;
+          if (w >= 0.5) candidates.push({ x: rx, y: ry, w, h: rh, area: w * rh });
+        }
+        if (rx + rw > c.x2) {
+          const x = c.x2;
+          const w = (rx + rw) - c.x2;
+          if (w >= 0.5) candidates.push({ x, y: ry, w, h: rh, area: w * rh });
+        }
+        if (ry < c.y1) {
+          const h = c.y1 - ry;
+          if (h >= 0.5) candidates.push({ x: rx, y: ry, w: rw, h, area: rw * h });
+        }
+        if (ry + rh > c.y2) {
+          const y = c.y2;
+          const h = (ry + rh) - c.y2;
+          if (h >= 0.5) candidates.push({ x: rx, y: ry, w: rw, h, area: rw * h });
+        }
+
+        if (candidates.length > 0) {
+          candidates.sort((a, b) => b.area - a.area);
+          rx = candidates[0].x;
+          ry = candidates[0].y;
+          rw = candidates[0].w;
+          rh = candidates[0].h;
+        } else {
+          rw = 0.5;
+          rh = 0.5;
+          if (rx + rw > c.x1 && rx < c.x2) {
+            rx = c.x1 - rw >= 0 ? c.x1 - rw : c.x2;
+          }
+        }
+      }
+    }
+
+    return { ...room, x: rx, y: ry, w: rw, h: rh };
+  });
+
+  // 2. Resolve room overlaps
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < adjusted.length; i++) {
+      for (let j = i + 1; j < adjusted.length; j++) {
+        const rA = adjusted[i];
+        const rB = adjusted[j];
+
+        const overlapX = Math.min(rA.x + rA.w, rB.x + rB.w) - Math.max(rA.x, rB.x);
+        const overlapY = Math.min(rA.y + rA.h, rB.y + rB.h) - Math.max(rA.y, rB.y);
+
+        if (overlapX > 0 && overlapY > 0) {
+          if (overlapX < overlapY) {
+            const midX = (Math.max(rA.x, rB.x) + Math.min(rA.x + rA.w, rB.x + rB.w)) / 2;
+            if (rA.x < rB.x) {
+              rA.w = Math.max(0.5, midX - rA.x);
+              rB.w = Math.max(0.5, (rB.x + rB.w) - midX);
+              rB.x = midX;
+            } else {
+              rB.w = Math.max(0.5, midX - rB.x);
+              rA.w = Math.max(0.5, (rA.x + rA.w) - midX);
+              rA.x = midX;
+            }
+          } else {
+            const midY = (Math.max(rA.y, rB.y) + Math.min(rA.y + rA.h, rB.y + rB.h)) / 2;
+            if (rA.y < rB.y) {
+              rA.h = Math.max(0.5, midY - rA.y);
+              rB.h = Math.max(0.5, (rB.y + rB.h) - midY);
+              rB.y = midY;
+            } else {
+              rB.h = Math.max(0.5, midY - rB.y);
+              rA.h = Math.max(0.5, (rA.y + rA.h) - midY);
+              rA.y = midY;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Expand rooms to fill gaps (iterative passes)
+  const passes = 3;
+  for (let p = 0; p < passes; p++) {
+    for (let i = 0; i < adjusted.length; i++) {
+      const r = adjusted[i];
+
+      // Expand Right
+      let limitRight = landW;
+      for (let j = 0; j < adjusted.length; j++) {
+        if (i === j) continue;
+        const o = adjusted[j];
+        const vOverlap = Math.min(r.y + r.h, o.y + o.h) - Math.max(r.y, o.y);
+        if (vOverlap > 0.01 && o.x >= r.x + r.w - 0.01) {
+          limitRight = Math.min(limitRight, o.x);
+        }
+      }
+      for (const c of cutouts) {
+        const vOverlap = Math.min(r.y + r.h, c.y2) - Math.max(r.y, c.y1);
+        if (vOverlap > 0.01 && c.x1 >= r.x + r.w - 0.01) {
+          limitRight = Math.min(limitRight, c.x1);
+        }
+      }
+      if (limitRight > r.x + r.w) {
+        r.w = limitRight - r.x;
+      }
+
+      // Expand Down
+      let limitDown = landL;
+      for (let j = 0; j < adjusted.length; j++) {
+        if (i === j) continue;
+        const o = adjusted[j];
+        const hOverlap = Math.min(r.x + r.w, o.x + o.w) - Math.max(r.x, o.x);
+        if (hOverlap > 0.01 && o.y >= r.y + r.h - 0.01) {
+          limitDown = Math.min(limitDown, o.y);
+        }
+      }
+      for (const c of cutouts) {
+        const hOverlap = Math.min(r.x + r.w, c.x2) - Math.max(r.x, c.x1);
+        if (hOverlap > 0.01 && c.y1 >= r.y + r.h - 0.01) {
+          limitDown = Math.min(limitDown, c.y1);
+        }
+      }
+      if (limitDown > r.y + r.h) {
+        r.h = limitDown - r.y;
+      }
+
+      // Expand Left
+      let limitLeft = 0;
+      for (let j = 0; j < adjusted.length; j++) {
+        if (i === j) continue;
+        const o = adjusted[j];
+        const vOverlap = Math.min(r.y + r.h, o.y + o.h) - Math.max(r.y, o.y);
+        if (vOverlap > 0.01 && o.x + o.w <= r.x + 0.01) {
+          limitLeft = Math.max(limitLeft, o.x + o.w);
+        }
+      }
+      for (const c of cutouts) {
+        const vOverlap = Math.min(r.y + r.h, c.y2) - Math.max(r.y, c.y1);
+        if (vOverlap > 0.01 && c.x2 <= r.x + 0.01) {
+          limitLeft = Math.max(limitLeft, c.x2);
+        }
+      }
+      if (limitLeft < r.x) {
+        r.w += (r.x - limitLeft);
+        r.x = limitLeft;
+      }
+
+      // Expand Up
+      let limitUp = 0;
+      for (let j = 0; j < adjusted.length; j++) {
+        if (i === j) continue;
+        const o = adjusted[j];
+        const hOverlap = Math.min(r.x + r.w, o.x + o.w) - Math.max(r.x, o.x);
+        if (hOverlap > 0.01 && o.y + o.h <= r.y + 0.01) {
+          limitUp = Math.max(limitUp, o.y + o.h);
+        }
+      }
+      for (const c of cutouts) {
+        const hOverlap = Math.min(r.x + r.w, c.x2) - Math.max(r.x, c.x1);
+        if (hOverlap > 0.01 && c.y2 <= r.y + 0.01) {
+          limitUp = Math.max(limitUp, c.y2);
+        }
+      }
+      if (limitUp < r.y) {
+        r.h += (r.y - limitUp);
+        r.y = limitUp;
+      }
+    }
+  }
+
+  return adjusted.map(room => {
+    let rx = Math.max(0, room.x);
+    let ry = Math.max(0, room.y);
+    let rw = Math.max(0.5, room.w);
+    let rh = Math.max(0.5, room.h);
+
+    if (rx + rw > landW) {
+      if (rw > 0.5) {
+        rw = Math.max(0.5, landW - rx);
+      }
+      if (rx + rw > landW) {
+        rx = Math.max(0, landW - rw);
+      }
+    }
+
+    if (ry + rh > landL) {
+      if (rh > 0.5) {
+        rh = Math.max(0.5, landL - ry);
+      }
+      if (ry + rh > landL) {
+        ry = Math.max(0, landL - rh);
+      }
+    }
+
+    return {
+      ...room,
+      x: parseFloat(rx.toFixed(2)),
+      y: parseFloat(ry.toFixed(2)),
+      w: parseFloat(rw.toFixed(2)),
+      h: parseFloat(rh.toFixed(2)),
+    };
+  });
+}
+
+export function isDoorCollidingWithAnyFurniture(
+  door: Opening,
+  snappedX: number,
+  snappedY: number,
+  snappedRot: number,
+  rooms: Room[]
+): boolean {
+  const tempDoor: Opening = {
+    ...door,
+    x: snappedX,
+    y: snappedY,
+    rotation: snappedRot,
+  };
+
+  for (const room of rooms) {
+    if (!room.furniture) continue;
+    for (const f of room.furniture) {
+      const fGlobalX = room.x + f.x;
+      const fGlobalY = room.y + f.y;
+      if (isFurnitureCollidingWithDoor(f, fGlobalX, fGlobalY, tempDoor)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// ── Smart openings (doors) placement algorithm using graph adjacency ────────
+function generateSmartOpenings(rooms: Room[], floor: number): Opening[] {
+  if (rooms.length === 0) return [];
+
+  const openings: Opening[] = [];
+
+  interface Connection {
+    roomAIdx: number;
+    roomBIdx: number;
+    type: "horizontal" | "vertical";
+    x: number;
+    y: number;
+    w: number;
+    rotation: number;
+  }
+
+  const possibleConnections: Connection[] = [];
+
+  // Find all adjacent room pairs that share a wall segment of length >= 0.9m
+  for (let i = 0; i < rooms.length; i++) {
+    for (let j = i + 1; j < rooms.length; j++) {
+      const rA = rooms[i];
+      const rB = rooms[j];
+
+      // Check horizontal boundary: bottom wall of rA meets top wall of rB (or vice versa)
+      const isAbove = Math.abs((rA.y + rA.h) - rB.y) < 0.08;
+      const isBelow = Math.abs((rB.y + rB.h) - rA.y) < 0.08;
+
+      if (isAbove || isBelow) {
+        const boundaryY = isAbove ? rA.y + rA.h : rB.y + rB.h;
+        const overlapStart = Math.max(rA.x, rB.x);
+        const overlapEnd = Math.min(rA.x + rA.w, rB.x + rB.w);
+        const overlapLen = overlapEnd - overlapStart;
+
+        if (overlapLen >= 0.9) {
+          possibleConnections.push({
+            roomAIdx: i,
+            roomBIdx: j,
+            type: "horizontal",
+            x: parseFloat((overlapStart + overlapLen / 2).toFixed(2)),
+            y: parseFloat(boundaryY.toFixed(2)),
+            w: 0.9,
+            rotation: 0,
+          });
+        }
+      }
+
+      // Check vertical boundary: right wall of rA meets left wall of rB (or vice versa)
+      const isLeft = Math.abs((rA.x + rA.w) - rB.x) < 0.08;
+      const isRight = Math.abs((rB.x + rB.w) - rA.x) < 0.08;
+
+      if (isLeft || isRight) {
+        const boundaryX = isLeft ? rA.x + rA.w : rB.x + rB.w;
+        const overlapStart = Math.max(rA.y, rB.y);
+        const overlapEnd = Math.min(rA.y + rA.h, rB.y + rB.h);
+        const overlapLen = overlapEnd - overlapStart;
+
+        if (overlapLen >= 0.9) {
+          possibleConnections.push({
+            roomAIdx: i,
+            roomBIdx: j,
+            type: "vertical",
+            x: parseFloat(boundaryX.toFixed(2)),
+            y: parseFloat((overlapStart + overlapLen / 2).toFixed(2)),
+            w: 0.9,
+            rotation: 90,
+          });
+        }
+      }
+    }
+  }
+
+  // Find starting room index (prefer living room / phòng khách)
+  let startIdx = 0;
+  for (let i = 0; i < rooms.length; i++) {
+    const name = rooms[i].name.toLowerCase();
+    if (name.includes("khách") || name.includes("sảnh") || name.includes("lối vào")) {
+      startIdx = i;
+      break;
+    }
+  }
+
+  // Spanning tree BFS to connect all rooms
+  const connected = new Set<number>();
+  connected.add(startIdx);
+  const selectedConnections: Connection[] = [];
+
+  let addedAny = true;
+  while (addedAny) {
+    addedAny = false;
+    for (const conn of possibleConnections) {
+      const hasA = connected.has(conn.roomAIdx);
+      const hasB = connected.has(conn.roomBIdx);
+      if (hasA !== hasB) {
+        selectedConnections.push(conn);
+        connected.add(conn.roomAIdx);
+        connected.add(conn.roomBIdx);
+        addedAny = true;
+        break;
+      }
+    }
+  }
+
+  // Convert selected connections to Opening door objects
+  selectedConnections.forEach((conn, index) => {
+    openings.push({
+      id: `open_${floor}_door_${index}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      type: "door",
+      x: conn.x,
+      y: conn.y,
+      w: conn.w,
+      rotation: conn.rotation,
+      style: "hinged",
+    });
+  });
+
+  // Ensure main entrance door: check if any door is on the top/outer wall of the main room
+  const nonYardRooms = rooms.filter(r => {
+    const name = r.name.toLowerCase();
+    return !name.includes("sân") && !name.includes("vườn") && !name.includes("garden") && !name.includes("yard");
+  });
+
+  if (floor === 0 && nonYardRooms.length > 0) {
+    let mainRoom = nonYardRooms.find(r => {
+      const name = r.name.toLowerCase();
+      return name.includes("khách") || name.includes("sảnh") || name.includes("lối vào");
+    });
+    if (!mainRoom) {
+      mainRoom = nonYardRooms.reduce((prev, curr) => (curr.y < prev.y ? curr : prev), nonYardRooms[0]);
+    }
+
+    if (mainRoom) {
+      // Find which walls of the main room are outer walls (do not touch any other room)
+      const sharesTop = rooms.some(o => o.id !== mainRoom.id && Math.abs((o.y + o.h) - mainRoom.y) < 0.08 && Math.min(o.x + o.w, mainRoom.x + mainRoom.w) - Math.max(o.x, mainRoom.x) > 0.1);
+      const sharesBottom = rooms.some(o => o.id !== mainRoom.id && Math.abs(o.y - (mainRoom.y + mainRoom.h)) < 0.08 && Math.min(o.x + o.w, mainRoom.x + mainRoom.w) - Math.max(o.x, mainRoom.x) > 0.1);
+      const sharesLeft = rooms.some(o => o.id !== mainRoom.id && Math.abs((o.x + o.w) - mainRoom.x) < 0.08 && Math.min(o.y + o.h, mainRoom.y + mainRoom.h) - Math.max(o.y, mainRoom.y) > 0.1);
+      const sharesRight = rooms.some(o => o.id !== mainRoom.id && Math.abs(o.x - (mainRoom.x + mainRoom.w)) < 0.08 && Math.min(o.y + o.h, mainRoom.y + mainRoom.h) - Math.max(o.y, mainRoom.y) > 0.1);
+
+      let entranceX = 0;
+      let entranceY = 0;
+      let entranceRot = 0;
+      let foundWall = false;
+
+      // Prioritize bottom wall (typical Vietnamese front facade facing street at the bottom of drawing)
+      if (!sharesBottom) {
+        entranceX = parseFloat((mainRoom.x + mainRoom.w / 2).toFixed(2));
+        entranceY = parseFloat((mainRoom.y + mainRoom.h).toFixed(2));
+        entranceRot = 0;
+        foundWall = true;
+      }
+      // Top wall
+      else if (!sharesTop) {
+        entranceX = parseFloat((mainRoom.x + mainRoom.w / 2).toFixed(2));
+        entranceY = parseFloat(mainRoom.y.toFixed(2));
+        entranceRot = 0;
+        foundWall = true;
+      }
+      // Left wall
+      else if (!sharesLeft) {
+        entranceX = parseFloat(mainRoom.x.toFixed(2));
+        entranceY = parseFloat((mainRoom.y + mainRoom.h / 2).toFixed(2));
+        entranceRot = 90;
+        foundWall = true;
+      }
+      // Right wall
+      else if (!sharesRight) {
+        entranceX = parseFloat((mainRoom.x + mainRoom.w).toFixed(2));
+        entranceY = parseFloat((mainRoom.y + mainRoom.h / 2).toFixed(2));
+        entranceRot = 90;
+        foundWall = true;
+      }
+
+      // Fallback if no outer wall found (place on top wall)
+      if (!foundWall) {
+        entranceX = parseFloat((mainRoom.x + mainRoom.w / 2).toFixed(2));
+        entranceY = parseFloat(mainRoom.y.toFixed(2));
+        entranceRot = 0;
+      }
+
+      const hasDoorToOutside = openings.some(op => {
+        if (entranceRot === 0) {
+          return Math.abs(op.y - entranceY) < 0.05 && op.x >= mainRoom.x && op.x <= mainRoom.x + mainRoom.w;
+        } else {
+          return Math.abs(op.x - entranceX) < 0.05 && op.y >= mainRoom.y && op.y <= mainRoom.y + mainRoom.h;
+        }
+      });
+
+      if (!hasDoorToOutside) {
+        const flips = getOptimalDoorFlips(entranceX, entranceY, entranceRot, "hinged", rooms);
+        openings.push({
+          id: `open_${floor}_entrance_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          type: "door",
+          x: entranceX,
+          y: entranceY,
+          w: 0.9,
+          rotation: entranceRot,
+          style: "hinged",
+          flipX: flips.flipX,
+          flipY: flips.flipY,
+        });
+      }
+    }
+  }
+
+  // Connect any remaining unconnected rooms
+  let maxW = 5;
+  let maxL = 5;
+  rooms.forEach(r => {
+    maxW = Math.max(maxW, r.x + r.w);
+    maxL = Math.max(maxL, r.y + r.h);
+  });
+
+  for (let i = 0; i < rooms.length; i++) {
+    if (!connected.has(i)) {
+      const room = rooms[i];
+      let bestX = parseFloat((room.x + room.w / 2).toFixed(2));
+      let bestY = parseFloat(room.y.toFixed(2));
+      let bestRot = 0;
+      let foundShared = false;
+
+      for (let j = 0; j < rooms.length; j++) {
+        if (i === j) continue;
+        const other = rooms[j];
+        const isAbove = Math.abs((room.y + room.h) - other.y) < 0.08;
+        const isBelow = Math.abs((other.y + other.h) - room.y) < 0.08;
+        if (isAbove || isBelow) {
+          const boundaryY = isAbove ? room.y + room.h : other.y + other.h;
+          const overlapStart = Math.max(room.x, other.x);
+          const overlapEnd = Math.min(room.x + room.w, other.x + other.w);
+          if (overlapEnd - overlapStart >= 0.9) {
+            bestX = parseFloat((overlapStart + (overlapEnd - overlapStart) / 2).toFixed(2));
+            bestY = parseFloat(boundaryY.toFixed(2));
+            bestRot = 0;
+            foundShared = true;
+            break;
+          }
+        }
+        const isLeft = Math.abs((room.x + room.w) - other.x) < 0.08;
+        const isRight = Math.abs((other.x + other.w) - room.x) < 0.08;
+        if (isLeft || isRight) {
+          const boundaryX = isLeft ? room.x + room.w : other.x + other.w;
+          const overlapStart = Math.max(room.y, other.y);
+          const overlapEnd = Math.min(room.y + room.h, other.y + other.h);
+          if (overlapEnd - overlapStart >= 0.9) {
+            bestX = parseFloat(boundaryX.toFixed(2));
+            bestY = parseFloat((overlapStart + (overlapEnd - overlapStart) / 2).toFixed(2));
+            bestRot = 90;
+            foundShared = true;
+            break;
+          }
+        }
+      }
+
+      if (!foundShared) {
+        if (room.y > 0.05) {
+          bestX = parseFloat((room.x + room.w / 2).toFixed(2));
+          bestY = parseFloat(room.y.toFixed(2));
+          bestRot = 0;
+        } else if (room.y + room.h < maxL - 0.05) {
+          bestX = parseFloat((room.x + room.w / 2).toFixed(2));
+          bestY = parseFloat((room.y + room.h).toFixed(2));
+          bestRot = 0;
+        } else if (room.x > 0.05) {
+          bestX = parseFloat(room.x.toFixed(2));
+          bestY = parseFloat((room.y + room.h / 2).toFixed(2));
+          bestRot = 90;
+        } else {
+          bestX = parseFloat((room.x + room.w).toFixed(2));
+          bestY = parseFloat((room.y + room.h / 2).toFixed(2));
+          bestRot = 90;
+        }
+      }
+
+      const flips = getOptimalDoorFlips(bestX, bestY, bestRot, "hinged", rooms);
+      openings.push({
+        id: `open_${floor}_unconn_${i}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        type: "door",
+        x: bestX,
+        y: bestY,
+        w: 0.9,
+        rotation: bestRot,
+        style: "hinged",
+        flipX: flips.flipX,
+        flipY: flips.flipY,
+      });
+      connected.add(i);
+    }
+  }
+
+  return openings;
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 export const FloorPlanEditor: React.FC = () => {
   const navigate = useNavigate();
@@ -1045,10 +2050,16 @@ export const FloorPlanEditor: React.FC = () => {
   // ── Chat state ──────────────────────────────────────────────────────────
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
+      id: "welcome_user",
+      role: "user",
+      content: "Tạo mặt bằng mới",
+      timestamp: new Date(Date.now() - 1000),
+    },
+    {
       id: "welcome",
       role: "assistant",
       content:
-        "Xin chào! Tôi sẽ giúp bạn tạo bản vẽ mặt bằng với AI.\nHãy bắt đầu — **Công trình của bạn có bao nhiêu tầng?**",
+        "Tôi rất vui được giúp bạn tạo bản vẽ! Hãy bắt đầu với một số thông tin cơ bản. Ngôi nhà này nên có bao nhiêu tầng?",
       timestamp: new Date(),
     },
   ]);
@@ -1081,33 +2092,62 @@ export const FloorPlanEditor: React.FC = () => {
   });
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [activeSidebarTab, setActiveSidebarTab] = useState<"chat" | "history">("chat");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 60, y: 60 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStart = useRef({ x: 0, y: 0 });
+  const stageContainerRef = useRef<HTMLDivElement>(null);
+  const hasWarnedSmallStageRef = useRef(false);
+  const [stageSize, setStageSize] = useState({ w: 800, h: 600 });
 
   const handleLoadProject = useCallback((proj: any) => {
+    const loadedGatherInfo: GatherInfo = proj.gatherInfo || {};
     setCurrentProjectId(proj.id);
     setProjectName(proj.name);
     setFloorPlans(proj.floorPlans || []);
     setActiveFloorIndex(proj.activeFloorIndex || 0);
-    setGatherInfo(proj.gatherInfo || {});
-    setCurrentStep(proj.currentStep || "floors");
-    setCompletedSteps(new Set(proj.completedSteps || []));
+    setGatherInfo(loadedGatherInfo);
+    // Không tin vào bước đã lưu vì dữ liệu dự án có thể đã được cập nhật ở nơi khác.
+    // Luôn suy ra bước tiếp theo từ chính dữ liệu hiện có để không hỏi trùng.
+    setCurrentStep(getNextGatherStep(loadedGatherInfo));
+    setCompletedSteps(getCompletedGatherSteps(loadedGatherInfo));
     setMessages(proj.messages || []);
     
     if (proj.floorPlans && proj.floorPlans.length > 0) {
-      setFloorPlan(proj.floorPlans[proj.activeFloorIndex || 0]);
+      const activePlan = proj.floorPlans[proj.activeFloorIndex || 0];
+      setFloorPlan(activePlan);
+      
+      // Auto-fit zoom & center the loaded plan
+      const landW = loadedGatherInfo.landWidth || 5;
+      const landL = loadedGatherInfo.landLength || 15;
+      const fitZoom = Math.min(
+        (stageSize.w - 120) / (landW * METER_TO_PX),
+        (stageSize.h - 120) / (landL * METER_TO_PX)
+      );
+      const newZoom = Math.max(0.4, Math.min(2, fitZoom));
+      setZoom(newZoom);
+      setPan({
+        x: (stageSize.w - landW * METER_TO_PX * newZoom) / 2,
+        y: (stageSize.h - landL * METER_TO_PX * newZoom) / 2,
+      });
     } else {
       setFloorPlan(null);
     }
     
     setActiveSidebarTab("chat");
     toast.success(`Đã tải dự án: ${proj.name}`);
-  }, []);
+  }, [stageSize]);
+
+
 
   const handleNewProject = useCallback(() => {
     const newId = "proj_" + Date.now();
     
     const newProject = {
       id: newId,
-      name: "Untitled Project",
+      name: "Dự án chưa có tiêu đề",
       floorPlans: [],
       activeFloorIndex: 0,
       gatherInfo: {},
@@ -1115,9 +2155,15 @@ export const FloorPlanEditor: React.FC = () => {
       completedSteps: [],
       messages: [
         {
+          id: "msg_user_" + Date.now(),
+          role: "user" as const,
+          content: "Tạo mặt bằng mới",
+          timestamp: new Date(Date.now() - 1000),
+        },
+        {
           id: "msg_" + Date.now(),
           role: "assistant" as const,
-          content: "Xin chào! Tôi sẽ giúp bạn tạo bản vẽ mặt bằng với AI.\nHãy bắt đầu — **Công trình của bạn có bao nhiêu tầng?**",
+          content: "Tôi rất vui được giúp bạn tạo bản vẽ! Hãy bắt đầu với một số thông tin cơ bản. Ngôi nhà này nên có bao nhiêu tầng?",
           timestamp: new Date(),
         }
       ],
@@ -1207,12 +2253,7 @@ export const FloorPlanEditor: React.FC = () => {
     }
   }, [editingProjectName, currentProjectId]);
 
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 60, y: 60 });
-  const [isPanning, setIsPanning] = useState(false);
-  const panStart = useRef({ x: 0, y: 0 });
-  const stageContainerRef = useRef<HTMLDivElement>(null);
-  const [stageSize, setStageSize] = useState({ w: 800, h: 600 });
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stageRef = useRef<any>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
@@ -1242,12 +2283,94 @@ export const FloorPlanEditor: React.FC = () => {
     roomId: string;
   } | null>(null);
   const [finishes, setFinishes] = useState<Record<string, { type: "material" | "color"; value: string; name: string }>>({
-    flooring: { type: "material", value: "natural_oak", name: "Natural Oak" },
-    walls: { type: "color", value: "#ffffff", name: "Trắng" },
-    ceiling: { type: "color", value: "#ffffff", name: "Trắng" },
-    doors: { type: "material", value: "natural_oak", name: "Natural Oak" },
-    windows: { type: "color", value: "#1c1c1e", name: "Đen" },
+    flooring: { type: "material", value: "", name: "" },
+    walls: { type: "color", value: "", name: "" },
+    ceiling: { type: "color", value: "", name: "" },
+    doors: { type: "material", value: "", name: "" },
+    windows: { type: "color", value: "", name: "" },
   });
+
+  const [pickerColor, setPickerColor] = useState<{ h: number; s: number; v: number }>({ h: 0, s: 1, v: 1 });
+
+  useEffect(() => {
+    if (showFinishModal) {
+      const val = finishes[showFinishModal]?.value || "#ff0000";
+      if (val.startsWith("#")) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setPickerColor(hexToHsv(val));
+      } else {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setPickerColor({ h: 0, s: 1, v: 1 });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showFinishModal]);
+
+  const handleSquarePointer = (e: React.PointerEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+    const s = x / rect.width;
+    const v = 1 - (y / rect.height);
+    
+    const nextColor = { ...pickerColor, s, v };
+    setPickerColor(nextColor);
+    
+    const hex = hsvToHex(nextColor.h, s, v);
+    setFinishes(prevFin => ({
+      ...prevFin,
+      [showFinishModal!]: { type: "color", value: hex, name: hex.toUpperCase() }
+    }));
+  };
+
+  const onSquarePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    handleSquarePointer(e);
+  };
+
+  const onSquarePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      handleSquarePointer(e);
+    }
+  };
+
+  const onSquarePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    const hex = hsvToHex(pickerColor.h, pickerColor.s, pickerColor.v);
+    applyFinishToAllRooms(showFinishModal as "flooring" | "walls" | "ceiling" | "doors" | "windows", hex);
+  };
+
+  const handleHuePointer = (e: React.PointerEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const h = Math.round((x / rect.width) * 360) % 360;
+    
+    const nextColor = { ...pickerColor, h };
+    setPickerColor(nextColor);
+    
+    const hex = hsvToHex(h, nextColor.s, nextColor.v);
+    setFinishes(prevFin => ({
+      ...prevFin,
+      [showFinishModal!]: { type: "color", value: hex, name: hex.toUpperCase() }
+    }));
+  };
+
+  const onHuePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    handleHuePointer(e);
+  };
+
+  const onHuePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      handleHuePointer(e);
+    }
+  };
+
+  const onHuePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    const hex = hsvToHex(pickerColor.h, pickerColor.s, pickerColor.v);
+    applyFinishToAllRooms(showFinishModal as "flooring" | "walls" | "ceiling" | "doors" | "windows", hex);
+  };
 
   // ── Visualize / Camera states ───────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<"layout" | "visualize">("layout");
@@ -1297,11 +2420,44 @@ export const FloorPlanEditor: React.FC = () => {
   useEffect(() => {
     const el = stageContainerRef.current;
     if (!el) return;
+
+    const updateStageSize = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      const isTooSmall = w < MIN_STAGE_WIDTH || h < MIN_STAGE_HEIGHT;
+      const shouldWarn = isTooSmall && el.getClientRects().length > 0;
+
+      if (shouldWarn && !hasWarnedSmallStageRef.current) {
+        hasWarnedSmallStageRef.current = true;
+        toast.warning(
+          `Khu vực bản vẽ quá nhỏ (${w} × ${h}px). Vui lòng mở rộng cửa sổ hoặc thu gọn thanh bên.`,
+          { id: SMALL_STAGE_TOAST_ID }
+        );
+      } else if (!shouldWarn && hasWarnedSmallStageRef.current) {
+        hasWarnedSmallStageRef.current = false;
+        toast.dismiss(SMALL_STAGE_TOAST_ID);
+      }
+
+      // ResizeObserver can report 0 while a panel is hidden or its flex layout
+      // is transitioning. Keep the last valid size so Konva never creates a
+      // zero-sized layer canvas and later passes it to drawImage().
+      if (w <= 0 || h <= 0) return;
+
+      setStageSize((current) =>
+        current.w === w && current.h === h ? current : { w, h }
+      );
+    };
+
     const obs = new ResizeObserver(() => {
-      setStageSize({ w: el.clientWidth, h: el.clientHeight });
+      updateStageSize();
     });
+
+    updateStageSize();
     obs.observe(el);
-    return () => obs.disconnect();
+    return () => {
+      obs.disconnect();
+      toast.dismiss(SMALL_STAGE_TOAST_ID);
+    };
   }, []);
 
   // ── Sync cameras for rooms ─────────────────────────────────────────
@@ -1319,7 +2475,7 @@ export const FloorPlanEditor: React.FC = () => {
         }
       });
 
-      // 2. Khởi tạo hoặc cập nhật vị trí camera theo tâm phòng mới khi ở tab layout
+      // 2. Khởi tạo vị trí camera theo tâm phòng mới cho phòng chưa có camera
       floorPlan.rooms.forEach((room) => {
         const centerX = room.x + room.w / 2;
         const centerY = room.y + room.h / 2;
@@ -1335,16 +2491,6 @@ export const FloorPlanEditor: React.FC = () => {
             prompt: "",
           };
           changed = true;
-        } else if (activeTab === "layout") {
-          // Khi ở tab layout, camera luôn bám theo tâm phòng
-          if (Math.abs(cam.x - centerX) > 0.01 || Math.abs(cam.y - centerY) > 0.01) {
-            updatedCameras[room.id] = {
-              ...cam,
-              x: centerX,
-              y: centerY
-            };
-            changed = true;
-          }
         }
       });
 
@@ -1354,7 +2500,7 @@ export const FloorPlanEditor: React.FC = () => {
         }, 0);
       }
     }
-  }, [floorPlan, activeTab]);
+  }, [floorPlan]);
 
   // ── Auto-scroll chat ────────────────────────────────────────────────────
   useEffect(() => {
@@ -1377,9 +2523,15 @@ export const FloorPlanEditor: React.FC = () => {
         setCompletedSteps(new Set());
         setMessages([
           {
+            id: "msg_init_user_" + newId,
+            role: "user" as const,
+            content: "Tạo mặt bằng mới",
+            timestamp: new Date(Date.now() - 1000),
+          },
+          {
             id: "msg_init_" + newId,
             role: "assistant" as const,
-            content: "Xin chào! Tôi sẽ giúp bạn tạo bản vẽ mặt bằng với AI.\nHãy bắt đầu — **Công trình của bạn có bao nhiêu tầng?**",
+            content: "Tôi rất vui được giúp bạn tạo bản vẽ! Hãy bắt đầu với một số thông tin cơ bản. Ngôi nhà này nên có bao nhiêu tầng?",
             timestamp: new Date(),
           }
         ]);
@@ -1400,8 +2552,8 @@ export const FloorPlanEditor: React.FC = () => {
       projectName === "Untitled Project" &&
       floorPlans.length === 0 &&
       Object.keys(gatherInfo).length === 0 &&
-      messages.length === 1 &&
-      messages[0]?.content.includes("Xin chào! Tôi sẽ giúp bạn tạo bản vẽ mặt bằng");
+      messages.length === 2 &&
+      messages[1]?.content.includes("Tôi rất vui được giúp bạn tạo bản vẽ");
       
     if (isEmpty) return; // Do not auto-save a blank, untouched project
     
@@ -1600,18 +2752,92 @@ export const FloorPlanEditor: React.FC = () => {
   }, [activeJobId, addMessage]);
 
   // ── Gemini 2.5 Flash Conversational Handler ────────────────────────
-  const handleSend = async () => {
-    const text = inputValue.trim();
+  const handleSend = async (overrideText?: string) => {
+    const text = (overrideText ?? inputValue).trim();
     if (!text || isGenerating || isTyping) return;
 
-    setInputValue("");
+    if (!overrideText) setInputValue("");
     addMessage("user", text);
     setIsTyping(true);
 
-    // Enforce a minimum 3-second "thinking" delay before showing AI reply
-    const minDelay = new Promise<void>((resolve) => setTimeout(resolve, 3000));
+    // Giữ phản hồi tự nhiên nhưng không bắt người dùng chờ cố định quá lâu.
+    const minDelay = new Promise<void>((resolve) => setTimeout(resolve, 500));
+
+    // Tự động trả lời nếu tin nhắn chứa từ khóa hành lang
+    const normalizedText = text.toLowerCase();
+    if (normalizedText.includes("hành lang") || normalizedText.includes("hanh lang")) {
+      await minDelay;
+      addMessage("assistant", "Igen không hỗ trợ hành lang");
+      setIsTyping(false);
+      return;
+    }
 
     try {
+      // ── Client-side validation ──────────────────────────────────────────
+      if (currentStep === "floors") {
+        const floorMatch = text.match(/(\d+)/);
+        if (floorMatch) {
+          const floorsNum = parseInt(floorMatch[1], 10);
+          if (floorsNum < 1 || floorsNum > 4) {
+            await minDelay;
+            addMessage(
+              "assistant",
+              "iGen chỉ hỗ trợ tối đa 4 tầng. Vui lòng nhập số tầng trong khoảng từ 1 đến 4."
+            );
+            setIsTyping(false);
+            return;
+          }
+        }
+      }
+
+      if (currentStep === "area") {
+        // Reject square feet
+        if (text.toLowerCase().includes("ft") || text.toLowerCase().includes("feet")) {
+          await minDelay;
+          addMessage(
+            "assistant",
+            "iGen chỉ nhận diện tích theo m², không hỗ trợ hoặc quy đổi ft². Vui lòng nhập diện tích từ 20 m² đến 2.000 m²."
+          );
+          setIsTyping(false);
+          return;
+        }
+
+        // Reject width x length input
+        const isDimension = text.match(/(\d+(?:[.,]\d+)?)\s*(?:m)?\s*[x×*]\s*(\d+(?:[.,]\d+)?)/i);
+        if (isDimension) {
+          await minDelay;
+          addMessage(
+            "assistant",
+            "Vui lòng nhập diện tích theo m², không nhập chiều dài × chiều rộng. iGen hỗ trợ diện tích từ 20 m² đến 2.000 m²."
+          );
+          setIsTyping(false);
+          return;
+        }
+
+        // Validate sqm range [20, 2000]
+        const numMatch = text.match(/(\d+(?:\.\d+)?)/);
+        if (numMatch) {
+          const areaVal = parseFloat(numMatch[1]);
+          if (areaVal < 20 || areaVal > 2000) {
+            await minDelay;
+            addMessage(
+              "assistant",
+              "Diện tích một sàn phải nằm trong khoảng từ 20 m² đến 2.000 m². Vui lòng nhập lại diện tích phù hợp."
+            );
+            setIsTyping(false);
+            return;
+          }
+        } else {
+          await minDelay;
+          addMessage(
+            "assistant",
+            "Vui lòng nhập diện tích một sàn của bạn theo m² (Từ 20 m² đến 2.000 m²)."
+          );
+          setIsTyping(false);
+          return;
+        }
+      }
+
       const ai = await getAIClient("gemini-2.5-flash");
 
       // Build conversation history for Gemini
@@ -1631,13 +2857,16 @@ export const FloorPlanEditor: React.FC = () => {
       const systemInstruction = `Bạn là iGen - Trợ lý AI cao cấp chuyên thiết kế bản vẽ mặt bằng và phối cảnh kiến trúc.
 Nhiệm vụ của bạn là hỗ trợ người dùng toàn diện trong suốt dự án:
 1. Hướng dẫn người dùng các bước thực hiện trên giao diện nếu họ hỏi cách làm (ví dụ: cách gen ảnh 3D, cách tải ảnh phối cảnh, cách vẽ thêm phòng...).
-2. Thu thập thông tin ban đầu (Số tầng, Kích thước đất, Hình dạng, Số phòng) để tạo bản vẽ mặt bằng tự động.
-3. Thực hiện trực tiếp các hành động thêm đồ nội thất hoặc thêm cửa/cửa sổ lên bản vẽ hoặc render 3D khi người dùng yêu cầu (ví dụ: "Thêm cho tôi một bộ sofa", "Thêm cửa sổ", "Đặt tủ quần áo", "Render 3D phối cảnh phòng này").
+2. Thu thập thông tin ban đầu (Số tầng, Diện tích một sàn m², Hình dạng, Số phòng) để tạo bản vẽ mặt bằng tự động.
+3. Thực hiện trực tiếp các hành động thêm đồ nội thất, cửa, hoặc xóa phòng/đồ vật trên bản vẽ hoặc render 3D khi người dùng yêu cầu (ví dụ: "Thêm cho tôi một bộ sofa", "Thêm cửa sổ", "Đặt tủ quần áo", "Xóa sân vườn trước", "Xóa ghế sofa", "Render 3D phối cảnh phòng này").
 
 Quy tắc bắt buộc:
-1. BẮT BUỘC: Bạn chỉ được trả lời bằng tiếng Việt chuẩn 100%, tuyệt đối không được sử dụng tiếng Trung (ví dụ các từ như 宽, 长, v.v.) hay bất kỳ ngôn ngữ nào khác trong câu trả lời. Câu trả lời cực kỳ ngắn gọn, súc tích, đi thẳng vào vấn đề (tối đa 2-3 câu). Tuyệt đối không giải thích dài dòng hay lan man.
+1. BẮT BUỘC: Bạn chỉ được trả lời bằng tiếng Việt chuẩn 100%, câu trả lời cực kỳ ngắn gọn, súc tích, đi thẳng vào vấn đề (tối đa 2-3 câu). Tuyệt đối không giải thích dài dòng hay lan man.
 2. Khi hướng dẫn các bước thực hiện, hãy tóm tắt chúng thành các bước cực kỳ ngắn gọn (ví dụ: "1. Click nút A. 2. Nhấn B."), tuyệt đối không viết dài dòng.
-3. Nếu người dùng muốn thực hiện một hành động (thêm đồ vật, thêm cửa, render 3D, v.v.), bạn hãy đưa hành động tương ứng vào trường "actions" trong JSON phản hồi.
+3. Dữ liệu dự án đã có: ${gatheredContext || "chưa có"}.
+4. Bước ứng dụng đang chờ: ${currentStep}. Chỉ trích xuất dữ liệu người dùng thực sự cung cấp; không tự suy đoán giá trị còn thiếu và không hỏi lại dữ liệu đã có. Ứng dụng sẽ tự quyết định câu hỏi tiếp theo theo thứ tự: số tầng → diện tích m² → hình dạng → phòng → yêu cầu bổ sung.
+5. Số tầng hợp lệ chỉ từ 1 đến 4. Diện tích hợp lệ chỉ từ 20 m² đến 2.000 m². Chỉ nhận diện tích theo m², không nhận ft² và không nhận kích thước dạng dài × rộng hay chiều rộng × chiều dài. Khi đang ở bước area, một con số không ghi đơn vị được hiểu là m².
+6. Nếu người dùng cung cấp nhiều thông tin trong một câu, hãy trích xuất đầy đủ tất cả các trường tương ứng.
 
 Danh sách các mã loại đồ nội thất (furniture_type) được hỗ trợ:
 - Sofa phòng khách: "living_sofa"
@@ -1681,6 +2910,8 @@ Các hành động (actions) được hỗ trợ trong JSON:
 - Thêm đồ nội thất: { "type": "add_furniture", "furniture_type": "[MÃ_LOẠI_ĐỒ]" }
 - Thêm cửa đi: { "type": "add_door", "style": "[KIỂU_DÁNG]" }
 - Thêm cửa sổ: { "type": "add_window", "style": "[KIỂU_DÁNG]" }
+- Xóa phòng: { "type": "delete_room", "room_name": "[Tên phòng cần xóa]" }
+- Xóa đồ nội thất: { "type": "delete_furniture", "furniture_name": "[Tên đồ vật cần xóa]" }
 - Render 3D phối cảnh: { "type": "render_3d" }
 - Hiển thị bảng chọn hình dạng đất: { "type": "show_shape_picker" }
 - Hiển thị bảng thêm phòng: { "type": "show_room_picker" }
@@ -1692,17 +2923,13 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
     // Danh sách các hành động cần thực thi (nếu có), có thể rỗng []
   ],
   "extracted": {
-    "floors": null, // hoặc số tầng chiết xuất được
-    "area": null, // hoặc diện tích chiết xuất được
-    "landWidth": null, // hoặc chiều rộng đất
-    "landLength": null, // hoặc chiều dài đất
+    "floors": null, // hoặc số tầng chiết xuất được (từ 1 đến 4)
+    "area": null, // hoặc diện tích m² chiết xuất được (từ 20 đến 2.000)
     "shape": null,
     "rooms": null,
     "extras": null
   },
-  "completedSteps": [],
-  "needsShapePicker": false,
-  "readyToGenerate": false
+  "completedSteps": []
 }`;
 
       const response = await generateContentWithRetry(ai, {
@@ -1715,7 +2942,7 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
           systemInstruction,
           responseMimeType: "application/json",
         },
-      });
+      }, 3, 1000, 15000);
 
       const rawText =
         (typeof response.text === "function" ? response.text() : response.text) || "{}";
@@ -1729,20 +2956,8 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
       }
 
       const replyText: string = parsed.reply || "";
-      const extracted = parsed.extracted || {};
-      const newCompletedSteps: GatherStep[] = parsed.completedSteps || [];
-      const needsShapePicker: boolean = parsed.needsShapePicker || replyText.includes("__SHAPE_PICKER__");
-      const readyToGenerate: boolean = parsed.readyToGenerate || false;
-
-      // Merge extracted info
-      const newInfo: GatherInfo = { ...gatherInfo };
-      if (extracted.floors != null) newInfo.floors = parseInt(extracted.floors) || 1;
-      if (extracted.area != null) newInfo.area = String(extracted.area);
-      if (extracted.landWidth != null) newInfo.landWidth = parseFloat(extracted.landWidth) || 5;
-      if (extracted.landLength != null) newInfo.landLength = parseFloat(extracted.landLength) || 15;
-      if (extracted.shape != null) newInfo.shape = String(extracted.shape);
-      if (extracted.rooms != null) newInfo.rooms = String(extracted.rooms);
-      if (extracted.extras != null) newInfo.extras = String(extracted.extras);
+      const extracted = (parsed.extracted || {}) as Record<string, unknown>;
+      const newInfo = mergeGatheredInput(gatherInfo, extracted, text, currentStep);
 
       // Fallback: nếu chỉ có area (m²) mà không có landWidth/landLength → dụng tỷ lệ mặc định
       if (!newInfo.landWidth && !newInfo.landLength && newInfo.area) {
@@ -1756,48 +2971,30 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
       }
 
       setGatherInfo(newInfo);
+      setCompletedSteps(getCompletedGatherSteps(newInfo));
 
-      // Update checklist steps
-      if (newCompletedSteps.length > 0) {
-        setCompletedSteps((prev) => {
-          const next = new Set(prev);
-          newCompletedSteps.forEach((s) => next.add(s));
-          return next;
-        });
-      }
+      // Điều phối bằng dữ liệu thật thay vì để model tự chọn bước, nhờ đó không
+      // bỏ bước và cũng không hỏi lại trường đã có.
+      const nextStep = getNextGatherStep(newInfo);
+      setCurrentStep(nextStep);
 
-      // Auto-complete checklist based on extracted data
-      setCompletedSteps((prev) => {
-        const next = new Set(prev);
-        if (newInfo.floors) next.add("floors");
-        if (newInfo.area || (newInfo.landWidth && newInfo.landLength)) next.add("area");
-        if (newInfo.shape) next.add("shape");
-        if (newInfo.rooms) next.add("rooms");
-        if (newInfo.extras) next.add("extras");
-        return next;
-      });
-
-      // Wait for the minimum 3-second thinking delay before showing the reply
+      // Chờ nhịp phản hồi ngắn trước khi hiển thị câu tiếp theo.
       await minDelay;
 
-      if (needsShapePicker) {
-        // Show shape picker bubble
-        addMessage("assistant", "__SHAPE_PICKER__");
-        setCurrentStep("shape");
-      } else if (readyToGenerate) {
-        // Show final message then generate
-        const cleanReply = replyText.replace("__SHAPE_PICKER__", "").trim();
-        if (cleanReply) addMessage("assistant", cleanReply);
-        setCurrentStep("done");
+      if (!floorPlan && nextStep === "done") {
+        addMessage("assistant", getGatherStepPrompt("done", newInfo));
         setAutoRenderPending(true);
         await generateFloorPlan(newInfo);
+      } else if (!floorPlan) {
+        const didNotAdvance = nextStep === currentStep && !hasGatherStepValue(newInfo, nextStep as Exclude<GatherStep, "done">);
+        addMessage("assistant", getGatherStepPrompt(nextStep, newInfo, didNotAdvance));
       } else {
         const cleanReply = replyText.replace("__SHAPE_PICKER__", "").trim();
         addMessage("assistant", cleanReply || "Hãy cho tôi biết thêm nhé!");
       }
 
       // Execute any direct actions requested by the AI
-      if (Array.isArray(parsed.actions)) {
+      if (floorPlan && Array.isArray(parsed.actions)) {
         for (const action of parsed.actions) {
           if (action.type === "add_furniture") {
             const fType = action.furniture_type;
@@ -1808,6 +3005,59 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
             handleAddDoor(action.style || "hinged");
           } else if (action.type === "add_window") {
             handleAddWindow(action.style || "hinged");
+          } else if (action.type === "delete_room") {
+            const rName = action.room_name;
+            if (rName) {
+              const term = rName.toLowerCase().trim();
+              const found = floorPlan.rooms.find(r => r.name.toLowerCase().includes(term));
+              if (found) {
+                const updatedRooms = floorPlan.rooms.filter((r) => r.id !== found.id);
+                const updatedPlan = { ...floorPlan, rooms: updatedRooms };
+                setFloorPlan(updatedPlan);
+                setFloorPlans(prev => {
+                  const copy = [...prev];
+                  copy[activeFloorIndex] = updatedPlan;
+                  return copy;
+                });
+                toast.success(`Đã xóa phòng: ${found.name}`);
+              }
+            }
+          } else if (action.type === "delete_furniture") {
+            const fName = action.furniture_name;
+            if (fName) {
+              const term = fName.toLowerCase().trim();
+              let foundRoomId: string | null = null;
+              let foundFurnId: string | null = null;
+              for (const r of floorPlan.rooms) {
+                if (r.furniture) {
+                  const item = r.furniture.find(f => f.type.toLowerCase().includes(term));
+                  if (item) {
+                    foundRoomId = r.id;
+                    foundFurnId = item.id;
+                    break;
+                  }
+                }
+              }
+              if (foundRoomId && foundFurnId) {
+                const updatedRooms = floorPlan.rooms.map(r => {
+                  if (r.id === foundRoomId) {
+                    return {
+                      ...r,
+                      furniture: r.furniture?.filter(f => f.id !== foundFurnId)
+                    };
+                  }
+                  return r;
+                });
+                const updatedPlan = { ...floorPlan, rooms: updatedRooms };
+                setFloorPlan(updatedPlan);
+                setFloorPlans(prev => {
+                  const copy = [...prev];
+                  copy[activeFloorIndex] = updatedPlan;
+                  return copy;
+                });
+                toast.success(`Đã xóa đồ vật: ${fName}`);
+              }
+            }
           } else if (action.type === "render_3d") {
             handleRender3D();
           } else if (action.type === "show_shape_picker") {
@@ -1835,7 +3085,6 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
 
     addMessage("user", `Hình dạng mặt bằng: ${shapeName} (${w}m × ${l}m)`);
 
-    setCompletedSteps((prev) => new Set([...prev, "shape" as GatherStep, "area" as GatherStep]));
     const newInfo: GatherInfo = {
       ...gatherInfo,
       shape: shapeName,
@@ -1845,16 +3094,20 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
       area: `${w}x${l}m`,
     };
     setGatherInfo(newInfo);
-    setCurrentStep("rooms");
+    setCompletedSteps(getCompletedGatherSteps(newInfo));
+    const nextStep = getNextGatherStep(newInfo);
+    setCurrentStep(nextStep);
 
     setIsTyping(true);
     await new Promise((r) => setTimeout(r, 600));
     setIsTyping(false);
-    addMessage(
-      "assistant",
-      `Tuyệt vời! Đã chọn hình dạng **${shapeName}** (${w}m × ${l}m). 🏗️\n\nTiếp theo, hãy lựa chọn các phòng mong muốn cho ngôi nhà của bạn:`
-    );
-    addMessage("assistant", "__ROOM_PICKER__");
+    if (nextStep === "done") {
+      addMessage("assistant", getGatherStepPrompt("done", newInfo));
+      setAutoRenderPending(true);
+      await generateFloorPlan(newInfo);
+    } else {
+      addMessage("assistant", getGatherStepPrompt(nextStep, newInfo));
+    }
   };
 
   // ── Rooms selected from modal ───────────────────────────────────────────
@@ -1866,22 +3119,26 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
 
     addMessage("user", `Phòng mong muốn:\n${roomsString}`);
 
-    setCompletedSteps((prev) => new Set([...prev, "rooms" as GatherStep]));
     const newInfo: GatherInfo = {
       ...gatherInfo,
       rooms: roomsString,
       roomSelection,
     };
     setGatherInfo(newInfo);
-    setCurrentStep("extras");
+    setCompletedSteps(getCompletedGatherSteps(newInfo));
+    const nextStep = getNextGatherStep(newInfo);
+    setCurrentStep(nextStep);
 
     setIsTyping(true);
     await new Promise((r) => setTimeout(r, 600));
     setIsTyping(false);
-    addMessage(
-      "assistant",
-      "Đã ghi nhận danh sách phòng của bạn! 🚪✨\n\nCuối cùng, bạn có yêu cầu bổ sung nào khác không? "
-    );
+    if (nextStep === "done") {
+      addMessage("assistant", getGatherStepPrompt("done", newInfo));
+      setAutoRenderPending(true);
+      await generateFloorPlan(newInfo);
+    } else {
+      addMessage("assistant", getGatherStepPrompt(nextStep, newInfo));
+    }
   };
 
   // ── AI Floor Plan Generation ────────────────────────────────────────────
@@ -1934,6 +3191,14 @@ Hãy phân tích kỹ yêu cầu của người dùng để trả về phản h�
 - Mặt bằng đất là hình chữ nhật kích thước ${landW}m x ${landL}m. Các phòng phải nằm hoàn toàn trong phạm vi x ∈ [0, ${landW}] và y ∈ [0, ${landL}].`;
     }
 
+    const boundaryInstruction = shape === "hình chữ nhật"
+      ? `     + Các phòng ở trên cùng bắt buộc phải có y = 0.
+     + Các phòng ở dưới cùng bắt buộc phải kết thúc tại y + h = ${landL}.
+     + Các phòng ở bên trái bắt buộc phải có x = 0.
+     + Các phòng ở bên phải bắt buộc phải kết thúc tại x + w = ${landW}.`
+      : `     + Các cạnh ngoài của các phòng nằm ở biên bắt buộc phải trùng khít hoàn toàn với các cạnh tương ứng của đa giác ranh giới ${shape} (tuyệt đối không được vượt ra ngoài ranh giới và không lấn vào vùng khuyết).
+     + Kích thước và vị trí các phòng ghép lại phải tạo thành đúng 100% hình dạng đa giác ${shape} đã chọn. Tất cả các tầng của công trình phải có chung hình dạng đa giác ranh giới này, không được tự ý bo tròn, làm phẳng hay thay đổi hình dáng sang hình chữ nhật hay hình dạng khác.`;
+
     const generatedPlans: FloorPlanData[] = [];
 
     // Build per-floor room strings from roomSelection (structured) when available
@@ -1978,11 +3243,16 @@ ${shapeInstruction}
 
 QUY TẮC THIẾT KẾ BẮT BUỘC (TUÂN THỦ TUYỆT ĐỐI):
 
-1. YÊU CẦU PHÒNG & KHÔNG ĐỂ THỪA ĐẤT:
-   - CHỈ tạo đúng các phòng đã được yêu cầu cụ thể cho ${floorLabel}: "${floorRooms}". TUYỆT ĐỐI KHÔNG thêm phòng phụ ngoài yêu cầu và KHÔNG được tự ý bớt phòng. Mảng "rooms" trả về phải gồm chính xác số lượng và loại phòng này, không tự ý thêm phòng thờ, phòng sinh hoạt chung, hành lang (hành lang được thiết kế như khoảng trống giao thông giữa các phòng, không khai báo thành thực thể phòng trong JSON trừ khi được yêu cầu), phòng làm việc, vv nếu không có trong yêu cầu.
-   - KHÔNG ĐỂ THỪA ĐẤT: Tổng diện tích các phòng cộng lại và ghép lại phải bao phủ hoàn toàn diện tích cho phép của lô đất (đa giác ranh giới). Không được để trống bất kỳ góc nào hay để chừa đất trống ở các góc biên ranh giới.
-   - PHÂN BỔ TỶ LỆ DIỆN TÍCH THÔNG MINH (PHÒNG LỚN/NHỎ HỢP LÝ): Khi chia diện tích, hãy đảm bảo các phòng chính như Phòng khách (Living room), Phòng ngủ Master (Master Bedroom) phải RỘNG RÃI (ví dụ: phòng khách nên rộng nhất, chiếm từ 15m² - 25m²; phòng ngủ master từ 12m² - 18m²). Ngược lại, các phòng phụ như Phòng vệ sinh / Toilet / WC, Phòng giặt (Laundry), Lối đi phải thiết kế nhỏ gọn, HẸP và tiết kiệm diện tích tối đa (ví dụ: WC/Toilet chỉ nên rộng từ 2.2m² - 4m²). Tuyệt đối không để phòng vệ sinh quá rộng tương đương phòng ngủ hay phòng khách, gây lãng phí không gian.
-   - KHỚP KHÍT RANH GIỚI: Để lấp đầy diện tích đất mà không thêm phòng phụ, hãy TỰ ĐỘNG TĂNG KÍCH THƯỚC của các phòng được yêu cầu sao cho tổng chiều rộng và chiều dài của các phòng ghép lại vừa khít với ranh giới đất ở mọi hướng (nhưng phải giữ tỷ lệ phòng khách lớn và WC nhỏ).
+1. YÊU CẦU PHÒNG & PHỦ KÍN ĐẤT (BẮT BUỘC TUÂN THỦ):
+   - CHỈ tạo đúng các phòng đã được yêu cầu cụ thể cho ${floorLabel}: "${floorRooms}". TUYỆT ĐỐI KHÔNG tự ý vẽ thêm bất kỳ phòng chức năng hoặc khu vực phụ ngoài yêu cầu (không tự ý vẽ thêm phòng khách, phòng ngủ, phòng bếp, toilet, hành lang, phòng làm việc, phòng thờ, sân vườn, sân trước, sân sau, ban công, khoảng trống, v.v. trừ khi có yêu cầu cụ thể). Mảng "rooms" trả về phải gồm chính xác các phòng đã được yêu cầu.
+   - PHỦ KÍN TOÀN BỘ ĐẤT & KHỚP KHÍT RANH GIỚI: Phải tăng kích thước (chiều rộng w, chiều dài h) của các phòng yêu cầu lên sao cho tổng diện tích các phòng này bao phủ toàn bộ 100% diện tích và khớp khít hoàn hảo với ranh giới của lô đất (không được vượt ra ngoài ranh giới và không lấn vào vùng khuyết nếu có). KHÔNG ĐỂ THỪA bất kỳ khoảng đất trống nào.
+${boundaryInstruction}
+     + Phải phân bổ kích thước sao cho các phòng ghép sát nhau khít hoàn toàn và cùng chạm đến ranh giới. Ví dụ, nếu phòng bên cạnh kéo dài chạm biên ranh giới, thì phòng song song bên cạnh cũng phải được tăng chiều rộng hoặc chiều dài để chạm sát biên ranh giới tương ứng, không được để thụt ngắn hơn tạo ra khoảng đất trống thừa ở biên.
+   - TUYỆT ĐỐI KHÔNG CHỒNG ĐÈ: Các phòng phải tiếp giáp khít nhau qua cạnh tường chung, tuyệt đối không chồng chéo, không đè lên nhau (overlap), và không được trùng lấn tọa độ.
+   - PHÂN BỔ TỶ LỆ DIỆN TÍCH THÔNG MINH & XỬ LÝ THEO DIỆN TÍCH ĐẤT (ĐẶC BIỆT QUAN TRỌNG):
+     + Cân đối kích thước hợp lý cho các phòng yêu cầu (ví dụ: Phòng ngủ từ 12m² - 18m², Toilet/WC chỉ nên nhỏ gọn từ 2.2m² - 4m²). Không được làm Toilet quá to bằng phòng ngủ.
+     + NẾU ĐẤT RỘNG NHƯNG ÍT PHÒNG: Phải tăng mạnh kích thước của từng phòng lên tương ứng (ví dụ: làm phòng khách rộng 30-50m², phòng ngủ 20-30m², bếp 18-25m²) để đảm bảo các phòng ghép lại bao phủ toàn bộ 100% diện tích đất, tuyệt đối không được để lại khoảng trống thừa hay thiếu đất.
+     + NẾU ĐẤT HẸP / DIỆN TÍCH BÉ: Phải chủ động thu nhỏ diện tích các phòng xuống dưới mức kích thước khuyến nghị (ví dụ: phòng ngủ chỉ cần 8-10m², WC 2-3m²) để tất cả các phòng xếp khít nhau vừa vặn trong ranh giới đất, đảm bảo giữ nguyên hình dạng ranh giới đất đã chọn, tuyệt đối không thiết kế các phòng quá to vượt ra ngoài biên hoặc chồng đè lên nhau.
 
 2. KÍCH THƯỚC TỐI THIỂU BẮT BUỘC CHO TỪNG LOẠI PHÒNG (phải đảm bảo đủ diện tích để bố trí nội thất):
    - Phòng khách (living room): tối thiểu 3.0m x 4.0m (12m²), ưu tiên 4m x 5m trở lên
@@ -1996,20 +3266,22 @@ QUY TẮC THIẾT KẾ BẮT BUỘC (TUÂN THỦ TUYỆT ĐỐI):
    - Garage / nhà xe: tối thiểu 3.0m x 5.5m (16.5m²)
    - Phòng giặt (laundry): tối thiểu 1.5m x 2.0m (3.0m²)
    - Sảnh / lối vào (entry/foyer): tối thiểu 1.5m x 2.0m (3.0m²)
-   - Hành lang / lối đi: rộng tối thiểu 1.0m
    Lưu ý: nếu lô đất nhỏ không đủ để đạt kích thước khuyến nghị, hãy ưu tiên đạt kích thước TỐI THIỂU và phân bổ phần diện tích còn lại cho các phòng chính lớn hơn.
 
 3. QUY TẮC BỐ TRÍ CÁC PHÒNG CHUẨN CÔNG NĂNG:
    - Phòng khách: Đặt gần cửa chính/lối vào, làm trung tâm kết nối các khu vực, thuận tiện tiếp cận các phòng khác.
    - Phòng bếp: Đặt liền kề hoặc gần phòng ăn. Không đặt bếp làm lối đi bắt buộc để vào các phòng khác. Hạn chế đặt sát phòng ngủ nếu còn phương án tốt hơn.
    - Phòng ăn: Liền kề phòng bếp và kết nối thuận tiện với phòng khách.
-   - Phòng ngủ: Gần phòng vệ sinh, đảm bảo sự riêng tư, hạn chế mở cửa trực tiếp ra phòng khách nếu có hành lang thay thế, và không làm lối đi sang phòng khác.
+   - Phòng ngủ: Gần phòng vệ sinh, đảm bảo sự riêng tư, cửa phòng ngủ mở trực tiếp ra phòng khách hoặc phòng sinh hoạt chung ở trung tâm, không làm lối đi xuyên sang phòng khác.
    - Phòng vệ sinh (Toilet/WC): Phải đặt rất gần hoặc tiếp giáp phòng ngủ. Không đặt ngay trước cửa chính hoặc ở giữa phòng khách. Có thể dùng chung cho nhiều phòng ngủ nếu hợp lý.
    - Phòng làm việc: Đặt ở khu vực yên tĩnh, tách biệt với phòng khách.
    - Phòng giặt: Gần khu vực sân hoặc ban công nếu có.
+   - Ban công: Phải đặt liền kề và có cửa kết nối đi ra từ một phòng ngủ. Diện tích của ban công luôn phải nhỏ và chỉ bằng khoảng 1/3 diện tích của căn phòng ngủ liền kề đó.
 
-4. LUỒNG GIAO THÔNG & ÁNH SÁNG:
-   - Có thể đi từ cửa chính đến mọi phòng mà không phải đi xuyên qua phòng ngủ. Hạn chế đi xuyên qua bếp để đến các khu vực khác. Đường di chuyển ngắn, rõ ràng, hợp lý.
+4. LUỒNG GIAO THÔNG & ÁNH SÁNG (KHÔNG DÙNG HÀNH LANG):
+   - TUYỆT ĐỐI KHÔNG tự ý tạo thêm hành lang, lối đi riêng biệt hoặc các không gian lưu thông phụ.
+   - PHÒNG TRUNG TÂM LÀM CẦU NỐI: Phòng khách (hoặc phòng sinh hoạt chung ở các tầng trên) phải được đặt ở vị trí trung tâm, chính giữa các phòng khác để làm cầu nối giao thông kết nối trực tiếp đến tất cả các phòng (phòng ngủ, phòng bếp, WC...). Người dùng có thể di chuyển từ phòng trung tâm này trực tiếp vào các phòng chức năng khác mà không cần qua hành lang.
+   - Có thể đi từ cửa chính đến mọi phòng mà không phải đi xuyên qua phòng ngủ. Hạn chế đi xuyên qua bếp để đến các khu vực khác.
    - Ưu tiên các phòng chính (phòng khách, phòng ngủ) tiếp xúc với mặt ngoài công trình để có cửa sổ đón ánh sáng tự nhiên nhiều nhất.
 
 5. HÌNH HỌC & ĐỘ LIỀN MẠCH:
@@ -2036,7 +3308,7 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
           model: promptModel,
           contents: [{ role: "user", parts: [{ text: aiPrompt }] }],
           config: { responseMimeType: "application/json" },
-        });
+        }, 3, 1000, 30000);
 
         const textResult =
           (typeof response.text === "function"
@@ -2046,61 +3318,80 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
         const parsed = safeJsonParse(textResult) as Record<string, any> | null;
 
         if (parsed && Array.isArray(parsed.rooms)) {
-          const validatedRooms: Room[] = parsed.rooms.map(
+          // Calculate valid area to check if we have too many rooms
+          const landArea = landW * landL;
+          const shapeCutouts = getCutoutsForShape(shape, landW, landL);
+          const cutoutArea = shapeCutouts.reduce((sum, c) => sum + (c.x2 - c.x1) * (c.y2 - c.y1), 0);
+          const validArea = landArea - cutoutArea;
+
+          // Compute size scaling factor if there are too many rooms
+          const numRooms = parsed.rooms.length;
+          const avgArea = validArea / Math.max(1, numRooms);
+          let minSizeScale = 1.0;
+          if (avgArea < 8.0) {
+            minSizeScale = Math.max(0.4, Math.sqrt(avgArea / 8.0));
+          }
+
+          // Map rooms to raw format first
+          const rawRooms: Room[] = parsed.rooms.map(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (r: any, idx: number) => {
               const name = (r.name || "Phòng").toLowerCase();
-              // Minimum room sizes per room type (to fit furniture)
-              let minW = 1.5;
-              let minH = 1.5;
+              // Minimum room sizes per room type (to fit furniture) scaled by minSizeScale
+              let minW = 1.5 * minSizeScale;
+              let minH = 1.5 * minSizeScale;
               if (name.includes("khách") || name.includes("living") || name.includes("sinh hoạt")) {
-                minW = 3.0; minH = 3.5;
+                minW = 3.0 * minSizeScale; minH = 3.5 * minSizeScale;
               } else if (name.includes("ngủ") || name.includes("bed")) {
-                minW = 2.5; minH = 3.0;
+                minW = 2.5 * minSizeScale; minH = 3.0 * minSizeScale;
               } else if (name.includes("bếp") || name.includes("kitchen")) {
-                minW = 2.0; minH = 2.5;
+                minW = 2.0 * minSizeScale; minH = 2.5 * minSizeScale;
               } else if (name.includes("ăn") || name.includes("dining")) {
-                minW = 2.5; minH = 2.5;
+                minW = 2.5 * minSizeScale; minH = 2.5 * minSizeScale;
               } else if (name.includes("tắm") || name.includes("wc") || name.includes("toilet") || name.includes("vệ sinh")) {
-                minW = 1.2; minH = 1.6;
+                minW = 1.2 * minSizeScale; minH = 1.6 * minSizeScale;
               } else if (name.includes("gara") || name.includes("garage") || name.includes("xe")) {
-                minW = 2.8; minH = 5.0;
+                minW = 2.8 * minSizeScale; minH = 5.0 * minSizeScale;
               } else if (name.includes("giặt") || name.includes("laundry")) {
-                minW = 1.5; minH = 1.8;
+                minW = 1.5 * minSizeScale; minH = 1.8 * minSizeScale;
               } else if (name.includes("làm việc") || name.includes("office")) {
-                minW = 2.5; minH = 2.5;
+                minW = 2.5 * minSizeScale; minH = 2.5 * minSizeScale;
               } else if (name.includes("sảnh") || name.includes("lối vào") || name.includes("entry")) {
-                minW = 1.5; minH = 1.8;
+                minW = 1.5 * minSizeScale; minH = 1.8 * minSizeScale;
               } else if (name.includes("hành lang") || name.includes("lối đi")) {
-                minW = 1.0; minH = 2.0;
+                minW = 1.0 * minSizeScale; minH = 2.0 * minSizeScale;
               }
               const rw = Math.max(minW, Math.min(landW, parseFloat(r.w) || minW));
               const rh = Math.max(minH, Math.min(landL, parseFloat(r.h) || minH));
-              const roomObj = {
+              return {
                 id: `room_${floor}_${idx}_${Date.now()}`,
                 name: r.name || "Phòng",
-                x: Math.max(0, Math.min(landW - rw, parseFloat(r.x) || 0)),
-                y: Math.max(0, Math.min(landL - rh, parseFloat(r.y) || 0)),
+                x: parseFloat(r.x) || 0,
+                y: parseFloat(r.y) || 0,
                 w: rw,
                 h: rh,
                 color: r.color || getRoomColor(r.name || ""),
               };
-              return {
-                ...roomObj,
-                furniture: getDefaultFurnitureForRoom(roomObj),
-              };
             }
           );
-          const openings: Opening[] = validatedRooms.slice(1).map((room, i) => ({
-            id: `open_${floor}_${i}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-            type: "door",
-            x: room.x + Math.min(room.w / 2, 0.5),
-            y: room.y,
-            w: 0.9,
-            rotation: 0,
-          }));
+
+          // Adjust rooms geometrically to perfectly fit shape boundary, shrink if crowded, expand if gapped
+          const adjustedRooms = adjustRoomsToFitShape(rawRooms, shape, landW, landL);
+
+          // Build final Room objects and add default furniture based on the adjusted room sizes
+          const validatedRooms: Room[] = adjustedRooms.map((roomObj) => {
+            return {
+              ...roomObj,
+              furniture: getDefaultFurnitureForRoom(roomObj),
+            };
+          });
+
+          // ── Smart door placement using adjacency graph ────────────────
+          const openings: Opening[] = generateSmartOpenings(validatedRooms, floor);
+
+          const resolvedRooms = resolveFurnitureDoorCollisions(validatedRooms, openings, wallThickness);
           generatedPlans.push({
-            rooms: validatedRooms,
+            rooms: resolvedRooms,
             openings,
             architectNotes: parsed.architectNotes || "",
           });
@@ -2113,14 +3404,18 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
       setFloorPlan(generatedPlans[0]);
       setActiveFloorIndex(0);
 
-      // Auto-fit zoom
+      // Auto-fit zoom & centering
       if (generatedPlans[0].rooms.length > 0) {
         const fitZoom = Math.min(
           (stageSize.w - 120) / (landW * METER_TO_PX),
           (stageSize.h - 120) / (landL * METER_TO_PX)
         );
-        setZoom(Math.max(0.4, Math.min(2, fitZoom)));
-        setPan({ x: 60, y: 60 });
+        const newZoom = Math.max(0.4, Math.min(2, fitZoom));
+        setZoom(newZoom);
+        setPan({
+          x: (stageSize.w - landW * METER_TO_PX * newZoom) / 2,
+          y: (stageSize.h - landL * METER_TO_PX * newZoom) / 2
+        });
       }
 
       addMessage(
@@ -2177,6 +3472,47 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
     setPan({ x: pointer.x - to.x * newScale, y: pointer.y - to.y * newScale });
   };
 
+  // ── Non-passive wheel listener for scroll-to-zoom ────────────────────────
+  // React's synthetic events are passive by default in modern browsers, which
+  // prevents calling preventDefault(). We attach a native { passive: false }
+  // listener directly on the canvas container so the page does not scroll.
+  useEffect(() => {
+    const el = stageContainerRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const scaleBy = 1.12;
+      const stage = stageRef.current;
+      if (!stage) return;
+
+      // Get pointer position relative to the canvas container
+      const rect = el.getBoundingClientRect();
+      const pointer = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      };
+
+      setZoom((oldZoom) => {
+        const newScale = Math.max(0.3, Math.min(4, e.deltaY < 0 ? oldZoom * scaleBy : oldZoom / scaleBy));
+        setPan((oldPan) => {
+          const toWorld = {
+            x: (pointer.x - oldPan.x) / oldZoom,
+            y: (pointer.y - oldPan.y) / oldZoom,
+          };
+          return {
+            x: pointer.x - toWorld.x * newScale,
+            y: pointer.y - toWorld.y * newScale,
+          };
+        });
+        return newScale;
+      });
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
   // ── Snap-to-grid helper for draw_wall ───────────────────────────────────
   const snapGridSize = 0.5; // snap every 0.5m
   const screenToWorld = (sx: number, sy: number) => {
@@ -2193,6 +3529,13 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
 
   // ── Finalise drawn polygon into a new room ───────────────────────────────
   const finaliseDrawWall = (pts: { x: number; y: number }[]) => {
+    const roomNameClean = (drawWallRoomName || "").trim().toLowerCase();
+    if (roomNameClean.includes("hành lang") || roomNameClean.includes("hanh lang")) {
+      toast.error("Igen không hỗ trợ hành lang");
+      addMessage("assistant", "Igen không hỗ trợ hành lang");
+      return;
+    }
+
     if (pts.length < 3) {
       toast.error("Vẽ ít nhất 3 điểm để tạo phòng!");
       return;
@@ -2567,7 +3910,7 @@ Requirements:
 - Crisp presentation with clean lines, subtle ambient lighting, and clear separation between floors, walls, and furniture.
 - Soft shadows that enhance depth without being overly photorealistic.
 - Avoid realistic photographic staging, people, or repeated interior decoration details.
-- Output should resemble a professional 3D floorplan/axonometric render, not a typical interior photograph. Negative prompt: white clay model, monochrome, grayscale, raw plaster, all-white rendering, untextured model.${cameraPrompt}${customRoomPrompt}${customFurniturePrompt}`
+- Output should resemble a professional 3D floorplan/axonometric render, not a typical interior photograph. Negative prompt: white clay model, monochrome, grayscale, raw plaster, all-white rendering, untextured model.`
         : `You are a professional 3D architectural visualizer.
 Your task is to transform the provided 3D spatial layout preview of the [${roomForRender}] into a hyper-realistic, photorealistic interior render.
 Style: ${currentRoom?.style || selectedStyle || gatherInfo.extras || "Modern Vietnamese contemporary"}.
@@ -2600,7 +3943,7 @@ Requirements:
           prompt: renderPrompt,
           numImages: 1,
           aspectRatio: (activeTab === "visualize" && selectedCameraRoomId && cameras[selectedCameraRoomId]?.aspectRatio) || "4:3",
-          model: "nano-banana-2",
+          model: "openrouter-nano-banana-2",
           resolution: "1K",
         },
       };
@@ -2689,6 +4032,58 @@ Requirements:
     // Unique ID helper
     const uid = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
 
+    // pushSafe wrapper to make sure items fit, don't overlap walls, and don't overlap other furniture
+    const pushSafe = (item: FurnitureItem) => {
+      const isRot = (item.rotation || 0) % 180 !== 0;
+      const w = isRot ? item.h : item.w;
+      const h = isRot ? item.w : item.h;
+
+      // Check if it fits inside the room
+      if (w > rw - 2 * M || h > rh - 2 * M) {
+        console.warn(`Skipped generating ${item.type} in ${room.name} because it does not fit room size.`);
+        return;
+      }
+
+      const clampedX = Math.max(M + w / 2, Math.min(rw - M - w / 2, item.x));
+      const clampedY = Math.max(M + h / 2, Math.min(rh - M - h / 2, item.y));
+      
+      const testItem = {
+        ...item,
+        x: clampedX,
+        y: clampedY
+      };
+
+      let collides = false;
+      for (const existing of items) {
+        if (isFurnitureColliding(testItem, existing)) {
+          collides = true;
+          break;
+        }
+      }
+
+      if (!collides) {
+        Array.prototype.push.call(items, testItem);
+        return;
+      }
+
+      const resolved = findNonCollidingPosition(testItem, clampedX, clampedY, items, rw, rh, wallThickness);
+      const finalItem = { ...testItem, x: resolved.x, y: resolved.y };
+      
+      let finalCollision = false;
+      for (const existing of items) {
+        if (isFurnitureColliding(finalItem, existing)) {
+          finalCollision = true;
+          break;
+        }
+      }
+
+      if (!finalCollision) {
+        Array.prototype.push.call(items, finalItem);
+      } else {
+        console.warn(`Skipped generating ${item.type} in ${room.name} due to overlap collision.`);
+      }
+    };
+
     // ── Phòng khách / Living Room ──────────────────────────────────────────
     if (lowerName.includes("khách") || lowerName.includes("living") || lowerName.includes("sinh hoạt chung") || lowerName.includes("family")) {
       // Scale sofa to room: small rooms get compact sofa
@@ -2697,13 +4092,13 @@ Requirements:
       const tvW   = Math.min(sofaW * 0.85, rw * 0.55);
       const tvH   = 0.18;
       // TV top wall
-      items.push({ id: uid("tv"),    type: "living_tv",    x: cx(rw/2, tvW),              y: cy(M+tvH/2, tvH),                  w: tvW,   h: tvH });
+      pushSafe({ id: uid("tv"),    type: "living_tv",    x: cx(rw/2, tvW),              y: cy(M+tvH/2, tvH),                  w: tvW,   h: tvH });
       // Sofa bottom wall
-      items.push({ id: uid("sofa"),  type: "living_sofa",  x: cx(rw/2, sofaW),            y: cy(rh-M-sofaH/2, sofaH),           w: sofaW, h: sofaH });
+      pushSafe({ id: uid("sofa"),  type: "living_sofa",  x: cx(rw/2, sofaW),            y: cy(rh-M-sofaH/2, sofaH),           w: sofaW, h: sofaH });
       // Armchair right side (only if there's enough width after sofa)
       if (rw > sofaW + 0.8) {
         const chW = Math.min(0.65, rw - sofaW - M * 3);
-        items.push({ id: uid("chair"), type: "living_chair", x: cx(rw-M-chW/2, chW),      y: cy(rh - M - sofaH/2, chW),         w: chW,   h: chW });
+        pushSafe({ id: uid("chair"), type: "living_chair", x: cx(rw-M-chW/2, chW),      y: cy(rh - M - sofaH/2, chW),         w: chW,   h: chW });
       }
 
     // ── Phòng ngủ / Bedroom ────────────────────────────────────────────────
@@ -2716,22 +4111,22 @@ Requirements:
       const wardH = 0.55;
       const wardW = Math.min(rw - M * 2, rw * 0.85, 2.4);
       // Wardrobe along top wall
-      items.push({ id: uid("ward"), type: "bed_wardrobe",   x: cx(rw/2, wardW),           y: cy(M+wardH/2, wardH),               w: wardW, h: wardH });
+      pushSafe({ id: uid("ward"), type: "bed_wardrobe",   x: cx(rw/2, wardW),           y: cy(M+wardH/2, wardH),               w: wardW, h: wardH });
       // Bed: placed below wardrobe, roughly in lower half
       const bedY = cy(wardH + M + bedH/2 + (rh - wardH - M*2 - bedH) * 0.4, bedH);
-      items.push({ id: uid("bed"),  type: "bed_bed",         x: cx(rw/2, bedW),            y: bedY,                               w: bedW,  h: bedH });
+      pushSafe({ id: uid("bed"),  type: "bed_bed",         x: cx(rw/2, bedW),            y: bedY,                               w: bedW,  h: bedH });
       // Nightstands only if horizontal space allows
       const nsSize = Math.min(0.42, (rw - bedW - M * 4) / 2);
       if (nsSize >= 0.3) {
         const bedCX = cx(rw/2, bedW);
-        items.push({ id: uid("nsl"), type: "bed_nightstand", x: cx(bedCX - bedW/2 - nsSize/2 - M, nsSize), y: bedY, w: nsSize, h: nsSize });
-        items.push({ id: uid("nsr"), type: "bed_nightstand", x: cx(bedCX + bedW/2 + nsSize/2 + M, nsSize), y: bedY, w: nsSize, h: nsSize });
+        pushSafe({ id: uid("nsl"), type: "bed_nightstand", x: cx(bedCX - bedW/2 - nsSize/2 - M, nsSize), y: bedY, w: nsSize, h: nsSize });
+        pushSafe({ id: uid("nsr"), type: "bed_nightstand", x: cx(bedCX + bedW/2 + nsSize/2 + M, nsSize), y: bedY, w: nsSize, h: nsSize });
       }
       // Dresser for larger rooms
       if (area > 14) {
         const drW = Math.min(0.9, rw * 0.25);
         const drH = 0.45;
-        items.push({ id: uid("dr"), type: "bed_dresser", x: cx(rw - M - drW/2, drW), y: cy(wardH + M + drH/2, drH), w: drW, h: drH });
+        pushSafe({ id: uid("dr"), type: "bed_dresser", x: cx(rw - M - drW/2, drW), y: cy(wardH + M + drH/2, drH), w: drW, h: drH });
       }
 
     // ── Phòng bếp / Kitchen ────────────────────────────────────────────────
@@ -2740,24 +4135,24 @@ Requirements:
       const cW = Math.min(rw - M * 2, rw * 0.9); // counter width
       const cY = cy(M + cD/2, cD);
       // Full counter top wall
-      items.push({ id: uid("cnt"), type: "kitchen_counter", x: cx(rw/2, cW),               y: cY,                                 w: cW,    h: cD });
+      pushSafe({ id: uid("cnt"), type: "kitchen_counter", x: cx(rw/2, cW),               y: cY,                                 w: cW,    h: cD });
       // Cooktop on left 1/3 of counter
       const ctpW = Math.min(0.65, cW * 0.35);
-      items.push({ id: uid("ctp"), type: "kitchen_cooktop", x: cx(M + cW*0.25, ctpW),      y: cY,                                 w: ctpW,  h: 0.32 });
+      pushSafe({ id: uid("ctp"), type: "kitchen_cooktop", x: cx(M + cW*0.25, ctpW),      y: cY,                                 w: ctpW,  h: 0.32 });
       // Sink on right 1/3 of counter
       const snkW = Math.min(0.5, cW * 0.28);
-      items.push({ id: uid("snk"), type: "kitchen_sink",    x: cx(rw - M - cW*0.2, snkW),  y: cY,                                 w: snkW,  h: 0.32 });
+      pushSafe({ id: uid("snk"), type: "kitchen_sink",    x: cx(rw - M - cW*0.2, snkW),  y: cY,                                 w: snkW,  h: 0.32 });
       // Fridge bottom-left (if room tall enough)
       if (rh > 2.5) {
         const frW = 0.65; const frH = 0.68;
-        items.push({ id: uid("fr"),  type: "kitchen_fridge",  x: cx(M+frW/2, frW),          y: cy(rh-M-frH/2, frH),               w: frW,   h: frH });
+        pushSafe({ id: uid("fr"),  type: "kitchen_fridge",  x: cx(M+frW/2, frW),          y: cy(rh-M-frH/2, frH),               w: frW,   h: frH });
       }
 
     // ── Phòng ăn / Dining ─────────────────────────────────────────────────
     } else if (lowerName.includes("ăn") || lowerName.includes("dining")) {
       const tW = Math.min(rw * 0.60, 1.8);
       const tH = Math.min(rh * 0.50, 1.1);
-      items.push({ id: uid("dt"), type: "dining_table", x: cx(rw/2, tW), y: cy(rh/2, tH), w: tW, h: tH });
+      pushSafe({ id: uid("dt"), type: "dining_table", x: cx(rw/2, tW), y: cy(rh/2, tH), w: tW, h: tH });
 
     // ── Phòng tắm lớn / Full Bathroom ─────────────────────────────────────
     } else if (lowerName.includes("tắm lớn") || lowerName.includes("full bath")) {
@@ -2770,8 +4165,8 @@ Requirements:
       const lavX = cx(M + lavW/2, lavW);
       const lavY = cy(M + mirH + M + lavH/2, lavH);
 
-      items.push({ id: uid("mir"), type: "wc_mirror",  x: lavX, y: cy(M+mirH/2, mirH), w: mirW, h: mirH });
-      items.push({ id: uid("lav"), type: "wc_lavabo",  x: lavX, y: lavY, w: lavW, h: lavH });
+      pushSafe({ id: uid("mir"), type: "wc_mirror",  x: lavX, y: cy(M+mirH/2, mirH), w: mirW, h: mirH });
+      pushSafe({ id: uid("lav"), type: "wc_lavabo",  x: lavX, y: lavY, w: lavW, h: lavH });
 
       let toiX = cx(M + toiW/2, toiW);
       let toiY = cy(rh - M - toiH/2, toiH);
@@ -2786,14 +4181,14 @@ Requirements:
           toiY = cy(Math.max(lavBottom + 0.15 + toiH/2, rh - M - toiH/2), toiH);
         }
       }
-      items.push({ id: uid("toi"), type: "wc_toilet",  x: toiX, y: toiY, w: toiW, h: toiH });
+      pushSafe({ id: uid("toi"), type: "wc_toilet",  x: toiX, y: toiY, w: toiW, h: toiH });
 
       if (rw >= 1.6 && rh >= 2.0) {
         const btW = Math.min(rw*0.42, 0.8); const btH = Math.min(rh*0.45, 1.6);
-        items.push({ id: uid("bt"), type: "wc_bathtub", x: cx(rw-M-btW/2, btW), y: cy(rh/2, btH),             w: btW,  h: btH });
+        pushSafe({ id: uid("bt"), type: "wc_bathtub", x: cx(rw-M-btW/2, btW), y: cy(rh/2, btH),             w: btW,  h: btH });
       } else if (rw >= 1.0) {
         const shW = Math.min(rw*0.45, 0.9); const shH = shW;
-        items.push({ id: uid("sh"), type: "wc_shower",  x: cx(rw-M-shW/2, shW), y: cy(M+shH/2, shH),          w: shW,  h: shH });
+        pushSafe({ id: uid("sh"), type: "wc_shower",  x: cx(rw-M-shW/2, shW), y: cy(M+shH/2, shH),          w: shW,  h: shH });
       }
 
     // ── Phòng vệ sinh phụ / Half Bathroom / WC ────────────────────────────
@@ -2807,8 +4202,8 @@ Requirements:
       const lavX = cx(M + lavW/2, lavW);
       const lavY = cy(M + mirH + M + lavH/2, lavH);
 
-      items.push({ id: uid("mir"), type: "wc_mirror",  x: lavX, y: cy(M+mirH/2, mirH), w: mirW, h: mirH });
-      items.push({ id: uid("lav"), type: "wc_lavabo",  x: lavX, y: lavY, w: lavW, h: lavH });
+      pushSafe({ id: uid("mir"), type: "wc_mirror",  x: lavX, y: cy(M+mirH/2, mirH), w: mirW, h: mirH });
+      pushSafe({ id: uid("lav"), type: "wc_lavabo",  x: lavX, y: lavY, w: lavW, h: lavH });
 
       let toiX = cx(M + toiW/2, toiW);
       let toiY = cy(rh - M - toiH/2, toiH);
@@ -2823,81 +4218,81 @@ Requirements:
           toiY = cy(Math.max(lavBottom + 0.15 + toiH/2, rh - M - toiH/2), toiH);
         }
       }
-      items.push({ id: uid("toi"), type: "wc_toilet",  x: toiX, y: toiY, w: toiW, h: toiH });
+      pushSafe({ id: uid("toi"), type: "wc_toilet",  x: toiX, y: toiY, w: toiW, h: toiH });
 
       // Shower stall if room is wide enough on right side
       if (rw >= 1.8 && rh >= 1.8) {
         const shW = Math.min(rw*0.38, 0.9); const shH = Math.min(rh*0.4, 0.9);
-        items.push({ id: uid("sh"), type: "wc_shower",  x: cx(rw-M-shW/2, shW), y: cy(rh/2, shH),             w: shW,  h: shH });
+        pushSafe({ id: uid("sh"), type: "wc_shower",  x: cx(rw-M-shW/2, shW), y: cy(rh/2, shH),             w: shW,  h: shH });
       }
 
     // ── Nhà xe / Gara ──────────────────────────────────────────────────────
     } else if (lowerName.includes("gara") || lowerName.includes("garage") || lowerName.includes("xe")) {
       const carW = Math.min(rw - M*2, 2.0);
       const carH = Math.min(rh - M*2, 4.5);
-      items.push({ id: uid("car"), type: "garage_car", x: cx(rw/2, carW), y: cy(rh/2, carH), w: carW, h: carH });
+      pushSafe({ id: uid("car"), type: "garage_car", x: cx(rw/2, carW), y: cy(rh/2, carH), w: carW, h: carH });
 
     // ── Phòng làm việc / Office ────────────────────────────────────────────
     } else if (lowerName.includes("làm việc") || lowerName.includes("office") || lowerName.includes("study")) {
       const dW = Math.min(rw - M*2, 1.5); const dH = Math.min(rh*0.28, 0.72);
-      items.push({ id: uid("desk"), type: "office_desk", x: cx(rw/2, dW), y: cy(M+dH/2, dH), w: dW, h: dH });
+      pushSafe({ id: uid("desk"), type: "office_desk", x: cx(rw/2, dW), y: cy(M+dH/2, dH), w: dW, h: dH });
       // Bookshelf/chair if room large enough
       if (area > 9) {
         const chW = 0.55;
-        items.push({ id: uid("ch"), type: "living_chair", x: cx(rw/2, chW), y: cy(rh*0.6, chW), w: chW, h: chW });
+        pushSafe({ id: uid("ch"), type: "living_chair", x: cx(rw/2, chW), y: cy(rh*0.6, chW), w: chW, h: chW });
       }
 
     // ── Phòng tập gym / Home Gym ───────────────────────────────────────────
     } else if (lowerName.includes("gym") || lowerName.includes("tập")) {
       const tmW = Math.min(rw*0.55, 0.8); const tmH = Math.min(rh*0.55, 1.8);
-      items.push({ id: uid("tm"), type: "gym_treadmill", x: cx(M+tmW/2, tmW), y: cy(rh/2, tmH), w: tmW, h: tmH });
+      pushSafe({ id: uid("tm"), type: "gym_treadmill", x: cx(M+tmW/2, tmW), y: cy(rh/2, tmH), w: tmW, h: tmH });
 
     // ── Phòng giặt ủi / Laundry ────────────────────────────────────────────
     } else if (lowerName.includes("giặt") || lowerName.includes("laundry")) {
       const mW = Math.min(rw * 0.55, 1.4); const mH = 0.65;
-      items.push({ id: uid("lm"), type: "laundry_machines", x: cx(M+mW/2, mW), y: cy(M+mH/2, mH), w: mW, h: mH });
+      pushSafe({ id: uid("lm"), type: "laundry_machines", x: cx(M+mW/2, mW), y: cy(M+mH/2, mH), w: mW, h: mH });
       if (rh > 2.0) {
         const snkW = 0.5; const snkH = 0.45;
-        items.push({ id: uid("ls"), type: "laundry_sink", x: cx(M+snkW/2, snkW), y: cy(mH+M*2+snkH/2, snkH), w: snkW, h: snkH });
+        pushSafe({ id: uid("ls"), type: "laundry_sink", x: cx(M+snkW/2, snkW), y: cy(mH+M*2+snkH/2, snkH), w: snkW, h: snkH });
       }
 
     // ── Lối vào / Sảnh / Entry / Mudroom / Porch ───────────────────────────
     } else if (lowerName.includes("lối vào") || lowerName.includes("sảnh") || lowerName.includes("entry") || lowerName.includes("mudroom") || lowerName.includes("porch") || lowerName.includes("hiên")) {
       const bW = Math.min(rw * 0.6, 1.2); const bH = 0.45;
-      items.push({ id: uid("bch"), type: "entry_bench",       x: cx(rw/2, bW),        y: cy(M+bH/2, bH),            w: bW,  h: bH });
+      pushSafe({ id: uid("bch"), type: "entry_bench",       x: cx(rw/2, bW),        y: cy(M+bH/2, bH),            w: bW,  h: bH });
       const cmW = 0.35; const cmH = 0.35;
-      items.push({ id: uid("cs"),  type: "entry_coat_stand",  x: cx(rw-M-cmW/2, cmW), y: cy(M+cmH/2, cmH),          w: cmW, h: cmH });
+      pushSafe({ id: uid("cs"),  type: "entry_coat_stand",  x: cx(rw-M-cmW/2, cmW), y: cy(M+cmH/2, cmH),          w: cmW, h: cmH });
       if (rw > 2.0) {
         const cMirW = Math.min(rw*0.4, 0.9); const cMirH = Math.min(rh*0.55, 1.5);
-        items.push({ id: uid("cm"), type: "entry_console_mirror", x: cx(M+cMirW/2, cMirW), y: cy(rh/2, cMirH),      w: cMirW, h: cMirH });
+        pushSafe({ id: uid("cm"), type: "entry_console_mirror", x: cx(M+cMirW/2, cMirW), y: cy(rh/2, cMirH),      w: cMirW, h: cMirH });
       }
 
     // ── Phòng thay đồ / Walk-in Closet ─────────────────────────────────────
     } else if (lowerName.includes("thay đồ") || lowerName.includes("walk-in") || lowerName.includes("walk in")) {
       // Row of wardrobes along top wall
       const wW = Math.min(rw - M*2, 2.4); const wH = 0.6;
-      items.push({ id: uid("w1"), type: "bed_wardrobe", x: cx(rw/2, wW), y: cy(M+wH/2, wH), w: wW, h: wH });
+      pushSafe({ id: uid("w1"), type: "bed_wardrobe", x: cx(rw/2, wW), y: cy(M+wH/2, wH), w: wW, h: wH });
       // Second row along bottom wall if room deep enough
       if (rh > 2.0) {
-        items.push({ id: uid("w2"), type: "bed_wardrobe", x: cx(rw/2, wW), y: cy(rh-M-wH/2, wH), w: wW, h: wH });
+        pushSafe({ id: uid("w2"), type: "bed_wardrobe", x: cx(rw/2, wW), y: cy(rh-M-wH/2, wH), w: wW, h: wH });
       }
 
     // ── Phòng chơi game / Giải trí / Game Room ─────────────────────────────
     } else if (lowerName.includes("game") || lowerName.includes("giải trí") || lowerName.includes("chơi")) {
       const sofaW = Math.min(rw * 0.65, 2.2); const sofaH = Math.min(rh * 0.22, 0.9);
       const tvW   = Math.min(sofaW * 0.8, 1.8); const tvH = 0.18;
-      items.push({ id: uid("tv"),   type: "living_tv",   x: cx(rw/2, tvW),   y: cy(M+tvH/2, tvH),        w: tvW,   h: tvH });
-      items.push({ id: uid("sofa"), type: "living_sofa", x: cx(rw/2, sofaW), y: cy(rh-M-sofaH/2, sofaH), w: sofaW, h: sofaH });
+      pushSafe({ id: uid("tv"),   type: "living_tv",   x: cx(rw/2, tvW),   y: cy(M+tvH/2, tvH),        w: tvW,   h: tvH });
+      pushSafe({ id: uid("sofa"), type: "living_sofa", x: cx(rw/2, sofaW), y: cy(rh-M-sofaH/2, sofaH), w: sofaW, h: sofaH });
 
     // ── Ban công / Sân thượng / Balcony / Terrace ──────────────────────────
     } else if (lowerName.includes("ban công") || lowerName.includes("sân thượng") || lowerName.includes("balcon") || lowerName.includes("terrace")) {
       // Small outdoor chairs
       const chW = Math.min(0.6, rw * 0.3); const chH = chW;
       if (rw > 1.5) {
-        items.push({ id: uid("ch1"), type: "living_chair", x: cx(rw*0.3, chW), y: cy(rh/2, chH), w: chW, h: chH });
-        items.push({ id: uid("ch2"), type: "living_chair", x: cx(rw*0.7, chW), y: cy(rh/2, chH), w: chW, h: chH });
+        pushSafe({ id: uid("ch1"), type: "living_chair", x: cx(rw*0.3, chW), y: cy(rh/2, chH), w: chW, h: chH });
+        pushSafe({ id: uid("ch2"), type: "living_chair", x: cx(rw*0.7, chW), y: cy(rh/2, chH), w: chW, h: chH });
       } else {
-        items.push({ id: uid("ch1"), type: "living_chair", x: cx(rw/2, chW), y: cy(rh/2, chH), w: chW, h: chH });
+        pushSafe({ id: uid("ch1"), type: "living_chair", x: cx(rw/2, chW), y: cy(rh/2, chH), w: chW, h: chH });
       }
 
     // ── Hành lang / Lối đi / Hallway ──────────────────────────────────────
@@ -2907,15 +4302,15 @@ Requirements:
       if (Math.min(rw, rh) >= 1.2) {
         const cMirW = Math.min(Math.min(rw, rh) * 0.6, 0.8);
         const cMirH = Math.min(Math.max(rw, rh) * 0.35, 1.2);
-        items.push({ id: uid("cm"), type: "entry_console_mirror", x: cx(rw/2, cMirW), y: cy(M+cMirH/2, cMirH), w: cMirW, h: cMirH });
+        pushSafe({ id: uid("cm"), type: "entry_console_mirror", x: cx(rw/2, cMirW), y: cy(M+cMirH/2, cMirH), w: cMirW, h: cMirH });
       }
 
     // ── Sân vườn / Garden ─────────────────────────────────────────────────
     } else if (lowerName.includes("sân vườn") || lowerName.includes("garden")) {
       // Outdoor seating
       const chW = Math.min(0.65, rw * 0.2);
-      items.push({ id: uid("ch1"), type: "living_chair", x: cx(rw*0.25, chW), y: cy(rh*0.4, chW), w: chW, h: chW });
-      items.push({ id: uid("ch2"), type: "living_chair", x: cx(rw*0.75, chW), y: cy(rh*0.4, chW), w: chW, h: chW });
+      pushSafe({ id: uid("ch1"), type: "living_chair", x: cx(rw*0.25, chW), y: cy(rh*0.4, chW), w: chW, h: chW });
+      pushSafe({ id: uid("ch2"), type: "living_chair", x: cx(rw*0.75, chW), y: cy(rh*0.4, chW), w: chW, h: chW });
     }
 
     return items;
@@ -4185,7 +5580,24 @@ Requirements:
     pushHistory(floorPlan);
     const updatedOpenings = (floorPlan.openings || []).map((open) => {
       if (open.id === openId) {
-        return { ...open, rotation: ((open.rotation || 0) + 90) % 360 };
+        if (open.type === "door" && open.style !== "sliding" && open.style !== "garage") {
+          const fx = !!open.flipX;
+          const fy = !!open.flipY;
+          let nextFX: boolean;
+          let nextFY: boolean;
+          if (!fx && !fy) {
+            nextFX = true; nextFY = false;
+          } else if (fx && !fy) {
+            nextFX = false; nextFY = true;
+          } else if (!fx && fy) {
+            nextFX = true; nextFY = true;
+          } else {
+            nextFX = false; nextFY = false;
+          }
+          return { ...open, flipX: nextFX, flipY: nextFY };
+        } else {
+          return { ...open, rotation: ((open.rotation || 0) + 90) % 360 };
+        }
       }
       return open;
     });
@@ -4194,7 +5606,7 @@ Requirements:
     const nextPlans = [...floorPlans];
     nextPlans[activeFloorIndex] = updatedPlan;
     setFloorPlans(nextPlans);
-    toast.success("Đã xoay ô cửa 90°");
+    toast.success("Đã thay đổi hướng mở cửa");
   };
 
   const deleteOpening = (openId: string) => {
@@ -4208,6 +5620,125 @@ Requirements:
     setFloorPlans(nextPlans);
     setSelectedOpeningId(null);
     toast.success("Đã xóa cửa/cửa sổ");
+  };
+
+  // ── Snap opening to nearest wall ────────────────────────────────────────
+  // Returns { x, y, rotation } snapped to the closest room wall edge,
+  // or the original values if no wall is within SNAP_RADIUS metres.
+  const snapOpeningToWall = (
+    px: number,
+    py: number,
+    plan: FloorPlanData,
+    currentRotation: number = 0,
+    snapRadius: number = 0.25,   // metres – override with Infinity to always snap
+    openW: number = 0.9,
+    isDoor: boolean = false,
+    flipX: boolean = false
+  ): { x: number; y: number; rotation: number } => {
+    const SNAP_RADIUS = snapRadius;
+    const thick = 0; // Snap exactly on the centerline of the wall boundary
+
+    let bestDist = SNAP_RADIUS;
+    let bestX = px;
+    let bestY = py;
+    let bestRot = currentRotation; // keep existing rotation if no wall found
+    let snapped = false;
+
+    for (const room of plan.rooms) {
+      const walls = [
+        { x1: room.x, y1: room.y,          x2: room.x + room.w, y2: room.y,          horizontal: true,  wallY: room.y },
+        { x1: room.x, y1: room.y + room.h, x2: room.x + room.w, y2: room.y + room.h, horizontal: true,  wallY: room.y + room.h },
+        { x1: room.x,          y1: room.y, x2: room.x,          y2: room.y + room.h, horizontal: false, wallX: room.x },
+        { x1: room.x + room.w, y1: room.y, x2: room.x + room.w, y2: room.y + room.h, horizontal: false, wallX: room.x + room.w },
+      ];
+
+      for (const wall of walls) {
+        if (wall.horizontal) {
+          const dy = Math.abs(py - wall.y1);
+          if (dy >= bestDist) continue;
+          
+          const wallLength = wall.x2 - wall.x1;
+          let clearance = 0.15;
+          if (isDoor) {
+            if (wallLength < openW + 0.30) {
+              clearance = Math.max(0.02, (wallLength - openW) / 2);
+            }
+          }
+
+          let minX = wall.x1 + clearance;
+          let maxX = wall.x2 - clearance;
+
+          if (isDoor) {
+            if (flipX) {
+              minX = wall.x1 + openW + clearance;
+              maxX = wall.x2 - clearance;
+            } else {
+              minX = wall.x1 + clearance;
+              maxX = wall.x2 - openW - clearance;
+            }
+          }
+
+          let clampedX: number;
+          if (minX > maxX) {
+            clampedX = (wall.x1 + wall.x2) / 2;
+            if (isDoor) {
+              clampedX = flipX ? clampedX + openW / 2 : clampedX - openW / 2;
+            }
+          } else {
+            clampedX = Math.max(minX, Math.min(maxX, px));
+          }
+
+          bestDist = dy;
+          bestX = clampedX;
+          bestY = wall.wallY!;
+          bestRot = 0;
+          snapped = true;
+        } else {
+          const dx = Math.abs(px - wall.x1);
+          if (dx >= bestDist) continue;
+          
+          const wallLength = wall.y2 - wall.y1;
+          let clearance = 0.15;
+          if (isDoor) {
+            if (wallLength < openW + 0.30) {
+              clearance = Math.max(0.02, (wallLength - openW) / 2);
+            }
+          }
+
+          let minY = wall.y1 + clearance;
+          let maxY = wall.y2 - clearance;
+
+          if (isDoor) {
+            if (flipX) {
+              minY = wall.y1 + openW + clearance;
+              maxY = wall.y2 - clearance;
+            } else {
+              minY = wall.y1 + clearance;
+              maxY = wall.y2 - openW - clearance;
+            }
+          }
+
+          let clampedY: number;
+          if (minY > maxY) {
+            clampedY = (wall.y1 + wall.y2) / 2;
+            if (isDoor) {
+              clampedY = flipX ? clampedY + openW / 2 : clampedY - openW / 2;
+            }
+          } else {
+            clampedY = Math.max(minY, Math.min(maxY, py));
+          }
+
+          bestDist = dx;
+          bestX = wall.wallX!;
+          bestY = clampedY;
+          bestRot = 90;
+          snapped = true;
+        }
+      }
+    }
+
+    void snapped;
+    return { x: Math.round(bestX * 20) / 20, y: Math.round(bestY * 20) / 20, rotation: bestRot };
   };
 
   // ── Manual Furniture & Room Actions ────────────────────────────────────
@@ -4315,7 +5846,7 @@ Requirements:
     const spawnX = Math.round((targetRoom.w / 2) * 20) / 20;
     const spawnY = Math.round((targetRoom.h / 2) * 20) / 20;
 
-    const newFurniture: FurnitureItem = {
+    const dummyFurniture: FurnitureItem = {
       id: `fur_${type}_${Date.now()}`,
       type,
       x: spawnX,
@@ -4325,6 +5856,29 @@ Requirements:
       rotation: 0,
       style: customStyle
     };
+
+    const M = Math.max(0.18, (wallThickness / 1000) / 2 + 0.10);
+    if (w > targetRoom.w - 2 * M || h > targetRoom.h - 2 * M) {
+      toast.error("Phòng quá nhỏ để đặt đồ nội thất này!");
+      return;
+    }
+
+    const resolvedPos = findNonCollidingPosition(dummyFurniture, spawnX, spawnY, targetRoom.furniture || [], targetRoom.w, targetRoom.h, wallThickness);
+    const testNew = { ...dummyFurniture, x: resolvedPos.x, y: resolvedPos.y };
+    let hasCollision = false;
+    for (const other of targetRoom.furniture || []) {
+      if (isFurnitureColliding(testNew, other)) {
+        hasCollision = true;
+        break;
+      }
+    }
+
+    if (hasCollision) {
+      toast.error("Không còn đủ diện tích trống trong phòng để đặt đồ nội thất này!");
+      return;
+    }
+
+    const newFurniture: FurnitureItem = testNew;
 
     const targetRoomId = targetRoom.id;
 
@@ -4358,17 +5912,28 @@ Requirements:
     }
     pushHistory(floorPlan);
     const width = style === "garage" ? 2.4 : style === "sliding" ? 1.6 : 0.9;
+
+    const firstRoom = floorPlan.rooms[0];
+    const initX = firstRoom ? firstRoom.x + firstRoom.w / 2 : 3.0;
+    const initY = firstRoom ? firstRoom.y + firstRoom.h / 2 : 3.0;
+    const flips = getOptimalDoorFlips(initX, initY, 0, style, floorPlan.rooms);
+    const snapped = snapOpeningToWall(initX, initY, floorPlan, 0, Infinity, width, true, flips.flipX);
+
+    const finalFlips = getOptimalDoorFlips(snapped.x, snapped.y, snapped.rotation, style, floorPlan.rooms);
     const newOpening: Opening = {
       id: `open_${activeFloorIndex}_${Date.now()}`,
       type: "door",
-      x: 3.0,
-      y: 3.0,
+      x: snapped.x,
+      y: snapped.y,
       w: width,
-      rotation: 0,
-      style
+      rotation: snapped.rotation,
+      style,
+      flipX: finalFlips.flipX,
+      flipY: finalFlips.flipY,
     };
     const updatedOpenings = [...(floorPlan.openings || []), newOpening];
-    const updatedPlan = { ...floorPlan, openings: updatedOpenings };
+    const cleanedRooms = resolveFurnitureDoorCollisions(floorPlan.rooms, updatedOpenings, wallThickness);
+    const updatedPlan = { ...floorPlan, openings: updatedOpenings, rooms: cleanedRooms };
     setFloorPlan(updatedPlan);
     const nextPlans = [...floorPlans];
     nextPlans[activeFloorIndex] = updatedPlan;
@@ -4385,13 +5950,19 @@ Requirements:
     }
     pushHistory(floorPlan);
     const width = style === "sliding" ? 1.5 : 1.2;
+
+    const firstRoom = floorPlan.rooms[0];
+    const initX = firstRoom ? firstRoom.x + firstRoom.w / 2 : 3.0;
+    const initY = firstRoom ? firstRoom.y : 3.0;
+    const snapped = snapOpeningToWall(initX, initY, floorPlan, 0, Infinity, width, false, false);
+
     const newOpening: Opening = {
       id: `open_${activeFloorIndex}_${Date.now()}`,
       type: "window",
-      x: 3.0,
-      y: 3.0,
+      x: snapped.x,
+      y: snapped.y,
       w: width,
-      rotation: 0,
+      rotation: snapped.rotation,
       style
     };
     const updatedOpenings = [...(floorPlan.openings || []), newOpening];
@@ -4438,12 +6009,6 @@ Requirements:
             draggable={true}
             onDragMove={(e) => {
               e.cancelBubble = true;
-              const newX = (e.target.x() - pan.x) / scale;
-              const newY = (e.target.y() - pan.y) / scale;
-              const roundedX = Math.round(newX * 20) / 20; // 0.05m
-              const roundedY = Math.round(newY * 20) / 20;
-              e.target.x(pan.x + roundedX * scale);
-              e.target.y(pan.y + roundedY * scale);
             }}
             onClick={(e) => {
               e.cancelBubble = true;
@@ -4477,59 +6042,67 @@ Requirements:
             }}
             onDragEnd={(e) => {
               e.cancelBubble = true;
-              const newX = (e.target.x() - pan.x) / scale;
-              const newY = (e.target.y() - pan.y) / scale;
-              const roundedX = Math.round(newX * 20) / 20; // snap to 0.05m
-              const roundedY = Math.round(newY * 20) / 20;
+              const finalX = (e.target.x() - pan.x) / scale;
+              const finalY = (e.target.y() - pan.y) / scale;
+              const finalRot = e.target.rotation();
 
               if (floorPlan) {
+                const snapped = snapOpeningToWall(finalX, finalY, floorPlan, finalRot, Infinity, open.w, true, !!open.flipX);
+                
+                // Check if the snapped location collides with any furniture
+                if (isDoorCollidingWithAnyFurniture(open, snapped.x, snapped.y, snapped.rotation, floorPlan.rooms)) {
+                  // Revert the node position visually
+                  e.target.x(pan.x + open.x * scale);
+                  e.target.y(pan.y + open.y * scale);
+                  e.target.rotation(open.rotation);
+                  toast.error("Không thể di chuyển cửa vào vị trí này vì vướng đồ nội thất!");
+                  return;
+                }
+
                 pushHistory(floorPlan);
                 const updatedOpenings = floorPlan.openings.map((o) => {
                   if (o.id === open.id) {
-                    return { ...o, x: roundedX, y: roundedY };
+                    const flips = getOptimalDoorFlips(snapped.x, snapped.y, snapped.rotation, o.style, floorPlan.rooms);
+                    return { ...o, x: snapped.x, y: snapped.y, rotation: snapped.rotation, flipX: flips.flipX, flipY: flips.flipY };
                   }
                   return o;
                 });
-                const updatedPlan = { ...floorPlan, openings: updatedOpenings };
+                const cleanedRooms = resolveFurnitureDoorCollisions(floorPlan.rooms, updatedOpenings, wallThickness);
+                const updatedPlan = { ...floorPlan, openings: updatedOpenings, rooms: cleanedRooms };
                 setFloorPlan(updatedPlan);
                 const nextPlans = [...floorPlans];
                 nextPlans[activeFloorIndex] = updatedPlan;
                 setFloorPlans(nextPlans);
-                toast.success(`Đã di chuyển cửa đến (${roundedX}m, ${roundedY}m)`);
               }
             }}
           >
-            {isSliding ? (
-              <>
-                {/* Invisible hit area */}
-                <Rect x={-ow / 2} y={-thickness / 2} width={ow} height={thickness} fill="transparent" />
-                {/* Sliding door track frame */}
-                <Rect x={-ow / 2} y={-thickness / 2} width={ow} height={thickness} stroke={strokeColor} strokeWidth={1} />
-                {/* Panel 1 */}
-                <Rect x={-ow / 2 + 2} y={-thickness / 4} width={ow / 2 - 1} height={thickness / 2} fill="#e2e8f0" stroke={strokeColor} strokeWidth={strokeWidth} />
-                {/* Panel 2 */}
-                <Rect x={0} y={0} width={ow / 2 - 2} height={thickness / 2} fill="#e2e8f0" stroke={strokeColor} strokeWidth={strokeWidth} />
-              </>
-            ) : isGarage ? (
-              <>
-                {/* Invisible hit area */}
-                <Rect x={-ow / 2} y={-thickness / 2} width={ow} height={thickness} fill="transparent" />
-                {/* Garage door boundary */}
-                <Rect x={-ow / 2} y={-thickness / 2} width={ow} height={thickness} fill="#f1f5f9" stroke={strokeColor} strokeWidth={strokeWidth} />
-                {/* Grooves for garage door */}
-                <Line points={[-ow / 2, -thickness * 0.2, ow / 2, -thickness * 0.2]} stroke="#475569" strokeWidth={1} />
-                <Line points={[-ow / 2, 0, ow / 2, 0]} stroke="#475569" strokeWidth={1} />
-                <Line points={[-ow / 2, thickness * 0.2, ow / 2, thickness * 0.2]} stroke="#475569" strokeWidth={1} />
-              </>
-            ) : (
-              <>
-                {/* Invisible large hit area to make dragging easy */}
-                <Rect x={0} y={-ow} width={ow} height={ow} fill="transparent" />
-                <Line points={arcPoints} stroke={strokeColor} strokeWidth={isSelected ? 1.5 : 1} dash={[3, 3]} />
-                <Line points={[0, 0, 0, -ow]} stroke={strokeColor} strokeWidth={strokeWidth} />
-              </>
-            )}
-            {/* Indication circle at pivot point when selected */}
+            <Group
+              scaleX={open.flipX ? -1 : 1}
+              scaleY={open.flipY ? -1 : 1}
+            >
+              {isSliding ? (
+                <>
+                  <Rect x={-ow / 2} y={-thickness / 2} width={ow} height={thickness} fill="transparent" />
+                  <Rect x={-ow / 2} y={-thickness / 2} width={ow} height={thickness} stroke={strokeColor} strokeWidth={1} />
+                  <Rect x={-ow / 2 + 2} y={-thickness / 4} width={ow / 2 - 1} height={thickness / 2} fill="#e2e8f0" stroke={strokeColor} strokeWidth={strokeWidth} />
+                  <Rect x={0} y={0} width={ow / 2 - 2} height={thickness / 2} fill="#e2e8f0" stroke={strokeColor} strokeWidth={strokeWidth} />
+                </>
+              ) : isGarage ? (
+                <>
+                  <Rect x={-ow / 2} y={-thickness / 2} width={ow} height={thickness} fill="transparent" />
+                  <Rect x={-ow / 2} y={-thickness / 2} width={ow} height={thickness} fill="#f1f5f9" stroke={strokeColor} strokeWidth={strokeWidth} />
+                  <Line points={[-ow / 2, -thickness * 0.2, ow / 2, -thickness * 0.2]} stroke="#475569" strokeWidth={1} />
+                  <Line points={[-ow / 2, 0, ow / 2, 0]} stroke="#475569" strokeWidth={1} />
+                  <Line points={[-ow / 2, thickness * 0.2, ow / 2, thickness * 0.2]} stroke="#475569" strokeWidth={1} />
+                </>
+              ) : (
+                <>
+                  <Rect x={0} y={-ow} width={ow} height={ow} fill="transparent" />
+                  <Line points={arcPoints} stroke={strokeColor} strokeWidth={isSelected ? 1.5 : 1} dash={[3, 3]} />
+                  <Line points={[0, 0, 0, -ow]} stroke={strokeColor} strokeWidth={strokeWidth} />
+                </>
+              )}
+            </Group>
             {isSelected && (
               <Circle
                 x={0}
@@ -4552,12 +6125,6 @@ Requirements:
             draggable={true}
             onDragMove={(e) => {
               e.cancelBubble = true;
-              const newX = (e.target.x() - pan.x) / scale;
-              const newY = (e.target.y() - pan.y) / scale;
-              const roundedX = Math.round(newX * 20) / 20; // 0.05m
-              const roundedY = Math.round(newY * 20) / 20;
-              e.target.x(pan.x + roundedX * scale);
-              e.target.y(pan.y + roundedY * scale);
             }}
             onClick={(e) => {
               e.cancelBubble = true;
@@ -4591,16 +6158,16 @@ Requirements:
             }}
             onDragEnd={(e) => {
               e.cancelBubble = true;
-              const newX = (e.target.x() - pan.x) / scale;
-              const newY = (e.target.y() - pan.y) / scale;
-              const roundedX = Math.round(newX * 20) / 20; // snap to 0.05m
-              const roundedY = Math.round(newY * 20) / 20;
+              const finalX = (e.target.x() - pan.x) / scale;
+              const finalY = (e.target.y() - pan.y) / scale;
+              const finalRot = e.target.rotation();
 
               if (floorPlan) {
                 pushHistory(floorPlan);
+                const snapped = snapOpeningToWall(finalX, finalY, floorPlan, finalRot, Infinity, open.w, false, false);
                 const updatedOpenings = floorPlan.openings.map((o) => {
                   if (o.id === open.id) {
-                    return { ...o, x: roundedX, y: roundedY };
+                    return { ...o, x: snapped.x, y: snapped.y, rotation: snapped.rotation };
                   }
                   return o;
                 });
@@ -4609,7 +6176,6 @@ Requirements:
                 const nextPlans = [...floorPlans];
                 nextPlans[activeFloorIndex] = updatedPlan;
                 setFloorPlans(nextPlans);
-                toast.success(`Đã di chuyển cửa sổ đến (${roundedX}m, ${roundedY}m)`);
               }
             }}
           >
@@ -4711,10 +6277,195 @@ Requirements:
             width={rw}
             height={rh}
             fill={getRoomFlooringColor(room)}
-            stroke="#1e293b"
-            strokeWidth={thickness}
+            stroke="transparent"
+            strokeWidth={0}
             cornerRadius={2}
           />
+
+          {/* Wall lines with smart gaps where doors/windows overlap */}
+          {(() => {
+            const lines = [];
+            const threshold = 0.08;
+
+            // 1. TOP WALL (y = room.y, local Y = ry)
+            const wallThreshold = 0.15; // Increased threshold for alignment safety
+            const topGaps = [];
+            plan.openings?.forEach((open) => {
+              const rot = open.rotation || 0;
+              const rotRad = (rot * Math.PI) / 180;
+              const isNearTop = Math.abs(open.y - room.y) < wallThreshold;
+              const isHorizontal = Math.abs(Math.sin(rotRad)) < 0.01;
+              
+              if (isNearTop && isHorizontal) {
+                let openStart = open.x - open.w / 2;
+                let openEnd = open.x + open.w / 2;
+                if (open.type === "door" && open.style !== "sliding" && open.style !== "garage") {
+                  const cosRot = Math.cos(rotRad);
+                  if (cosRot > 0.5) { // rotation 0
+                    openStart = open.flipX ? open.x - open.w : open.x;
+                    openEnd = open.flipX ? open.x : open.x + open.w;
+                  } else { // rotation 180
+                    openStart = open.flipX ? open.x : open.x - open.w;
+                    openEnd = open.flipX ? open.x + open.w : open.x;
+                  }
+                }
+                const overlapStart = Math.max(room.x, openStart);
+                const overlapEnd = Math.min(room.x + room.w, openEnd);
+                if (overlapEnd > overlapStart + 0.05) {
+                  topGaps.push({
+                    start: rx + (overlapStart - room.x) * scale,
+                    end: rx + (overlapEnd - room.x) * scale,
+                  });
+                }
+              }
+            });
+            const topSegments = subtractIntervals({ start: rx, end: rx + rw }, topGaps);
+            topSegments.forEach((seg, idx) => {
+              lines.push(
+                <Line
+                  key={`top_wall_${idx}`}
+                  points={[seg.start, ry, seg.end, ry]}
+                  stroke="#1e293b"
+                  strokeWidth={thickness}
+                  lineCap="square"
+                />
+              );
+            });
+
+            // 2. BOTTOM WALL (y = room.y + room.h, local Y = ry + rh)
+            const botGaps = [];
+            plan.openings?.forEach((open) => {
+              const rot = open.rotation || 0;
+              const rotRad = (rot * Math.PI) / 180;
+              const isNearBot = Math.abs(open.y - (room.y + room.h)) < wallThreshold;
+              const isHorizontal = Math.abs(Math.sin(rotRad)) < 0.01;
+              
+              if (isNearBot && isHorizontal) {
+                let openStart = open.x - open.w / 2;
+                let openEnd = open.x + open.w / 2;
+                if (open.type === "door" && open.style !== "sliding" && open.style !== "garage") {
+                  const cosRot = Math.cos(rotRad);
+                  if (cosRot > 0.5) { // rotation 0
+                    openStart = open.flipX ? open.x - open.w : open.x;
+                    openEnd = open.flipX ? open.x : open.x + open.w;
+                  } else { // rotation 180
+                    openStart = open.flipX ? open.x : open.x - open.w;
+                    openEnd = open.flipX ? open.x + open.w : open.x;
+                  }
+                }
+                const overlapStart = Math.max(room.x, openStart);
+                const overlapEnd = Math.min(room.x + room.w, openEnd);
+                if (overlapEnd > overlapStart + 0.05) {
+                  botGaps.push({
+                    start: rx + (overlapStart - room.x) * scale,
+                    end: rx + (overlapEnd - room.x) * scale,
+                  });
+                }
+              }
+            });
+            const botSegments = subtractIntervals({ start: rx, end: rx + rw }, botGaps);
+            botSegments.forEach((seg, idx) => {
+              lines.push(
+                <Line
+                  key={`bot_wall_${idx}`}
+                  points={[seg.start, ry + rh, seg.end, ry + rh]}
+                  stroke="#1e293b"
+                  strokeWidth={thickness}
+                  lineCap="square"
+                />
+              );
+            });
+
+            // 3. LEFT WALL (x = room.x, local X = rx)
+            const leftGaps = [];
+            plan.openings?.forEach((open) => {
+              const rot = open.rotation || 0;
+              const rotRad = (rot * Math.PI) / 180;
+              const isNearLeft = Math.abs(open.x - room.x) < wallThreshold;
+              const isVertical = Math.abs(Math.cos(rotRad)) < 0.01;
+              
+              if (isNearLeft && isVertical) {
+                let openStart = open.y - open.w / 2;
+                let openEnd = open.y + open.w / 2;
+                if (open.type === "door" && open.style !== "sliding" && open.style !== "garage") {
+                  const sinRot = Math.sin(rotRad);
+                  if (sinRot > 0.5) { // rotation 90
+                    openStart = open.flipX ? open.y - open.w : open.y;
+                    openEnd = open.flipX ? open.y : open.y + open.w;
+                  } else { // rotation 270
+                    openStart = open.flipX ? open.y : open.y - open.w;
+                    openEnd = open.flipX ? open.y + open.w : open.y;
+                  }
+                }
+                const overlapStart = Math.max(room.y, openStart);
+                const overlapEnd = Math.min(room.y + room.h, openEnd);
+                if (overlapEnd > overlapStart + 0.05) {
+                  leftGaps.push({
+                    start: ry + (overlapStart - room.y) * scale,
+                    end: ry + (overlapEnd - room.y) * scale,
+                  });
+                }
+              }
+            });
+            const leftSegments = subtractIntervals({ start: ry, end: ry + rh }, leftGaps);
+            leftSegments.forEach((seg, idx) => {
+              lines.push(
+                <Line
+                  key={`left_wall_${idx}`}
+                  points={[rx, seg.start, rx, seg.end]}
+                  stroke="#1e293b"
+                  strokeWidth={thickness}
+                  lineCap="square"
+                />
+              );
+            });
+
+            // 4. RIGHT WALL (x = room.x + room.w, local X = rx + rw)
+            const rightGaps = [];
+            plan.openings?.forEach((open) => {
+              const rot = open.rotation || 0;
+              const rotRad = (rot * Math.PI) / 180;
+              const isNearRight = Math.abs(open.x - (room.x + room.w)) < wallThreshold;
+              const isVertical = Math.abs(Math.cos(rotRad)) < 0.01;
+              
+              if (isNearRight && isVertical) {
+                let openStart = open.y - open.w / 2;
+                let openEnd = open.y + open.w / 2;
+                if (open.type === "door" && open.style !== "sliding" && open.style !== "garage") {
+                  const sinRot = Math.sin(rotRad);
+                  if (sinRot > 0.5) { // rotation 90
+                    openStart = open.flipX ? open.y - open.w : open.y;
+                    openEnd = open.flipX ? open.y : open.y + open.w;
+                  } else { // rotation 270
+                    openStart = open.flipX ? open.y : open.y - open.w;
+                    openEnd = open.flipX ? open.y + open.w : open.y;
+                  }
+                }
+                const overlapStart = Math.max(room.y, openStart);
+                const overlapEnd = Math.min(room.y + room.h, openEnd);
+                if (overlapEnd > overlapStart + 0.05) {
+                  rightGaps.push({
+                    start: ry + (overlapStart - room.y) * scale,
+                    end: ry + (overlapEnd - room.y) * scale,
+                  });
+                }
+              }
+            });
+            const rightSegments = subtractIntervals({ start: ry, end: ry + rh }, rightGaps);
+            rightSegments.forEach((seg, idx) => {
+              lines.push(
+                <Line
+                  key={`right_wall_${idx}`}
+                  points={[rx + rw, seg.start, rx + rw, seg.end]}
+                  stroke="#1e293b"
+                  strokeWidth={thickness}
+                  lineCap="square"
+                />
+              );
+            });
+
+            return lines;
+          })()}
           
           {/* Terrazzo dots pattern */}
           {room.finishes?.flooring === "Terrazzo" && (() => {
@@ -5118,9 +6869,36 @@ Requirements:
               }
 
               if (floorPlan && !isCrossingWall) {
-                pushHistory(floorPlan);
-
                 const finalTargetRoomId = targetRoom ? targetRoom.id : room.id;
+                const finalTargetRoom = floorPlan.rooms.find(r => r.id === finalTargetRoomId);
+                let hasCollisionAfterMove = false;
+                
+                if (finalTargetRoom) {
+                  const others = finalTargetRoom.id === room.id 
+                    ? (finalTargetRoom.furniture || []).filter(f => f.id !== item.id)
+                    : (finalTargetRoom.furniture || []);
+                  const newRelX = roundedAbsX - finalTargetRoom.x;
+                  const newRelY = roundedAbsY - finalTargetRoom.y;
+                  const resolvedPos = findNonCollidingPosition(item, newRelX, newRelY, others, finalTargetRoom.w, finalTargetRoom.h, wallThickness);
+
+                  const testItem = { ...item, x: resolvedPos.x, y: resolvedPos.y };
+                  for (const other of others) {
+                    if (isFurnitureColliding(testItem, other)) {
+                      hasCollisionAfterMove = true;
+                      break;
+                    }
+                  }
+                }
+
+                if (hasCollisionAfterMove) {
+                  e.target.x(pan.x + (room.x + item.x) * scale);
+                  e.target.y(pan.y + (room.y + item.y) * scale);
+                  e.target.getLayer()?.batchDraw();
+                  toast.error("Không thể đặt ở đây! Không còn đủ diện tích trống.");
+                  return;
+                }
+
+                pushHistory(floorPlan);
 
                 const updatedRooms = floorPlan.rooms.map((r) => {
                   // Source room only (remove item if changing room)
@@ -5132,10 +6910,14 @@ Requirements:
                   }
                   // Target room only (add item at new relative offset)
                   if (r.id === finalTargetRoomId && r.id !== room.id) {
+                    const others = r.furniture || [];
+                    const newRelX = roundedAbsX - r.x;
+                    const newRelY = roundedAbsY - r.y;
+                    const resolvedPos = findNonCollidingPosition(item, newRelX, newRelY, others, r.w, r.h, wallThickness);
                     const newF = {
                       ...item,
-                      x: roundedAbsX - r.x,
-                      y: roundedAbsY - r.y
+                      x: resolvedPos.x,
+                      y: resolvedPos.y
                     };
                     return {
                       ...r,
@@ -5144,12 +6926,16 @@ Requirements:
                   }
                   // Same room move (either inside or outside the room, but associated with the same room)
                   if (r.id === room.id && r.id === finalTargetRoomId) {
+                    const others = (r.furniture || []).filter((f) => f.id !== item.id);
+                    const newRelX = roundedAbsX - r.x;
+                    const newRelY = roundedAbsY - r.y;
+                    const resolvedPos = findNonCollidingPosition(item, newRelX, newRelY, others, r.w, r.h, wallThickness);
                     const updated = (r.furniture || []).map((f) => {
                       if (f.id === item.id) {
                         return {
                           ...f,
-                          x: roundedAbsX - r.x,
-                          y: roundedAbsY - r.y
+                          x: resolvedPos.x,
+                          y: resolvedPos.y
                         };
                       }
                       return f;
@@ -5268,9 +7054,16 @@ Requirements:
             const newX = (e.target.x() - pan.x) / scale;
             const newY = (e.target.y() - pan.y) / scale;
             
-            // Limit within room boundaries
-            const clampedX = Math.max(room.x, Math.min(room.x + room.w, newX));
-            const clampedY = Math.max(room.y, Math.min(room.y + room.h, newY));
+            // Limit within global floor plan boundaries with a margin of 5 meters
+            let minX = -5, maxX = 15, minY = -5, maxY = 15;
+            if (floorPlan && floorPlan.rooms.length > 0) {
+              minX = Math.min(...floorPlan.rooms.map(r => r.x)) - 5;
+              maxX = Math.max(...floorPlan.rooms.map(r => r.x + r.w)) + 5;
+              minY = Math.min(...floorPlan.rooms.map(r => r.y)) - 5;
+              maxY = Math.max(...floorPlan.rooms.map(r => r.y + r.h)) + 5;
+            }
+            const clampedX = Math.max(minX, Math.min(maxX, newX));
+            const clampedY = Math.max(minY, Math.min(maxY, newY));
 
             e.target.x(pan.x + clampedX * scale);
             e.target.y(pan.y + clampedY * scale);
@@ -5288,8 +7081,16 @@ Requirements:
             e.cancelBubble = true;
             const newX = (e.target.x() - pan.x) / scale;
             const newY = (e.target.y() - pan.y) / scale;
-            const clampedX = Math.max(room.x, Math.min(room.x + room.w, newX));
-            const clampedY = Math.max(room.y, Math.min(room.y + room.h, newY));
+            
+            let minX = -5, maxX = 15, minY = -5, maxY = 15;
+            if (floorPlan && floorPlan.rooms.length > 0) {
+              minX = Math.min(...floorPlan.rooms.map(r => r.x)) - 5;
+              maxX = Math.max(...floorPlan.rooms.map(r => r.x + r.w)) + 5;
+              minY = Math.min(...floorPlan.rooms.map(r => r.y)) - 5;
+              maxY = Math.max(...floorPlan.rooms.map(r => r.y + r.h)) + 5;
+            }
+            const clampedX = Math.max(minX, Math.min(maxX, newX));
+            const clampedY = Math.max(minY, Math.min(maxY, newY));
             
             setCameras((prev) => ({
               ...prev,
@@ -5330,6 +7131,46 @@ Requirements:
             <Group
               x={18}
               y={-18}
+              draggable={true}
+              onDragStart={(e) => {
+                e.cancelBubble = true;
+              }}
+              onDragMove={(e) => {
+                e.cancelBubble = true;
+                const stage = e.target.getStage();
+                if (!stage) return;
+                const pointer = stage.getPointerPosition();
+                if (!pointer) return;
+
+                const parent = e.target.getParent();
+                if (!parent) return;
+
+                const parentX = parent.x();
+                const parentY = parent.y();
+
+                const dx = pointer.x - parentX;
+                const dy = pointer.y - parentY;
+
+                const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+                const rotation = (angle + 90 + 360) % 360;
+
+                setCameras((prev) => ({
+                  ...prev,
+                  [room.id]: {
+                    ...prev[room.id],
+                    rotation: rotation,
+                  },
+                }));
+
+                // Reset position of handle in parent group so it stays at fixed offset
+                e.target.x(18);
+                e.target.y(-18);
+              }}
+              onDragEnd={(e) => {
+                e.cancelBubble = true;
+                e.target.x(18);
+                e.target.y(-18);
+              }}
               onClick={(e) => {
                 e.cancelBubble = true;
                 setCameras((prev) => ({
@@ -5371,26 +7212,7 @@ Requirements:
 
   // ── Dot grid background ────────────────────────────────────────────────
   const renderDotGrid = () => {
-    const dots = [];
-    const spacing = 28;
-    const cols = Math.ceil(stageSize.w / spacing) + 1;
-    const rows = Math.ceil(stageSize.h / spacing) + 1;
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        dots.push(
-          <Rect
-            key={`dot_${r}_${c}`}
-            x={c * spacing}
-            y={r * spacing}
-            width={2}
-            height={2}
-            fill="#e2e8f0"
-            cornerRadius={1}
-          />
-        );
-      }
-    }
-    return dots;
+    return null;
   };
 
   // ── Land boundary ──────────────────────────────────────────────────────
@@ -5456,7 +7278,7 @@ Requirements:
 
   // ════════════════════════════════════════════════════════════════════════
   return (
-    <div className="flex h-[calc(100vh-64px)] bg-white text-slate-900 font-sans overflow-hidden">
+    <div className="flex h-[calc(100vh-64px)] w-full bg-white text-slate-900 font-sans overflow-hidden">
       {/* ── TOP BAR ─────────────────────────────────────────────────────── */}
       <div className="absolute top-0 inset-x-0 h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4 z-30">
         <div className="flex items-center gap-3">
@@ -5592,9 +7414,14 @@ Requirements:
       </div>
 
       {/* ── CHAT SIDEBAR ─────────────────────────────────────────────────── */}
-      <div className="w-[380px] h-full flex-shrink-0 flex flex-col bg-slate-50 border-r border-slate-200 pt-12 z-20">
+      <motion.div
+        animate={{ width: isSidebarCollapsed ? 0 : 380 }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        className="h-full flex-shrink-0 flex flex-col bg-slate-50 border-r border-slate-200 pt-12 z-20 overflow-hidden"
+        style={{ minWidth: 0 }}
+      >
         {/* Sidebar Tab Switcher */}
-        <div className="flex border-b border-slate-200 bg-white shrink-0">
+        <div className="flex border-b border-slate-200 bg-white shrink-0" style={{ minWidth: 380 }}>
           <button
             onClick={() => setActiveSidebarTab("chat")}
             className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-colors border-b-2 ${
@@ -5620,7 +7447,8 @@ Requirements:
         {activeSidebarTab === "chat" ? (
           <>
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-300">
+                        <div className="flex-1 overflow-y-auto px-4 py-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-300 flex flex-col">
+              <div className="flex-1 flex flex-col justify-end space-y-3">
               <AnimatePresence initial={false}>
                 {messages.map((msg) => {
                   // Special shape-picker bubble
@@ -5735,11 +7563,40 @@ Requirements:
                 </motion.div>
               )}
               <div ref={chatEndRef} />
+              </div>
             </div>
 
+            {/* Floor suggestions */}
+            {currentStep === "floors" && !isTyping && !isGenerating && (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2 }}
+                className="px-4 pb-2 shrink-0"
+              >
+                <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(15,23,42,0.07)]">
+                  <div className="px-3 pt-2.5 pb-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Gợi ý</span>
+                  </div>
+                  {[1, 2, 3, 4].map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => handleSend(`${n} tầng`)}
+                      className="w-full flex items-center justify-between px-3 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 border-t border-slate-100 transition-colors cursor-pointer"
+                    >
+                      <span>{n} tầng</span>
+                      <svg className="w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
             {/* Input */}
-            <div className="p-3 border-t border-slate-200 bg-white shrink-0">
-              <div className="flex items-center gap-2 bg-white border border-slate-400 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#d4a853]/40 focus-within:border-[#d4a853] transition-all shadow-[0_1px_3px_rgba(15,23,42,0.12)]">
+            <div className="px-4 pb-12 pt-2 bg-transparent shrink-0">
+              <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-3.5 py-2.5 focus-within:ring-2 focus-within:ring-[#00b5cd]/20 focus-within:border-[#00b5cd] transition-all shadow-[0_1px_3px_rgba(15,23,42,0.08)]">
                 <input
                   ref={inputRef}
                   value={inputValue}
@@ -5747,16 +7604,18 @@ Requirements:
                   onKeyDown={handleKeyDown}
                   disabled={isGenerating || isTyping}
                   placeholder={
-                    currentStep === "done" || isGenerating
+                    isGenerating
                       ? "Đang xử lý..."
-                      : "Trả lời iGen..."
+                      : currentStep === "done"
+                        ? "Yêu cầu iGen chỉnh sửa bản vẽ..."
+                        : "Trả lời iGen..."
                   }
                   className="flex-1 bg-transparent text-slate-700 text-xs placeholder-slate-400 outline-none"
                 />
                 <button
-                  onClick={handleSend}
+                  onClick={() => handleSend()}
                   disabled={!inputValue.trim() || isGenerating || isTyping}
-                  className="w-7 h-7 flex items-center justify-center rounded-lg bg-[#d4a853] hover:bg-[#c49843] disabled:opacity-30 disabled:cursor-not-allowed transition-all text-[#1a1612]"
+                  className="w-8 h-8 flex items-center justify-center rounded-xl bg-[#00b5cd] hover:bg-[#009cb0] active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-white shadow-md shadow-[#00b5cd]/30 shrink-0"
                 >
                   <Send className="w-3.5 h-3.5" />
                 </button>
@@ -5764,7 +7623,7 @@ Requirements:
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col bg-slate-50 overflow-hidden">
+          <div className="flex-1 flex flex-col bg-slate-50 overflow-hidden" style={{ minWidth: 380 }}>
             {/* History List header */}
             <div className="p-3 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Danh sách bản vẽ</span>
@@ -5906,7 +7765,19 @@ Requirements:
             </div>
           </div>
         )}
-      </div>
+      </motion.div>
+
+      {/* ── SIDEBAR TOGGLE BUTTON ─────────────────────────────────────────── */}
+      <button
+        onClick={() => setIsSidebarCollapsed(c => !c)}
+        title={isSidebarCollapsed ? "Mở hộp chat" : "Thu hộp chat"}
+        className="absolute top-1/2 -translate-y-1/2 z-30 w-5 h-14 bg-white border border-l-0 border-slate-200 rounded-r-lg flex items-center justify-center shadow-md hover:bg-slate-50 transition-all cursor-pointer"
+        style={{ left: isSidebarCollapsed ? 0 : 380 }}
+      >
+        <motion.div animate={{ rotate: isSidebarCollapsed ? 0 : 180 }} transition={{ duration: 0.2 }}>
+          <ChevronLeft className="w-3 h-3 text-slate-500" />
+        </motion.div>
+      </button>
 
       {/* ── CANVAS AREA ──────────────────────────────────────────────────── */}
       <div className="flex-1 min-w-0 flex flex-col pt-12 relative overflow-hidden">
@@ -6004,13 +7875,14 @@ Requirements:
                 ? "grabbing"
                 : "default",
             background: "white",
+            backgroundImage: "radial-gradient(#e2e8f0 1.5px, transparent 1.5px)",
+            backgroundSize: "28px 28px",
           }}
         >
           <Stage
             ref={stageRef}
             width={stageSize.w}
             height={stageSize.h}
-            onWheel={handleWheel}
             onMouseDown={handleStageMouseDown}
             onMouseMove={handleStageMouseMove}
             onMouseUp={handleStageMouseUp}
@@ -6092,7 +7964,7 @@ Requirements:
           )}
 
           {/* Zoom controls */}
-          <div className="absolute bottom-6 right-6 flex flex-col gap-1.5 items-center z-10">
+          <div className="absolute top-[140px] right-6 flex flex-col gap-1.5 items-center z-10">
             <span className="text-[10px] text-slate-500 font-mono bg-white/90 border border-slate-200 shadow-sm rounded px-1.5 py-0.5 select-none mb-1">
               {Math.round(zoom * 100)}%
             </span>
@@ -6109,7 +7981,25 @@ Requirements:
               <ZoomOut className="w-4 h-4" />
             </button>
             <button
-              onClick={() => { setZoom(1); setPan({ x: 60, y: 60 }); }}
+              onClick={() => {
+                if (floorPlan) {
+                  const landW = gatherInfo.landWidth || 5;
+                  const landL = gatherInfo.landLength || 15;
+                  const fitZoom = Math.min(
+                    (stageSize.w - 120) / (landW * METER_TO_PX),
+                    (stageSize.h - 120) / (landL * METER_TO_PX)
+                  );
+                  const newZoom = Math.max(0.4, Math.min(2, fitZoom));
+                  setZoom(newZoom);
+                  setPan({
+                    x: (stageSize.w - landW * METER_TO_PX * newZoom) / 2,
+                    y: (stageSize.h - landL * METER_TO_PX * newZoom) / 2
+                  });
+                } else {
+                  setZoom(1);
+                  setPan({ x: 60, y: 60 });
+                }
+              }}
               className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors shadow-sm cursor-pointer"
               title="Fit to screen"
             >
@@ -6297,9 +8187,9 @@ Requirements:
 
               {/* Structure Popover */}
               {activeBottomPopup === "structure" && (
-                <div className="mb-3 flex gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                <div className="mb-3 flex items-start gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
                   {/* Left panel: main options */}
-                  <div className="w-48 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1">
+                  <div className="w-48 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 h-[180px]">
                     <button
                       onMouseEnter={() => setActiveStructureCategory("door")}
                       onClick={() => setActiveStructureCategory("door")}
@@ -6313,7 +8203,7 @@ Requirements:
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
                           <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M13.5 12H3"/>
                         </svg>
-                        <span>Door</span>
+                        <span>Cửa đi</span>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
                     </button>
@@ -6331,7 +8221,7 @@ Requirements:
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
                           <path d="M3 21h18M3 21v-4h4v-4h4v-4h4v-4h4V3" />
                         </svg>
-                        <span>Stairs</span>
+                        <span>Cầu thang</span>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
                     </button>
@@ -6352,7 +8242,7 @@ Requirements:
                           <line x1="15" y1="3" x2="15" y2="21" stroke="currentColor" strokeWidth="2"/>
                           <line x1="3" y1="12" x2="21" y2="12" stroke="currentColor" strokeWidth="2"/>
                         </svg>
-                        <span>Window</span>
+                        <span>Cửa sổ</span>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
                     </button>
@@ -6360,7 +8250,7 @@ Requirements:
 
                   {/* Right panel: submenu */}
                   {activeStructureCategory && (
-                    <div className="w-56 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-100 justify-center">
+                    <div className="w-56 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-100 h-[180px] overflow-y-auto">
                       {activeStructureCategory === "door" && (
                         <>
                           <button
@@ -6370,7 +8260,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            Garage Door
+                            Cửa cuốn garage
                           </button>
                           <button
                             onClick={() => {
@@ -6379,7 +8269,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            Hinged Door
+                            Cửa bản lề
                           </button>
                           <button
                             onClick={() => {
@@ -6388,7 +8278,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            Sliding Door
+                            Cửa lùa
                           </button>
                         </>
                       )}
@@ -6402,7 +8292,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            L-shaped staircase (landing)
+                            Cầu thang chữ L (chiếu nghỉ)
                           </button>
                           <button
                             onClick={() => {
@@ -6411,7 +8301,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            L-shaped staircase (winder)
+                            Cầu thang chữ L (rẽ quạt)
                           </button>
                           <button
                             onClick={() => {
@@ -6420,7 +8310,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            Straight staircase
+                            Cầu thang thẳng
                           </button>
                           <button
                             onClick={() => {
@@ -6429,7 +8319,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            U-shaped staircase
+                            Cầu thang chữ U
                           </button>
                         </>
                       )}
@@ -6443,7 +8333,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            Blinds Window
+                            Cửa sổ chớp
                           </button>
                           <button
                             onClick={() => {
@@ -6452,7 +8342,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            Hinged Window
+                            Cửa sổ bản lề
                           </button>
                           <button
                             onClick={() => {
@@ -6461,7 +8351,7 @@ Requirements:
                             }}
                             className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-all cursor-pointer hover:text-[#00b5cd]"
                           >
-                            Sliding Window
+                            Cửa sổ lùa
                           </button>
                         </>
                       )}
@@ -6644,13 +8534,20 @@ Requirements:
             return (
               <div className="p-6 space-y-6">
                 {/* 3D Camera Preview Box */}
-                <div className="relative w-full aspect-square rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex flex-col items-center justify-center text-slate-400 group shadow-inner">
+                <div className={`relative w-full rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex flex-col items-center justify-center text-slate-400 group shadow-inner transition-all duration-300 ${
+                  selectedCam?.aspectRatio === "Widescreen (16:9)"
+                    ? "aspect-[16/9]"
+                    : selectedCam?.aspectRatio === "Landscape (4:3)"
+                    ? "aspect-[4/3]"
+                    : "aspect-square"
+                }`}>
                   {sidebarTab === "scene" ? (
-                    selectedCameraRoomId ? (
+                    selectedCameraRoomId || renderMode === "Floorplan to 3D Floorplan" ? (
                       <FloorPlan3DViewer
                         floorPlan={floorPlan}
                         wallThickness={wallThickness}
                         finishes={finishes}
+                        renderMode={renderMode}
                         activeCamera={
                           selectedCam && selectedCameraRoomId ? {
                             id: selectedCameraRoomId,
@@ -6658,18 +8555,21 @@ Requirements:
                             x: selectedCam.x,
                             y: selectedCam.y,
                             rotation: selectedCam.rotation,
-                            fov: selectedCam.fov
+                            fov: selectedCam.fov,
+                            aspectRatio: selectedCam.aspectRatio
                           } : null
                         }
                         onCaptureRef={capture3DRef}
                         onChangeCamera={(cam) => {
-                          setCameras((prev) => ({
-                            ...prev,
-                            [selectedCameraRoomId!]: {
-                              ...prev[selectedCameraRoomId!],
-                              rotation: cam.rotation,
-                            },
-                          }));
+                          if (selectedCameraRoomId) {
+                            setCameras((prev) => ({
+                              ...prev,
+                              [selectedCameraRoomId]: {
+                                ...prev[selectedCameraRoomId],
+                                rotation: cam.rotation,
+                              },
+                            }));
+                          }
                         }}
                       />
                     ) : (
@@ -6733,74 +8633,86 @@ Requirements:
                   </button>
                 </div>
 
-                {selectedCam ? (
+                {sidebarTab === "scene" ? (
+                  selectedCam ? (
+                    <div className="space-y-5">
+                      {/* CONFIGURATION Header */}
+                      <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Cấu hình</span>
+
+                      {/* Field of View */}
+                      <div className="space-y-2">
+                        <span className="text-xs font-bold text-slate-700 block">Tầm nhìn</span>
+                        <div className="flex items-center justify-between border border-slate-200 bg-white rounded-xl p-1 shadow-sm">
+                          <button
+                            onClick={() => {
+                              setCameras(prev => ({
+                                ...prev,
+                                [selectedCameraRoomId!]: {
+                                  ...prev[selectedCameraRoomId!],
+                                  fov: Math.max(30, (prev[selectedCameraRoomId!]?.fov || 85) - 5)
+                                }
+                              }));
+                            }}
+                            className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-slate-100 flex items-center justify-center font-bold text-slate-700 cursor-pointer transition-all"
+                          >
+                            -
+                          </button>
+                          <span className="text-xs font-bold text-slate-800">{selectedCam.fov || 85}°</span>
+                          <button
+                            onClick={() => {
+                              setCameras(prev => ({
+                                ...prev,
+                                [selectedCameraRoomId!]: {
+                                  ...prev[selectedCameraRoomId!],
+                                  fov: Math.min(120, (prev[selectedCameraRoomId!]?.fov || 85) + 5)
+                                }
+                              }));
+                            }}
+                            className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-slate-100 flex items-center justify-center font-bold text-slate-700 cursor-pointer transition-all"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Aspect Ratio */}
+                      <div className="space-y-1.5">
+                        <span className="text-xs font-bold text-slate-700 block">Tỷ lệ khung hình</span>
+                        <div className="relative">
+                          <select
+                            value={selectedCam.aspectRatio}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCameras(prev => ({
+                                ...prev,
+                                [selectedCameraRoomId!]: {
+                                  ...prev[selectedCameraRoomId!],
+                                  aspectRatio: val
+                                }
+                              }));
+                            }}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-[#00b5cd]/50 cursor-pointer appearance-none pr-8"
+                          >
+                            <option value="Landscape (4:3)">Landscape (4:3)</option>
+                            <option value="Widescreen (16:9)">Widescreen (16:9)</option>
+                            <option value="Square (1:1)">Square (1:1)</option>
+                          </select>
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <ChevronDown className="w-4 h-4" />
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-xs text-slate-400 font-medium">
+                      Hãy nhấp chọn một camera trên bản vẽ để bắt đầu thiết kế góc nhìn.
+                    </div>
+                  )
+                ) : (
+                  // Renders tab
                   <div className="space-y-5">
                     {/* CONFIGURATION Header */}
-                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">CONFIGURATION</span>
-
-                    {/* Field of View */}
-                    <div className="space-y-2">
-                      <span className="text-xs font-bold text-slate-700 block">Field of view</span>
-                      <div className="flex items-center justify-between border border-slate-200 bg-white rounded-xl p-1 shadow-sm">
-                        <button
-                          onClick={() => {
-                            setCameras(prev => ({
-                              ...prev,
-                              [selectedCameraRoomId!]: {
-                                ...prev[selectedCameraRoomId!],
-                                fov: Math.max(30, (prev[selectedCameraRoomId!]?.fov || 85) - 5)
-                              }
-                            }));
-                          }}
-                          className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-slate-100 flex items-center justify-center font-bold text-slate-700 cursor-pointer transition-all"
-                        >
-                          -
-                        </button>
-                        <span className="text-xs font-bold text-slate-800">{selectedCam.fov || 85}°</span>
-                        <button
-                          onClick={() => {
-                            setCameras(prev => ({
-                              ...prev,
-                              [selectedCameraRoomId!]: {
-                                ...prev[selectedCameraRoomId!],
-                                fov: Math.min(120, (prev[selectedCameraRoomId!]?.fov || 85) + 5)
-                              }
-                            }));
-                          }}
-                          className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-slate-100 flex items-center justify-center font-bold text-slate-700 cursor-pointer transition-all"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Aspect Ratio */}
-                    <div className="space-y-1.5">
-                      <span className="text-xs font-bold text-slate-700 block">Aspect ratio</span>
-                      <div className="relative">
-                        <select
-                          value={selectedCam.aspectRatio}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setCameras(prev => ({
-                              ...prev,
-                              [selectedCameraRoomId!]: {
-                                ...prev[selectedCameraRoomId!],
-                                aspectRatio: val
-                              }
-                            }));
-                          }}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-[#00b5cd]/50 cursor-pointer appearance-none pr-8"
-                        >
-                          <option value="Landscape (4:3)">Landscape (4:3)</option>
-                          <option value="Widescreen (16:9)">Widescreen (16:9)</option>
-                          <option value="Square (1:1)">Square (1:1)</option>
-                        </select>
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                          <ChevronDown className="w-4 h-4" />
-                        </span>
-                      </div>
-                    </div>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">RENDER OPTIONS</span>
 
                     {/* Render Mode */}
                     <div className="space-y-1.5">
@@ -6820,91 +8732,26 @@ Requirements:
                       </div>
                     </div>
 
-                    {/* Custom Prompt */}
-                    <div className="space-y-1.5">
-                      <span className="text-xs font-bold text-slate-700 block">Prompt</span>
-                      <textarea
-                        value={selectedCam.prompt}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setCameras(prev => ({
-                            ...prev,
-                            [selectedCameraRoomId!]: {
-                              ...prev[selectedCameraRoomId!],
-                              prompt: val
-                            }
-                          }));
-                        }}
-                        placeholder="E.g. add a cat, golden hour, sunbeams, realistic texture..."
-                        className="w-full min-h-[80px] bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-700 placeholder-slate-400 outline-none focus:border-[#00b5cd]/50 resize-none transition-all"
-                      />
+                    {renderMode === "Floorplan to 3D Floorplan" || selectedCam ? (
+                      /* Render Scene Button */
                       <button
                         onClick={async () => {
-                          if (!selectedCameraRoomId) return;
-                          setIsGeneratingPromptIdea(true);
-                          try {
-                            const ai = await getAIClient("gemini-2.5-flash");
-                            const res = await generateContentWithRetry(ai, {
-                              model: "gemini-2.5-flash",
-                              contents: [
-                                {
-                                  role: "user",
-                                  parts: [
-                                    {
-                                      text: `Generate a single short, creative, professional English rendering prompt idea for a [${targetRoomName}] interior. Focus on lighting, architectural materials, and style. Output ONLY the prompt string (max 12 words), no conversational text or quotes.`
-                                    }
-                                  ]
-                                }
-                              ]
-                            });
-                            const idea = res.candidates?.[0]?.content?.parts?.[0]?.text?.replace(/["']/g, "") || "";
-                            if (idea.trim()) {
-                              setCameras(prev => ({
-                                ...prev,
-                                [selectedCameraRoomId!]: {
-                                  ...prev[selectedCameraRoomId!],
-                                  prompt: idea.trim()
-                                }
-                              }));
-                              toast.success("Đã tạo ý tưởng prompt từ AI!");
-                            }
-                          } catch (e) {
-                            console.error(e);
-                            toast.error("Không thể kết nối AI.");
-                          } finally {
-                            setIsGeneratingPromptIdea(false);
-                          }
+                          setSelectedRoomId(selectedCameraRoomId);
+                          setTimeout(() => {
+                            handleRender3D();
+                          }, 100);
                         }}
-                        disabled={isGeneratingPromptIdea}
-                        className="text-[10px] text-slate-500 hover:text-slate-800 font-bold border border-slate-200 bg-white rounded-lg px-2.5 py-1 flex items-center gap-1.5 transition-colors cursor-pointer w-fit disabled:opacity-50"
+                        disabled={isRendering3D}
+                        className="w-full py-3 bg-[#00b5cd] hover:bg-[#00a3b8] text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {isGeneratingPromptIdea ? (
-                          <div className="w-3.5 h-3.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <Sparkles className="w-3 h-3 text-[#00b5cd]" />
-                        )}
-                        Auto prompt ideas
+                        <Sparkles className="w-4 h-4" />
+                        {isRendering3D ? "Rendering..." : "Render scene"}
                       </button>
-                    </div>
-
-                    {/* Render Scene Button */}
-                    <button
-                      onClick={async () => {
-                        setSelectedRoomId(selectedCameraRoomId);
-                        setTimeout(() => {
-                          handleRender3D();
-                        }, 100);
-                      }}
-                      disabled={isRendering3D}
-                      className="w-full py-3 bg-[#00b5cd] hover:bg-[#00a3b8] text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Sparkles className="w-4 h-4" />
-                      {isRendering3D ? "Rendering..." : "Render scene"}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-xs text-slate-400 font-medium">
-                    Hãy nhấp chọn một camera trên bản vẽ để bắt đầu thiết kế góc nhìn.
+                    ) : (
+                      <div className="text-center py-4 px-2 border border-dashed border-slate-200 rounded-xl text-xs text-slate-400 font-medium">
+                        Vui lòng chọn một camera trên bản vẽ để thực hiện render phối cảnh phòng.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -7007,34 +8854,11 @@ Requirements:
                       </div>
                     </div>
 
-                    {/* Styles Selection */}
-                    {meta.styles.length > 0 && (
-                      <div className="space-y-3">
-                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Kiểu dáng thiết kế</span>
-                        <div className="grid grid-cols-2 gap-2">
-                          {meta.styles.map((st, idx) => {
-                            const isSelectedStyle = furniture.style === st.value || (!furniture.style && idx === 0);
-                            return (
-                              <button
-                                key={st.value}
-                                onClick={() => updateFurnitureProperty(room.id, furniture.id, { style: st.value })}
-                                className={`px-3 py-2 text-left rounded-xl border text-xs font-semibold cursor-pointer transition-all ${
-                                  isSelectedStyle
-                                    ? "border-[#00b5cd] bg-[#00b5cd]/5 text-[#00b5cd]"
-                                    : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
-                                }`}
-                              >
-                                {st.name}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+                
 
                     {/* Finish Selection (triggers popover) */}
                     <div className="space-y-3">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Design References</span>
+                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Vật liệu & Phong cách</span>
                       <button
                         onClick={() => {
                           setShowFinishPopup(true);
@@ -7045,13 +8869,13 @@ Requirements:
                           <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500">
                             <Settings2 className="w-3.5 h-3.5" />
                           </div>
-                          <span>Finish</span>
+                          <span>Vật liệu / Màu sắc</span>
                         </div>
                         <div className="flex items-center gap-2">
                           {(() => {
                             const isColor = !!furniture.color;
                             const val = furniture.color || furniture.material || "";
-                            if (!val) return <span className="text-slate-400 font-medium">Default</span>;
+                            if (!val) return <span className="text-slate-400 font-medium">Mặc định</span>;
 
                             if (isColor) {
                               const matchedCol = ALL_COLOURS.find((c) => c.value === val);
@@ -7257,7 +9081,6 @@ Requirements:
                         <option value="Phòng làm việc">Phòng làm việc</option>
                         <option value="Phòng Tắm / WC">Phòng Tắm / WC</option>
                         <option value="Garage">Garage</option>
-                        <option value="Hành lang">Hành lang</option>
                         <option value="Sân trước">Sân trước</option>
                         <option value="Sân sau">Sân sau</option>
                         <option value="Ban công">Ban công</option>
@@ -7280,13 +9103,13 @@ Requirements:
                   {/* Design References */}
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Design References</span>
+                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Vật liệu & Phong cách</span>
                       <button
                         onClick={() => {
                           if (floorPlan) {
                             const updatedRooms = floorPlan.rooms.map((r) => {
                               if (r.id === selectedRoom.id) {
-                                return { ...r, style: undefined, finishes: undefined };
+                                  return { ...r, style: undefined, finishes: undefined };
                               }
                               return r;
                             });
@@ -7300,7 +9123,7 @@ Requirements:
                         }}
                         className="text-[10px] text-slate-400 hover:text-slate-600 font-bold transition-colors cursor-pointer"
                       >
-                        Reset all
+                        Làm mới
                       </button>
                     </div>
 
@@ -7313,7 +9136,7 @@ Requirements:
                     >
                       <div className="flex items-center gap-2.5">
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><circle cx="12" cy="12" r="10"/><path d="M12 2a7 7 0 1 0 10 10"/></svg>
-                        <span>Style</span>
+                        <span>Phong cách</span>
                       </div>
                       {selectedRoom.style ? (
                         <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1.5 pr-3 py-1 text-slate-700">
@@ -7340,7 +9163,7 @@ Requirements:
                     >
                       <div className="flex items-center gap-2.5">
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
-                        <span>Flooring</span>
+                        <span>Sàn</span>
                       </div>
                       {selectedRoom.finishes?.flooring ? (() => {
                         const matched = ROOM_FLOORINGS.find(f => f.value === selectedRoom.finishes?.flooring);
@@ -7370,7 +9193,7 @@ Requirements:
                     >
                       <div className="flex items-center gap-2.5">
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M12 6v6h6"/></svg>
-                        <span>Walls</span>
+                        <span>Tường</span>
                       </div>
                       {selectedRoom.finishes?.walls ? (() => {
                         const matched = ROOM_WALLS.find(w => w.value === selectedRoom.finishes?.walls);
@@ -7400,7 +9223,7 @@ Requirements:
                     >
                       <div className="flex items-center gap-2.5">
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><path d="M3 21h18M3 21v-4h4v-4h4v-4h4v-4h4V3"/></svg>
-                        <span>Ceiling</span>
+                        <span>Trần</span>
                       </div>
                       {selectedRoom.finishes?.ceiling ? (() => {
                         const matched = ROOM_CEILINGS.find(c => c.value === selectedRoom.finishes?.ceiling);
@@ -7430,7 +9253,7 @@ Requirements:
                     >
                       <div className="flex items-center gap-2.5">
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5 M13.5 12H3"/></svg>
-                        <span>Doors</span>
+                        <span>Cửa đi</span>
                       </div>
                       {selectedRoom.finishes?.doors ? (() => {
                         const matched = ROOM_DOORS.find(d => d.value === selectedRoom.finishes?.doors);
@@ -7438,7 +9261,7 @@ Requirements:
                           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1.5 pr-3 py-1 text-slate-700">
                             <div className="w-4 h-4 rounded-full border border-slate-100 overflow-hidden bg-slate-100">
                               {matched?.image ? (
-                                <img src={matched.image} className="w-full h-full object-cover" />
+                                  <img src={matched.image} className="w-full h-full object-cover" />
                               ) : (
                                 <div className="w-full h-full" style={{ backgroundColor: matched?.color || "#ffffff" }} />
                               )}
@@ -7460,7 +9283,7 @@ Requirements:
                     >
                       <div className="flex items-center gap-2.5">
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
-                        <span>Windows</span>
+                        <span>Cửa sổ</span>
                       </div>
                       {selectedRoom.finishes?.windows ? (() => {
                         const matched = ROOM_WINDOWS.find(w => w.value === selectedRoom.finishes?.windows);
@@ -7555,15 +9378,15 @@ Requirements:
                     {/* DESIGN REFERENCES */}
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Design References</span>
+                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block">Vật liệu & Phong cách</span>
                         <button
                           onClick={() => {
                             const defaultFinishes = {
-                              flooring: { type: "material" as const, value: "natural_oak", name: "Natural Oak" },
-                              walls: { type: "color" as const, value: "#ffffff", name: "White" },
-                              ceiling: { type: "color" as const, value: "#ffffff", name: "White" },
-                              doors: { type: "material" as const, value: "natural_oak", name: "Natural Oak" },
-                              windows: { type: "color" as const, value: "#1c1c1e", name: "Dark" },
+                              flooring: { type: "material" as const, value: "", name: "" },
+                              walls: { type: "color" as const, value: "", name: "" },
+                              ceiling: { type: "color" as const, value: "", name: "" },
+                              doors: { type: "material" as const, value: "", name: "" },
+                              windows: { type: "color" as const, value: "", name: "" },
                             };
                             setFinishes(defaultFinishes);
                             setSelectedStyle("");
@@ -7591,7 +9414,7 @@ Requirements:
                           }}
                           className="text-[10px] text-[#00b5cd] hover:underline font-semibold cursor-pointer"
                         >
-                          Reset all
+                          Làm mới
                         </button>
                       </div>
 
@@ -7602,7 +9425,7 @@ Requirements:
                       >
                         <div className="flex items-center gap-2.5">
                           <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><circle cx="12" cy="12" r="10"/><path d="M12 2a7 7 0 1 0 10 10"/></svg>
-                          <span>Style</span>
+                          <span>Phong cách</span>
                         </div>
                         {selectedStyle ? (
                           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-1.5 pr-3 py-1 text-slate-700">
@@ -7627,7 +9450,7 @@ Requirements:
                       >
                         <div className="flex items-center gap-2.5">
                           <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
-                          <span>Flooring</span>
+                          <span>Sàn</span>
                         </div>
                         {finishes.flooring.value ? (() => {
                           const matched = ROOM_FLOORINGS.find(f => f.value === finishes.flooring.value);
@@ -7655,7 +9478,7 @@ Requirements:
                       >
                         <div className="flex items-center gap-2.5">
                           <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M12 6v6h6"/></svg>
-                          <span>Walls</span>
+                          <span>Tường</span>
                         </div>
                         {finishes.walls.value ? (() => {
                           const matched = ROOM_WALLS.find(w => w.value === finishes.walls.value);
@@ -7683,7 +9506,7 @@ Requirements:
                       >
                         <div className="flex items-center gap-2.5">
                           <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><path d="M3 21h18M3 21v-4h4v-4h4v-4h4v-4h4V3"/></svg>
-                          <span>Ceiling</span>
+                          <span>Trần</span>
                         </div>
                         {finishes.ceiling.value ? (() => {
                           const matched = ROOM_CEILINGS.find(c => c.value === finishes.ceiling.value);
@@ -7711,7 +9534,7 @@ Requirements:
                       >
                         <div className="flex items-center gap-2.5">
                           <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5 M13.5 12H3"/></svg>
-                          <span>Doors</span>
+                          <span>Cửa đi</span>
                         </div>
                         {finishes.doors.value ? (() => {
                           const matched = ROOM_DOORS.find(d => d.value === finishes.doors.value);
@@ -7739,7 +9562,7 @@ Requirements:
                       >
                         <div className="flex items-center gap-2.5">
                           <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.2" fill="none" className="text-slate-500"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
-                          <span>Windows</span>
+                          <span>Cửa sổ</span>
                         </div>
                         {finishes.windows.value ? (() => {
                           const matched = ROOM_WINDOWS.find(w => w.value === finishes.windows.value);
@@ -8033,6 +9856,8 @@ Requirements:
         onClose={() => setShowRoomsModal(false)}
         floorsCount={gatherInfo.floors || 1}
         initialSelection={gatherInfo.roomSelection}
+        landWidth={gatherInfo.landWidth}
+        landLength={gatherInfo.landLength}
         onConfirm={(roomsString, roomSelection) =>
           handleRoomsSelected(roomsString, roomSelection)
         }
@@ -8066,7 +9891,7 @@ Requirements:
                 <p className="text-xs text-slate-500">Bạn vừa vẽ phòng với <strong>{drawingPoints.length} điểm</strong>. Chọn loại phòng hoặc nhập tên tùy ý.</p>
                 {/* Quick room name buttons */}
                 <div className="flex flex-wrap gap-1.5">
-                  {["Phòng khách", "Phòng ngủ", "Phòng bếp", "Phòng ăn", "WC", "Toilet", "Hành lang", "Gara"].map(name => (
+                  {["Phòng khách", "Phòng ngủ", "Phòng bếp", "Phòng ăn", "WC", "Toilet", "Gara"].map(name => (
                     <button
                       key={name}
                       onClick={() => setDrawWallRoomName(name)}
@@ -8414,38 +10239,48 @@ Requirements:
                   );
                 })() : (
                   <div className="space-y-4">
-                    {/* Color picker canvas gradient demo */}
+                    {/* Color picker canvas gradient */}
                     <div
                       className="w-full h-32 rounded-xl relative overflow-hidden cursor-crosshair border border-[#2d2d30]"
                       style={{
-                        background: "linear-gradient(to bottom, transparent, black), linear-gradient(to right, white, red)"
+                        background: `linear-gradient(to bottom, transparent, #000), linear-gradient(to right, #fff, transparent)`,
+                        backgroundColor: hsvToHex(pickerColor.h, 1, 1),
+                        touchAction: "none"
                       }}
-                      onClick={() => {
-                        setFinishes(prev => ({
-                          ...prev,
-                          [showFinishModal]: { type: "color", value: "#ff0000", name: "Đỏ" }
-                        }));
-                      }}
+                      onPointerDown={onSquarePointerDown}
+                      onPointerMove={onSquarePointerMove}
+                      onPointerUp={onSquarePointerUp}
                     >
                       <div
-                        className="absolute w-3 h-3 rounded-full border-2 border-white shadow-md cursor-pointer"
-                        style={{ top: "10%", left: "90%" }}
+                        className="absolute w-3.5 h-3.5 rounded-full border-2 border-white shadow-[0_0_4px_rgba(0,0,0,0.5)] pointer-events-none"
+                        style={{
+                          top: `${(1 - pickerColor.v) * 100}%`,
+                          left: `${pickerColor.s * 100}%`,
+                          transform: "translate(-50%, -50%)"
+                        }}
                       />
                     </div>
 
                     {/* Hue slider bar */}
                     <div
-                      className="w-full h-3.5 rounded-full cursor-pointer border border-[#2d2d30]"
+                      className="w-full h-3.5 rounded-full cursor-pointer border border-[#2d2d30] relative"
                       style={{
-                        background: "linear-gradient(to right, red, yellow, lime, cyan, blue, magenta, red)"
+                        background: "linear-gradient(to right, red, yellow, lime, cyan, blue, magenta, red)",
+                        touchAction: "none"
                       }}
-                      onClick={() => {
-                        setFinishes(prev => ({
-                          ...prev,
-                          [showFinishModal]: { type: "color", value: "#00b5cd", name: "Xanh Cyan" }
-                        }));
-                      }}
-                    />
+                      onPointerDown={onHuePointerDown}
+                      onPointerMove={onHuePointerMove}
+                      onPointerUp={onHuePointerUp}
+                    >
+                      <div
+                        className="absolute w-4 h-4 rounded-full bg-white border border-[#2d2d30] shadow-[0_0_3px_rgba(0,0,0,0.4)] pointer-events-none"
+                        style={{
+                          left: `${(pickerColor.h / 360) * 100}%`,
+                          top: "50%",
+                          transform: "translate(-50%, -50%)"
+                        }}
+                      />
+                    </div>
 
                     {/* Hex input & color info */}
                     <div className="flex items-center gap-3">
@@ -8460,6 +10295,10 @@ Requirements:
                               ...prev,
                               [showFinishModal]: { type: "color", value: `#${val}`, name: `#${val.toUpperCase()}` }
                             }));
+                            const cleanHex = val.trim();
+                            if (cleanHex.length === 6 || cleanHex.length === 3) {
+                              setPickerColor(hexToHsv(`#${cleanHex}`));
+                            }
                           }}
                           onBlur={(e) => {
                             const val = e.target.value.trim();
