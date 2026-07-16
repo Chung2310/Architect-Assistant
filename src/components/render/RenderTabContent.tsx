@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "motion/react";
 import { Icon } from "../Icon";
 import { toast } from "sonner";
@@ -346,27 +346,46 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
 
   const { user, socket } = useAuth();
 
+  const fetchJobs = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await apiClient.get<ApiResponse<RenderJob[]>>("/api/v1/render-jobs?limit=50");
+      if (res.success && Array.isArray(res.data)) {
+        setRenderJobs(res.data);
+      }
+    } catch (e) {
+      console.error("Error fetching render jobs:", e);
+    }
+  }, [user]);
+
   useEffect(() => {
     if (!user) {
       setTimeout(() => setRenderJobs([]), 0);
       return;
     }
 
-    const fetchJobs = async () => {
-      try {
-        const res = await apiClient.get<ApiResponse<RenderJob[]>>("/api/v1/render-jobs?limit=50");
-        if (res.success && Array.isArray(res.data)) {
-          setRenderJobs(res.data);
-        }
-      } catch (e) {
-        console.error("Error fetching render jobs:", e);
+    fetchJobs();
+
+    // Refetch when the tab becomes active/visible again or window gains focus
+    const handleRefetch = () => {
+      if (document.visibilityState === "visible") {
+        fetchJobs();
       }
     };
-    fetchJobs();
-  }, [user]);
+
+    window.addEventListener("focus", fetchJobs);
+    document.addEventListener("visibilitychange", handleRefetch);
+
+    return () => {
+      window.removeEventListener("focus", fetchJobs);
+      document.removeEventListener("visibilitychange", handleRefetch);
+    };
+  }, [user, fetchJobs]);
 
   useEffect(() => {
     if (!socket) return;
+
+    socket.on("connect", fetchJobs);
 
     const handleJobUpdate = (updatedJob: RenderJob) => {
       setRenderJobs((prevJobs) => {
@@ -381,9 +400,10 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
 
     socket.on("renderJobUpdated", handleJobUpdate);
     return () => {
+      socket.off("connect", fetchJobs);
       socket.off("renderJobUpdated", handleJobUpdate);
     };
-  }, [socket]);
+  }, [socket, fetchJobs]);
 
   const handleGeneratePrompt = async () => {
     setIsGeneratingPrompt(true);

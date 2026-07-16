@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Icon } from "../Icon";
 import { toast } from "sonner";
 import Markdown from "react-markdown";
@@ -107,33 +107,52 @@ export const SyncTabContent: React.FC = () => {
 
   const { user, socket } = useAuth();
 
+  const fetchJobs = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await apiClient.get<ApiResponse<RenderJob[]>>(`/api/v1/render-jobs?type=${encodeURIComponent(activeSubTab)}&limit=50`);
+      if (res.success && Array.isArray(res.data)) {
+        const jobs = res.data;
+        jobs.sort((a: RenderJob, b: RenderJob) => {
+          const timeA = new Date(typeof a.createdAt === "string" ? a.createdAt : 0).getTime();
+          const timeB = new Date(typeof b.createdAt === "string" ? b.createdAt : 0).getTime();
+          return timeB - timeA;
+        });
+        setRenderJobs(jobs);
+      }
+    } catch (e) {
+      console.error("Error fetching render jobs:", e);
+    }
+  }, [user, activeSubTab]);
+
   useEffect(() => {
     if (!user) {
       setTimeout(() => setRenderJobs([]), 0);
       return;
     }
 
-    const fetchJobs = async () => {
-      try {
-        const res = await apiClient.get<ApiResponse<RenderJob[]>>(`/api/v1/render-jobs?type=${encodeURIComponent(activeSubTab)}&limit=50`);
-        if (res.success && Array.isArray(res.data)) {
-          const jobs = res.data;
-          jobs.sort((a: RenderJob, b: RenderJob) => {
-            const timeA = new Date(typeof a.createdAt === "string" ? a.createdAt : 0).getTime();
-            const timeB = new Date(typeof b.createdAt === "string" ? b.createdAt : 0).getTime();
-            return timeB - timeA;
-          });
-          setRenderJobs(jobs);
-        }
-      } catch (e) {
-        console.error("Error fetching render jobs:", e);
+    fetchJobs();
+
+    // Refetch when the tab becomes active/visible again or window gains focus
+    const handleRefetch = () => {
+      if (document.visibilityState === "visible") {
+        fetchJobs();
       }
     };
-    fetchJobs();
-  }, [user, activeSubTab]);
+
+    window.addEventListener("focus", fetchJobs);
+    document.addEventListener("visibilitychange", handleRefetch);
+
+    return () => {
+      window.removeEventListener("focus", fetchJobs);
+      document.removeEventListener("visibilitychange", handleRefetch);
+    };
+  }, [user, fetchJobs]);
 
   useEffect(() => {
     if (!socket) return;
+
+    socket.on("connect", fetchJobs);
     
     const handleJobUpdate = (updatedJob: RenderJob) => {
       if (updatedJob.type !== activeSubTab) return;
@@ -152,9 +171,10 @@ export const SyncTabContent: React.FC = () => {
 
     socket.on("renderJobUpdated", handleJobUpdate);
     return () => {
+      socket.off("connect", fetchJobs);
       socket.off("renderJobUpdated", handleJobUpdate);
     };
-  }, [socket, activeSubTab]);
+  }, [socket, activeSubTab, fetchJobs]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
