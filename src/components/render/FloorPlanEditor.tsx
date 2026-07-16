@@ -2258,7 +2258,7 @@ export const FloorPlanEditor: React.FC = () => {
   const stageRef = useRef<any>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
-  const [selectedFurnitureRoomId, setSelectedFurnitureRoomId] = useState<string | null>(null);
+  const [_selectedFurnitureRoomId, setSelectedFurnitureRoomId] = useState<string | null>(null);
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
   const [draggedRoomId, setDraggedRoomId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number; w: number; h: number }>({ x: 0, y: 0, w: 0, h: 0 });
@@ -2269,7 +2269,7 @@ export const FloorPlanEditor: React.FC = () => {
   const [renderStatusMessage, setRenderStatusMessage] = useState<string>("");
   const [showShapeModal, setShowShapeModal] = useState(false);
   const [showRoomsModal, setShowRoomsModal] = useState(false);
-  const [autoRenderPending, setAutoRenderPending] = useState(false);
+  const [_autoRenderPending, setAutoRenderPending] = useState(false);
   const [wallThickness, setWallThickness] = useState<number>(100); // 100mm (4 inches)
   const [showStyleModal, setShowStyleModal] = useState(false);
   const [showFinishModal, setShowFinishModal] = useState<"flooring" | "walls" | "ceiling" | "doors" | "windows" | null>(null);
@@ -2299,7 +2299,6 @@ export const FloorPlanEditor: React.FC = () => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setPickerColor(hexToHsv(val));
       } else {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setPickerColor({ h: 0, s: 1, v: 1 });
       }
     }
@@ -2384,7 +2383,6 @@ export const FloorPlanEditor: React.FC = () => {
     prompt: string;
   }>>({});
   const [sidebarTab, setSidebarTab] = useState<"scene" | "renders">("scene");
-  const [isGeneratingPromptIdea, setIsGeneratingPromptIdea] = useState(false);
   const [renderMode, setRenderMode] = useState<"Floorplan to 3D" | "Floorplan to 3D Floorplan">("Floorplan to 3D");
   const capture3DRef = useRef<(() => string) | null>(null);
 

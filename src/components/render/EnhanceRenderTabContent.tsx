@@ -259,6 +259,7 @@ export const EnhanceRenderTabContent: React.FC = () => {
       return;
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchJobs();
 
     // Refetch when the tab becomes active/visible again or window gains focus

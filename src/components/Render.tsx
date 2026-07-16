@@ -37,24 +37,6 @@ const TABS = [
   "Tiện ích khác",
 ];
 
-const MODELS = [
-  {
-    id: "openrouter-nano-banana-2",
-    name: "Igen gemini Image Pro Preview",
-    isPro: true,
-  },
-  {
-    id: "nano-banana-2",
-    name: "Igen gemini Image Flash",
-    isPro: false,
-  },
-  {
-    id: "nano-banana-pro",
-    name: "Igen gemini Image Pro",
-    isPro: true,
-  },
-];
-
 const GEMINI_MODELS = [
   {
     id: "gemini-3.1-flash-image",
