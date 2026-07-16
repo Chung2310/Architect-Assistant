@@ -563,6 +563,13 @@ export const geminiService = {
                       url: `data:${mime};base64,${part.inlineData.data}`
                     }
                   });
+                } else if (part.fileData && part.fileData.fileUri) {
+                  contentItems.push({
+                    type: "image_url",
+                    image_url: {
+                      url: part.fileData.fileUri
+                    }
+                  });
                 }
               }
             } else if (typeof content === "string") {

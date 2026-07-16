@@ -2064,7 +2064,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     }
   }, [activeCamera, floorPlan, renderMode]);
 
-  const handleZoomIn = () => {
+  const _handleZoomIn = () => {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
@@ -2074,7 +2074,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     controls.update();
   };
 
-  const handleZoomOut = () => {
+  const _handleZoomOut = () => {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
@@ -2084,7 +2084,7 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
     controls.update();
   };
 
-  const handleResetCamera = () => {
+  const _handleResetCamera = () => {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
@@ -2140,34 +2140,6 @@ export const FloorPlan3DViewer: React.FC<FloorPlan3DViewerProps> = ({
       style={{ minHeight: "350px", height: "100%" }}
     >
       <div ref={mountRef} className="w-full h-full" />
-
-      {/* Camera Control Buttons */}
-      <div className="absolute right-3 bottom-3 flex flex-col gap-1.5 z-10">
-        <button
-          onClick={handleZoomIn}
-          title="Zoom In"
-          className="w-9 h-9 rounded-full bg-white/90 backdrop-blur-sm border border-slate-200 shadow-lg flex items-center justify-center text-slate-700 hover:bg-white hover:shadow-xl transition-all active:scale-95 text-lg font-bold leading-none"
-        >
-          +
-        </button>
-        <button
-          onClick={handleZoomOut}
-          title="Zoom Out"
-          className="w-9 h-9 rounded-full bg-white/90 backdrop-blur-sm border border-slate-200 shadow-lg flex items-center justify-center text-slate-700 hover:bg-white hover:shadow-xl transition-all active:scale-95 text-lg font-bold leading-none"
-        >
-          −
-        </button>
-        <button
-          onClick={handleResetCamera}
-          title="Reset Camera"
-          className="w-9 h-9 rounded-full bg-white/90 backdrop-blur-sm border border-slate-200 shadow-lg flex items-center justify-center text-slate-600 hover:bg-white hover:shadow-xl transition-all active:scale-95"
-        >
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <circle cx="12" cy="12" r="3" />
-          </svg>
-        </button>
-      </div>
     </div>
   );
 };
