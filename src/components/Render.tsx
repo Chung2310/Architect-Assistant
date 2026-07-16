@@ -37,24 +37,6 @@ const TABS = [
   "Tiện ích khác",
 ];
 
-const MODELS = [
-  {
-    id: "openrouter-nano-banana-2",
-    name: "Igen gemini Image Pro Preview",
-    isPro: true,
-  },
-  {
-    id: "nano-banana-2",
-    name: "Igen gemini Image Flash",
-    isPro: false,
-  },
-  {
-    id: "nano-banana-pro",
-    name: "Igen gemini Image Pro",
-    isPro: true,
-  },
-];
-
 const GEMINI_MODELS = [
   {
     id: "gemini-3.1-flash-image",
@@ -4226,7 +4208,7 @@ const LayoutTabContent: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
+  const [selectedModel, setSelectedModel] = useState("nano-banana-2");
   const [presentationStyle, setPresentationStyle] = useState(
     "Minimalist (Tối giản)",
   );
