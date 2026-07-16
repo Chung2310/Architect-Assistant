@@ -101,7 +101,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
   const [isDraggingRef, setIsDraggingRef] = useState(false);
 
   const [selectedModel, setSelectedModel] = useState(
-    "openrouter-nano-banana-2",
+    "nano-banana-2",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
 
@@ -156,10 +156,10 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
       // Set defaults based on activeSubTab
       if (activeSubTab === "Render Ngoại Thất") {
         setStyle("Ảnh chụp thực tế công trình");
-        setSelectedModel("openrouter-nano-banana-2");
+        setSelectedModel("nano-banana-2");
       } else if (activeSubTab === "Render Nội Thất") {
         setStyle("Ảnh chụp thực tế nội thất");
-        setSelectedModel("openrouter-nano-banana-2");
+        setSelectedModel("nano-banana-2");
       } else if (activeSubTab === "Render VR 360") {
         setStyle("Ảnh Panorama 360 độ");
         setAspectRatio("21:9 (Panorama)");
@@ -167,7 +167,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
       } else if (activeSubTab === "Floorplan to 3D") {
         setStyle("Phối cảnh thực tế");
         setCameraAngleStyle("Ảnh cầm tay ngang tầm mắt");
-        setSelectedModel("openrouter-nano-banana-2");
+        setSelectedModel("nano-banana-2");
       } else if (activeSubTab === "Floorplan to 3D Floorplan") {
         setStyle("Ảnh phối cảnh 3D mặt bằng");
         setInteriorStyle("");
@@ -177,7 +177,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
         setSelectedModel("openrouter-nano-banana-2");
       } else if (activeSubTab === "Masterplan to 3D") {
         setStyle("Ảnh phối cảnh 3D tổng thể");
-        setSelectedModel("openrouter-nano-banana-2");
+        setSelectedModel("nano-banana-2");
       }
     }, 0);
   }, [activeSubTab]);

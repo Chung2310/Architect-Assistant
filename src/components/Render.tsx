@@ -4226,7 +4226,7 @@ const LayoutTabContent: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
+  const [selectedModel, setSelectedModel] = useState("nano-banana-2");
   const [presentationStyle, setPresentationStyle] = useState(
     "Minimalist (Tối giản)",
   );
