@@ -62,6 +62,16 @@ The prose must cover:
 
 The final prose must contain only the selected interpretation. It must not expose chain-of-thought, alternative guesses, confidence scores, JSON field names, or internal verification notes.
 
+## Single Unified Model Constraint
+
+The final image must contain exactly one unified 3D floorplan model and no other architectural model or plan fragment anywhere on the canvas. This is a hard output constraint for every `Floorplan to 3D Floorplan` request, regardless of source-sheet whitespace, title blocks, annotations, or visual presentation.
+
+The source floorplan's rooms, stairs, corridors, walls, and wings must remain joined in their original architectural relationship inside that single model. The renderer must not detach a wing, room group, stair core, or any other portion and place it beside the primary model.
+
+The single model must be centered and framed as the only subject. The output must not contain a second floorplan, duplicate model, detached fragment, floating plan component, side-by-side layout, split screen, inset, comparison view, before-and-after view, presentation board, exploded arrangement, alternate design, or auxiliary diagram.
+
+Sheet borders, title blocks, revision tables, signatures, company logos, dimension strings, grid bubbles, section markers, annotations, and surrounding white space are technical-document graphics. They must be ignored during architectural reconstruction and must never create a second subject or panel in the rendered image.
+
 ## Data Flow
 
 1. The server sends the source floorplan plus user-selected style inputs to the existing prompt-analysis model.
@@ -69,8 +79,9 @@ The final prose must contain only the selected interpretation. It must not expos
 3. The structured response adds `furniture_manifest` and `furniture_count_validation` as renderer-facing sources of truth.
 4. The schema requires the final optimized prompt to be English analytical prose.
 5. `composeRenderPrompt` passes that grounded final prompt to the renderer and appends both immutable manifests and both count validations as defensive sources of truth.
-6. The render-job controller adds a furniture preflight requiring output counts and placement to match the manifest before image generation.
-7. Existing photoreal PBR and negative-prompt directives remain active.
+6. `composeRenderPrompt` appends a hard single-model constraint requiring exactly one centered, unified 3D floorplan block.
+7. The render-job controller adds room, furniture, and single-model preflights before image generation.
+8. Existing photoreal PBR and negative-prompt directives remain active.
 
 ## Guardrails
 
@@ -80,6 +91,8 @@ The final prose must contain only the selected interpretation. It must not expos
 - A room or furniture item may only appear in the final prompt if supported by a visible label, enclosing geometry, CAD symbol, or recognizable visual footprint.
 - Every furniture symbol is represented by exactly one manifest entry; similar repeated items are never collapsed into a set.
 - Fixed fixtures and built-ins are mandatory inventory items, not optional decoration.
+- The entire reconstruction is rendered as exactly one unified model and one subject on the canvas.
+- No architectural region may be duplicated, detached, or presented beside the primary model.
 - The validation layer must repair discrepancies before emitting the final prompt.
 - Styling may change materials, colors, lighting, and presentation only; it may not alter spatial or furniture content.
 
@@ -100,4 +113,6 @@ Tests will verify that the `Floorplan to 3D Floorplan` template:
 - locks room geometry, count, function, adjacency, and furniture placement;
 - keeps both immutable manifests, both count validations, and photoreal PBR directives in the composed render prompt;
 - adds furniture preflight constraints to the renderer request;
+- requires exactly one unified model in the analysis contract, composed prompt, renderer preflight, and negative prompt;
+- rejects second plans, duplicates, detached fragments, side-by-side layouts, split screens, insets, comparisons, presentation boards, and exploded arrangements;
 - does not change prompt behavior for other tabs.
