@@ -7,6 +7,7 @@ import { apiClient, ApiResponse } from "../../services/apiClient";
 import { ImageLibraryModal } from "./ImageLibraryModal";
 import { getAIClient, safeJsonParse, checkUserCredits, generateContentWithRetry, getImageBase64, handleDownload, cacheImage, uploadMedia } from "../../lib/renderUtils";
 import { composeRenderPrompt } from "./floorplanPrompt";
+import { getInitialRenderResultId, upsertRenderJob } from "./renderResultState";
 import { convertPdfToImage } from "../../lib/pdfUtils";
 
 interface RenderJob {
@@ -370,14 +371,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
     if (!socket) return;
 
     const handleJobUpdate = (updatedJob: RenderJob) => {
-      setRenderJobs((prevJobs) => {
-        const exists = prevJobs.some(j => (j._id || j.id) === (updatedJob._id || updatedJob.id));
-        if (exists) {
-          return prevJobs.map(j => (j._id || j.id) === (updatedJob._id || updatedJob.id) ? updatedJob : j);
-        } else {
-          return [updatedJob, ...prevJobs];
-        }
-      });
+      setRenderJobs((prevJobs) => upsertRenderJob(prevJobs, updatedJob));
     };
 
     socket.on("renderJobUpdated", handleJobUpdate);
@@ -686,6 +680,9 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
       if (!jobRes.success || !jobRes.data) {
         throw new Error("Không thể khởi tạo render job trên server.");
       }
+
+      setRenderJobs((prevJobs) => upsertRenderJob(prevJobs, jobRes.data));
+      setSelectedResultId(getInitialRenderResultId(jobRes.data));
 
       if (jobRes.data && jobRes.data.status === "completed") {
         toast.success("Kết xuất thành công bằng Gemini!");
