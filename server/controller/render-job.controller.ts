@@ -73,7 +73,7 @@ const updateJobSchema = Joi.object({
   }),
 });
 
-function appendFloorplanCleanupDirective(type: string, prompt: string) {
+export function appendFloorplanCleanupDirective(type: string, prompt: string) {
   const normalizedType = String(type || "").toLowerCase().trim();
   if (
     normalizedType !== "floorplan to 3d" &&
@@ -83,7 +83,7 @@ function appendFloorplanCleanupDirective(type: string, prompt: string) {
   }
 
   const cleanupDirective =
-    " IMPORTANT: chi giu bo cuc khong gian, tuong, cua, cua so, cau thang va vi tri noi that theo ban ve. Tuyet doi khong duoc them, bot, doi cho, tach, noi, mo rong, thu hep, xoay hoac tai cau truc bat ky thanh phan kien truc nao so voi ban ve goc. Xoa hoan toan moi chu, nhan phong, so kich thuoc, hatch, net dut, ky hieu CAD, mui ten, khung ten, watermark va moi dau vet do hoa 2D cua ban ve goc. Anh cuoi phai la phoi canh 3D sach, khong con annotation hay text ky thuat.";
+    " IMPORTANT: chi giu bo cuc khong gian, tuong, cua, cua so, cau thang va vi tri noi that theo ban ve. INPUT ANALYSIS ORDER (MANDATORY): First read and OCR every room-name label in the source floorplan. Match each label to its exact enclosed wall boundary, written area, position and adjacency. Room labels override furniture-based guesses. Build and lock the immutable room manifest before rendering. ROOM PREFLIGHT (MANDATORY): compare the exact room count by function against the manifest; verify every room remains inside the same enclosing walls and has the same neighbors. Never split, never merge, never relabel, never relocate, never add and never delete a room. If any count, function, boundary or adjacency differs, correct the internal plan before generating the image. VISUAL QUALITY (MANDATORY): high-end photorealistic architectural visualization using true-scale PBR materials with physically correct roughness, reflection, normal detail and texture scale; physically plausible natural lighting, neutral exposure and white balance, soft contact shadows, restrained ambient occlusion, realistic indirect bounce light and subtle surface imperfections. Only after this semantic validation is complete, remove all visible text, room-label glyphs, dimensions and CAD annotations from the final image. Tuyet doi khong duoc them, bot, doi cho, tach, noi, mo rong, thu hep, xoay hoac tai cau truc bat ky thanh phan kien truc nao so voi ban ve goc. Anh cuoi phai la phoi canh 3D sach, khong con annotation hay text ky thuat.";
 
   if (prompt.includes(cleanupDirective.trim())) {
     return prompt;
@@ -92,7 +92,7 @@ function appendFloorplanCleanupDirective(type: string, prompt: string) {
   return `${prompt}${cleanupDirective}`;
 }
 
-function appendFloorplanNegativePrompt(type: string, prompt: string) {
+export function appendFloorplanNegativePrompt(type: string, prompt: string) {
   const normalizedType = String(type || "").toLowerCase().trim();
   if (
     normalizedType !== "floorplan to 3d" &&
@@ -102,7 +102,7 @@ function appendFloorplanNegativePrompt(type: string, prompt: string) {
   }
 
   const negativePrompt =
-    " Negative prompt: no text, no room labels, no dimensions, no dimension lines, no annotations, no arrows, no hatch patterns, no CAD lines, no dashed lines, no blueprint look, no technical drawing overlay, no title block, no watermark, no 2D graphic remnants, no missing walls, no extra walls, no shifted doors, no shifted windows, no altered room boundaries, no changed circulation, no invented architectural elements, no deleted architectural elements.";
+    " Negative prompt: do not ignore room labels during input analysis, extra room, missing room, split room, merged rooms, changed room function, relabeled room, relocated room, wrong room count, furniture overriding room label, cartoon, illustration, anime, dollhouse, toy-like, miniature model, plastic materials, game asset, low-poly, stylized CGI, pastel toy palette, exaggerated textures, fake lighting, flat shading, uniform materials, oversaturated colors, no room-label glyphs in the final image, no dimensions, no dimension lines, no annotations, no arrows, no hatch patterns, no CAD lines, no dashed lines, no blueprint look, no technical drawing overlay, no title block, no watermark, no 2D graphic remnants, no missing walls, no extra walls, no shifted doors, no shifted windows, no altered room boundaries, no changed circulation, no invented architectural elements, no deleted architectural elements.";
 
   if (prompt.includes(negativePrompt.trim())) {
     return prompt;
