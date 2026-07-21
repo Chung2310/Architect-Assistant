@@ -6,6 +6,8 @@ import { useAuth } from "../../context/useAuth";
 import { apiClient, ApiResponse } from "../../services/apiClient";
 import { ImageLibraryModal } from "./ImageLibraryModal";
 import { getAIClient, safeJsonParse, checkUserCredits, generateContentWithRetry, getImageBase64, handleDownload, cacheImage, uploadMedia } from "../../lib/renderUtils";
+import { composeRenderPrompt } from "./floorplanPrompt";
+import { getInitialRenderResultId, upsertRenderJob } from "./renderResultState";
 import { convertPdfToImage } from "../../lib/pdfUtils";
 
 interface RenderJob {
@@ -389,14 +391,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
     socket.on("connect", fetchJobs);
 
     const handleJobUpdate = (updatedJob: RenderJob) => {
-      setRenderJobs((prevJobs) => {
-        const exists = prevJobs.some(j => (j._id || j.id) === (updatedJob._id || updatedJob.id));
-        if (exists) {
-          return prevJobs.map(j => (j._id || j.id) === (updatedJob._id || updatedJob.id) ? updatedJob : j);
-        } else {
-          return [updatedJob, ...prevJobs];
-        }
-      });
+      setRenderJobs((prevJobs) => upsertRenderJob(prevJobs, updatedJob));
     };
 
     socket.on("renderJobUpdated", handleJobUpdate);
@@ -549,7 +544,7 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
 - Quy tắc làm sạch bản vẽ: phải xóa hoàn toàn chữ, nhãn phòng, số đo, hatch, nét CAD, mũi tên, khung tên và mọi dấu vết 2D không thuộc mô hình 3D cuối.
 - Bố cục: giữ nguyên tuyệt đối vị trí tường, cửa, phòng và đồ đạc theo bản vẽ; không thêm cửa, không dịch chuyển hay mở rộng không gian.
 - Nếu tủ áo nằm sau bức tường, tủ phải ở trong phòng tương ứng và KHÔNG được đặt xuyên qua tường.
-- Yêu cầu màu sắc: mô hình 3D axonometric phải được tô màu sinh động và đầy đủ vật liệu (ví dụ: sàn gỗ ấm hoặc gạch men màu, tường sơn màu ấm/sáng/kem, đồ nội thất có chất liệu và màu sắc rõ ràng). Tuyệt đối không để mô hình đất sét trắng (white clay model) hay đơn sắc trắng toàn bộ.
+- Yêu cầu hình ảnh: photorealistic architectural visualization cao cấp, true-scale PBR materials, roughness/reflection/normal map đúng vật lý, texture không lặp và đúng tỷ lệ, ánh sáng tự nhiên theo vật lý, white balance trung tính, contact shadow mềm và indirect bounce light thực. Bề mặt có sai khác nhỏ tự nhiên, không bóng nhựa, không pastel đồ chơi. Cấm cartoon, illustration, anime, dollhouse, toy-like, miniature model, game asset, low-poly và stylized CGI.
 `
                 : `
 - Style ảnh: ${style || "Không có"}
@@ -609,28 +604,12 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
             ? (result as Record<string, unknown>)
             : null;
 
-        const finalPrompt =
-          (typeof resultObject?.prompt_tieng_viet_toi_uu === "string"
-            ? resultObject.prompt_tieng_viet_toi_uu
-            : "") ||
-          (typeof resultObject?.optimized_english_prompt === "string"
-            ? resultObject.optimized_english_prompt
-            : "");
+        const composedPrompt = resultObject
+          ? composeRenderPrompt(activeSubTab, resultObject)
+          : "";
 
-        const negativePrompt =
-          (typeof resultObject?.prompt_phu_dinh === "string"
-            ? resultObject.prompt_phu_dinh
-            : "") ||
-          (typeof resultObject?.negative_prompt === "string"
-            ? resultObject.negative_prompt
-            : "");
-
-        if (finalPrompt) {
-          setPrompt(
-            negativePrompt
-              ? `${finalPrompt}\n\nNegative prompt: ${negativePrompt}`
-              : finalPrompt,
-          );
+        if (composedPrompt) {
+          setPrompt(composedPrompt);
         } else if (rawText && rawText.trim() && rawText.trim() !== "{}") {
           setPrompt(rawText);
         } else {
@@ -722,6 +701,9 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
       if (!jobRes.success || !jobRes.data) {
         throw new Error("Không thể khởi tạo render job trên server.");
       }
+
+      setRenderJobs((prevJobs) => upsertRenderJob(prevJobs, jobRes.data));
+      setSelectedResultId(getInitialRenderResultId(jobRes.data));
 
       if (jobRes.data && jobRes.data.status === "completed") {
         toast.success("Kết xuất thành công bằng Gemini!");

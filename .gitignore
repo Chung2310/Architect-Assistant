@@ -13,6 +13,4 @@ firebase-applet-config.json
 .claude
 .cursor 
 dist/
-
-# Local Superpowers workflow specs and implementation plans
-/docs/superpowers/
+docs/superpowers/
