@@ -47,6 +47,21 @@ assert.match(
   schema.properties.optimized_english_prompt.description,
   /etc.*other furniture.*a dining set.*a furnished room/is,
 );
+assert.match(
+  systemInstruction,
+  /EXACTLY ONE UNIFIED 3D FLOORPLAN MODEL/i,
+);
+assert.match(systemInstruction, /centered.*only subject/is);
+assert.match(systemInstruction, /rooms.*stairs.*corridors.*remain joined/is);
+assert.match(systemInstruction, /title blocks.*revision tables.*white space/is);
+assert.match(
+  systemInstruction,
+  /second floorplan.*duplicate model.*detached fragment/is,
+);
+assert.match(
+  schema.properties.optimized_english_prompt.description,
+  /exactly one centered unified 3D floorplan model/i,
+);
 
 const other = resolvePromptTemplate("render_tab_prompt", {
   activeSubTab: "Floorplan to 3D",
@@ -54,4 +69,8 @@ const other = resolvePromptTemplate("render_tab_prompt", {
 assert.doesNotMatch(
   String(other.systemInstruction || ""),
   /LAYER 1.*LOCKED INVENTORY/is,
+);
+assert.doesNotMatch(
+  String(other.systemInstruction || ""),
+  /EXACTLY ONE UNIFIED 3D FLOORPLAN MODEL/i,
 );
