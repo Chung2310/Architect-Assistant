@@ -23,15 +23,18 @@ export function composeRenderPrompt(
   activeSubTab: string,
   resultObject: Record<string, unknown>,
 ): string {
-  const finalPrompt =
-    getString(resultObject.prompt_tieng_viet_toi_uu) ||
-    getString(resultObject.optimized_english_prompt);
+  const isGroundedFloorplan = activeSubTab === "Floorplan to 3D Floorplan";
+  const finalPrompt = isGroundedFloorplan
+    ? getString(resultObject.optimized_english_prompt) ||
+      getString(resultObject.prompt_tieng_viet_toi_uu)
+    : getString(resultObject.prompt_tieng_viet_toi_uu) ||
+      getString(resultObject.optimized_english_prompt);
   const negativePrompt =
     getString(resultObject.prompt_phu_dinh) ||
     getString(resultObject.negative_prompt);
   const sections = [finalPrompt];
 
-  if (activeSubTab === "Floorplan to 3D Floorplan") {
+  if (isGroundedFloorplan) {
     sections.push(photorealPbrDirective);
     const manifest = getStringList(resultObject.room_manifest);
     const roomCount = getString(resultObject.room_count_validation);

@@ -35,3 +35,20 @@ assert.match(prompt, /Negative prompt: sai công năng phòng/);
 
 const otherPrompt = composeRenderPrompt("Render Nội Thất", analysis);
 assert.doesNotMatch(otherPrompt, /IMMUTABLE ROOM MANIFEST/);
+
+const bilingualAnalysis = {
+  ...analysis,
+  prompt_tieng_viet_toi_uu: "Vietnamese legacy prompt.",
+  optimized_english_prompt:
+    "A straight top-down 3D floor plan preserving the exact source orientation. The living room remains on the left with its visible sofa in the original position. No room or furniture is added, removed, split, merged, relabeled, relocated, resized, replaced, or moved.",
+};
+
+const groundedPrompt = composeRenderPrompt(
+  "Floorplan to 3D Floorplan",
+  bilingualAnalysis,
+);
+assert.match(groundedPrompt, /A straight top-down 3D floor plan/);
+assert.doesNotMatch(groundedPrompt, /Vietnamese legacy prompt/);
+
+const legacyPrompt = composeRenderPrompt("Render Nội Thất", bilingualAnalysis);
+assert.match(legacyPrompt, /Vietnamese legacy prompt/);
