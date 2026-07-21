@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "motion/react";
 import { Icon } from "../Icon";
 import { toast } from "sonner";
@@ -103,7 +103,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
   const [isDraggingRef, setIsDraggingRef] = useState(false);
 
   const [selectedModel, setSelectedModel] = useState(
-    "openrouter-nano-banana-2",
+    "nano-banana-2",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
 
@@ -158,10 +158,10 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
       // Set defaults based on activeSubTab
       if (activeSubTab === "Render Ngoại Thất") {
         setStyle("Ảnh chụp thực tế công trình");
-        setSelectedModel("openrouter-nano-banana-2");
+        setSelectedModel("nano-banana-2");
       } else if (activeSubTab === "Render Nội Thất") {
         setStyle("Ảnh chụp thực tế nội thất");
-        setSelectedModel("openrouter-nano-banana-2");
+        setSelectedModel("nano-banana-2");
       } else if (activeSubTab === "Render VR 360") {
         setStyle("Ảnh Panorama 360 độ");
         setAspectRatio("21:9 (Panorama)");
@@ -169,7 +169,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
       } else if (activeSubTab === "Floorplan to 3D") {
         setStyle("Phối cảnh thực tế");
         setCameraAngleStyle("Ảnh cầm tay ngang tầm mắt");
-        setSelectedModel("openrouter-nano-banana-2");
+        setSelectedModel("nano-banana-2");
       } else if (activeSubTab === "Floorplan to 3D Floorplan") {
         setStyle("Ảnh phối cảnh 3D mặt bằng");
         setInteriorStyle("");
@@ -179,7 +179,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
         setSelectedModel("openrouter-nano-banana-2");
       } else if (activeSubTab === "Masterplan to 3D") {
         setStyle("Ảnh phối cảnh 3D tổng thể");
-        setSelectedModel("openrouter-nano-banana-2");
+        setSelectedModel("nano-banana-2");
       }
     }, 0);
   }, [activeSubTab]);
@@ -348,27 +348,47 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
 
   const { user, socket } = useAuth();
 
+  const fetchJobs = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await apiClient.get<ApiResponse<RenderJob[]>>("/api/v1/render-jobs?limit=50");
+      if (res.success && Array.isArray(res.data)) {
+        setRenderJobs(res.data);
+      }
+    } catch (e) {
+      console.error("Error fetching render jobs:", e);
+    }
+  }, [user]);
+
   useEffect(() => {
     if (!user) {
       setTimeout(() => setRenderJobs([]), 0);
       return;
     }
 
-    const fetchJobs = async () => {
-      try {
-        const res = await apiClient.get<ApiResponse<RenderJob[]>>("/api/v1/render-jobs?limit=50");
-        if (res.success && Array.isArray(res.data)) {
-          setRenderJobs(res.data);
-        }
-      } catch (e) {
-        console.error("Error fetching render jobs:", e);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchJobs();
+
+    // Refetch when the tab becomes active/visible again or window gains focus
+    const handleRefetch = () => {
+      if (document.visibilityState === "visible") {
+        fetchJobs();
       }
     };
-    fetchJobs();
-  }, [user]);
+
+    window.addEventListener("focus", fetchJobs);
+    document.addEventListener("visibilitychange", handleRefetch);
+
+    return () => {
+      window.removeEventListener("focus", fetchJobs);
+      document.removeEventListener("visibilitychange", handleRefetch);
+    };
+  }, [user, fetchJobs]);
 
   useEffect(() => {
     if (!socket) return;
+
+    socket.on("connect", fetchJobs);
 
     const handleJobUpdate = (updatedJob: RenderJob) => {
       setRenderJobs((prevJobs) => upsertRenderJob(prevJobs, updatedJob));
@@ -376,9 +396,10 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
 
     socket.on("renderJobUpdated", handleJobUpdate);
     return () => {
+      socket.off("connect", fetchJobs);
       socket.off("renderJobUpdated", handleJobUpdate);
     };
-  }, [socket]);
+  }, [socket, fetchJobs]);
 
   const handleGeneratePrompt = async () => {
     setIsGeneratingPrompt(true);
@@ -1248,7 +1269,15 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                       <select
                         className="w-full bg-surface-container-low/50 border border-outline-variant/20 focus:border-primary rounded-lg p-3 text-sm text-on-surface appearance-none outline-none cursor-pointer pr-10 text-ellipsis overflow-hidden whitespace-nowrap"
                         value={cameraAngleStyle}
-                        onChange={(e) => setCameraAngleStyle(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCameraAngleStyle(val);
+                          if (val === "Top-down View") {
+                            setSelectedModel("openrouter-nano-banana-2");
+                          } else if (val === "Phối cảnh Trục đo (Isometric)") {
+                            setSelectedModel("nano-banana-pro");
+                          }
+                        }}
                       >
                         <option>Top-down View</option>
                         <option>Phối cảnh Trục đo (Isometric)</option>

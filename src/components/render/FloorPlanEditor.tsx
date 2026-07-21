@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Stage, Layer, Rect, Text, Line, Group, Circle, Wedge } from "react-konva";
 import {
-  Download, Sparkles, ZoomIn, ZoomOut, RotateCw,
-  Send, CheckCircle2, Circle as LucideCircle,
+  Download, Sparkles, ZoomIn, ZoomOut, RotateCw, Eye, ExternalLink,
+  Send, CheckCircle2, Circle as LucideCircle, Paperclip,
   Maximize2, Plus, Minus, ChevronLeft, Trash2,
   X, Search, Check, ChevronDown, ArrowLeft, Settings2, ChevronRight,
   Bath, Bed, WashingMachine, Car, Dumbbell, Utensils, Sofa, Briefcase, Trees, Gamepad
@@ -1460,7 +1460,7 @@ export function isFurnitureCollidingWithDoor(
 export function resolveFurnitureDoorCollisions(
   rooms: Room[],
   openings: Opening[],
-  wallThickness: number = 100
+  _wallThickness: number = 100
 ): Room[] {
   // Keep all furniture intact as requested by the user. Do not delete any colliding furniture.
   return rooms;
@@ -1538,7 +1538,7 @@ export function adjustRoomsToFitShape(rooms: Room[], shape: string, landW: numbe
         if (ry + rh > c.y2) {
           const y = c.y2;
           const h = (ry + rh) - c.y2;
-          if (h >= 0.5) candidates.push({ x: rx, y: ry, w: rw, h, area: rw * h });
+          if (h >= 0.5) candidates.push({ x: rx, y, w: rw, h, area: rw * h });
         }
 
         if (candidates.length > 0) {
@@ -2258,7 +2258,7 @@ export const FloorPlanEditor: React.FC = () => {
   const stageRef = useRef<any>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
-  const [selectedFurnitureRoomId, setSelectedFurnitureRoomId] = useState<string | null>(null);
+  const [_selectedFurnitureRoomId, setSelectedFurnitureRoomId] = useState<string | null>(null);
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
   const [draggedRoomId, setDraggedRoomId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number; w: number; h: number }>({ x: 0, y: 0, w: 0, h: 0 });
@@ -2269,7 +2269,7 @@ export const FloorPlanEditor: React.FC = () => {
   const [renderStatusMessage, setRenderStatusMessage] = useState<string>("");
   const [showShapeModal, setShowShapeModal] = useState(false);
   const [showRoomsModal, setShowRoomsModal] = useState(false);
-  const [autoRenderPending, setAutoRenderPending] = useState(false);
+  const [_autoRenderPending, setAutoRenderPending] = useState(false);
   const [wallThickness, setWallThickness] = useState<number>(100); // 100mm (4 inches)
   const [showStyleModal, setShowStyleModal] = useState(false);
   const [showFinishModal, setShowFinishModal] = useState<"flooring" | "walls" | "ceiling" | "doors" | "windows" | null>(null);
@@ -2299,7 +2299,6 @@ export const FloorPlanEditor: React.FC = () => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setPickerColor(hexToHsv(val));
       } else {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setPickerColor({ h: 0, s: 1, v: 1 });
       }
     }
@@ -2384,9 +2383,9 @@ export const FloorPlanEditor: React.FC = () => {
     prompt: string;
   }>>({});
   const [sidebarTab, setSidebarTab] = useState<"scene" | "renders">("scene");
-  const [isGeneratingPromptIdea, setIsGeneratingPromptIdea] = useState(false);
   const [renderMode, setRenderMode] = useState<"Floorplan to 3D" | "Floorplan to 3D Floorplan">("Floorplan to 3D");
   const capture3DRef = useRef<(() => string) | null>(null);
+  const [renderJobs, setRenderJobs] = useState<any[]>([]);
 
   // ── Undo/Redo history ────────────────────────────────────────────────────
   const [historyStack, setHistoryStack] = useState<FloorPlanData[]>([]);
@@ -2683,6 +2682,24 @@ export const FloorPlanEditor: React.FC = () => {
     []
   );
 
+  const fetchRenderJobs = useCallback(async () => {
+    try {
+      const res = await apiClient.get<ApiResponse<any[]>>("/api/v1/render-jobs?limit=50");
+      if (res.success && res.data) {
+        setRenderJobs(res.data);
+      }
+    } catch (e) {
+      console.error("Error fetching render jobs:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "visualize") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      fetchRenderJobs();
+    }
+  }, [activeTab, fetchRenderJobs]);
+
   // Listen to socket updates for the active rendering job
   useEffect(() => {
     if (!socket || !activeJobId) return;
@@ -2699,11 +2716,13 @@ export const FloorPlanEditor: React.FC = () => {
             toast.success("Render 3D hoàn tất!");
             addMessage("assistant", "✅ Phối cảnh 3D đã hoàn thành! Bạn có thể tải về bên dưới.");
           }
+          fetchRenderJobs();
           setIsRendering3D(false);
           setActiveJobId(null);
         } else if (updatedJob.status === "failed" || updatedJob.status === "error") {
           toast.error(updatedJob.statusMessage || "Lỗi render.");
           addMessage("assistant", "❌ Lỗi render 3D. Vui lòng thử lại.");
+          fetchRenderJobs();
           setIsRendering3D(false);
           setActiveJobId(null);
         }
@@ -2714,7 +2733,7 @@ export const FloorPlanEditor: React.FC = () => {
     return () => {
       socket.off("renderJobUpdated", handleJobUpdate);
     };
-  }, [socket, activeJobId, addMessage]);
+  }, [socket, activeJobId, addMessage, fetchRenderJobs]);
 
   // Polling fallback for render job status
   useEffect(() => {
@@ -2734,11 +2753,13 @@ export const FloorPlanEditor: React.FC = () => {
               toast.success("Render 3D hoàn tất!");
               addMessage("assistant", "✅ Phối cảnh 3D đã hoàn thành! Bạn có thể tải về bên dưới.");
             }
+            fetchRenderJobs();
             setIsRendering3D(false);
             setActiveJobId(null);
           } else if (job.status === "failed" || job.status === "error") {
             toast.error(job.statusMessage || "Lỗi render.");
             addMessage("assistant", "❌ Lỗi render 3D. Vui lòng thử lại.");
+            fetchRenderJobs();
             setIsRendering3D(false);
             setActiveJobId(null);
           }
@@ -2749,7 +2770,7 @@ export const FloorPlanEditor: React.FC = () => {
     }, 2500);
 
     return () => clearInterval(interval);
-  }, [activeJobId, addMessage]);
+  }, [activeJobId, addMessage, fetchRenderJobs]);
 
   // ── Gemini 2.5 Flash Conversational Handler ────────────────────────
   const handleSend = async (overrideText?: string) => {
@@ -3459,8 +3480,7 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
   };
 
   // ── Canvas zoom / pan ───────────────────────────────────────────────────
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleWheel = (e: any) => {
+  const _handleWheel = (e: any) => {
     e.evt.preventDefault();
     const scaleBy = 1.12;
     const stage = e.target.getStage();
@@ -3763,7 +3783,7 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
   };
 
   // ── Render 3D ──────────────────────────────────────────────────────────
-  const handleRender3D = useCallback(async () => {
+  const handleRender3D = useCallback(async (overrideRenderMode?: "Floorplan to 3D" | "Floorplan to 3D Floorplan") => {
     if (!floorPlan || floorPlan.rooms.length === 0) {
       toast.error("Vui lòng tạo mặt bằng trước!");
       return;
@@ -3771,9 +3791,31 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
     const hasCredits = await checkUserCredits();
     if (!hasCredits) return;
 
-    const roomIdForPrompt = selectedRoomId;
+    let roomIdForPrompt = selectedRoomId;
+    if (activeTab === "visualize" && selectedCameraRoomId && cameras[selectedCameraRoomId]) {
+      const cam = cameras[selectedCameraRoomId];
+      const containingRoom = floorPlan.rooms.find(
+        (r) => cam.x >= r.x && cam.x <= r.x + r.w && cam.y >= r.y && cam.y <= r.y + r.h
+      );
+      if (containingRoom) {
+        roomIdForPrompt = containingRoom.id;
+      } else {
+        // Fallback to closest room by Euclidean distance to boundaries
+        let closestRoom = floorPlan.rooms[0];
+        let minDistance = Infinity;
+        for (const r of floorPlan.rooms) {
+          const dx = Math.max(r.x - cam.x, 0, cam.x - (r.x + r.w));
+          const dy = Math.max(r.y - cam.y, 0, cam.y - (r.y + r.h));
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < minDistance) {
+            minDistance = dist;
+            closestRoom = r;
+          }
+        }
+        roomIdForPrompt = closestRoom.id;
+      }
+    }
     setIsRendering3D(true);
-    setSidebarTab("renders");
     setRenderResult(null);
     addMessage("assistant", "🎨 Đang render phối cảnh 3D siêu thực từ mặt bằng...");
 
@@ -3787,6 +3829,8 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
         base64Image = stageRef.current.toDataURL({ pixelRatio: 2 });
       }
       if (!base64Image) throw new Error("Không thể chụp canvas.");
+
+      setSidebarTab("renders");
 
       // Upload to Cloudinary
       let _imageUrl = base64Image;
@@ -3802,8 +3846,7 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
         }
       }
 
-      const selectedModel = "gemini-3.1-flash-image-preview";
-      const ai = await getAIClient(selectedModel);
+
       const roomsDesc = floorPlan.rooms.map((r) => `${r.name} (${(r.w * r.h).toFixed(1)}m²)`).join(", ");
       const roomForRender = roomIdForPrompt
         ? floorPlan.rooms.find((r) => r.id === roomIdForPrompt)?.name || "Phòng khách"
@@ -3828,7 +3871,7 @@ Trả về JSON thuần túy (KHÔNG có markdown, KHÔNG có giải thích):
         }
       }
 
-      const renderJobType = renderMode;
+      const renderJobType = overrideRenderMode || renderMode;
       let cameraPrompt = "";
       if (activeTab === "visualize" && selectedCameraRoomId && cameras[selectedCameraRoomId]) {
         const cam = cameras[selectedCameraRoomId];
@@ -3865,25 +3908,24 @@ User prompt: "${enhancedPrompt}"`
 
       let customFurniturePrompt = "";
       if (currentRoom && currentRoom.furniture && currentRoom.furniture.length > 0) {
-        const styledItems = currentRoom.furniture
-          .filter((f) => f.style || f.material || f.color)
-          .map((f) => {
-            const typeName = FURNITURE_METADATA[f.type]?.name || f.type;
-            const styleDesc = f.style ? `style ${f.style}` : "";
-            
-            let matDesc = "";
-            if (f.color) {
-              const matchedColor = ALL_COLOURS.find((c) => c.value === f.color);
-              matDesc = matchedColor ? `color ${matchedColor.name}` : `color ${f.color}`;
-            } else if (f.material) {
-              const matchedMat = ALL_MATERIALS.find((m) => m.value === f.material);
-              matDesc = matchedMat ? `material ${matchedMat.name}` : `material ${f.material}`;
-            }
+        const styledItems = currentRoom.furniture.map((f) => {
+          const typeName = FURNITURE_METADATA[f.type]?.name || f.type;
+          const styleDesc = f.style ? `style ${f.style}` : "";
+          
+          let matDesc = "";
+          if (f.color) {
+            const matchedColor = ALL_COLOURS.find((c) => c.value === f.color);
+            matDesc = matchedColor ? `color ${matchedColor.name}` : `color ${f.color}`;
+          } else if (f.material) {
+            const matchedMat = ALL_MATERIALS.find((m) => m.value === f.material);
+            matDesc = matchedMat ? `material ${matchedMat.name}` : `material ${f.material}`;
+          }
 
-            return `- ${typeName}: ${[styleDesc, matDesc].filter(Boolean).join(", ")}`;
-          });
+          const details = [styleDesc, matDesc].filter(Boolean).join(", ");
+          return `- ${typeName}${details ? `: ${details}` : ""}`;
+        });
         if (styledItems.length > 0) {
-          customFurniturePrompt = `\nCustom furniture styling to use in this room:\n${styledItems.join("\n")}`;
+          customFurniturePrompt = `\nList of objects present in the room layout:\n${styledItems.join("\n")}`;
         }
       }
 
@@ -3901,7 +3943,6 @@ Strict Layout & Furniture Preservation Guidelines:
 - The design style (${selectedStyle || "None"}) must only change the aesthetic finishes, colors, and textures of the walls, floors, and furniture. It MUST NOT alter, shift, or replace the architectural structure (walls, doors, windows, staircases) or the spatial layout of the furniture.
 - The floorplan consists of these rooms and layout: ${roomsDesc}. Each room must retain its specific function, placement, and interior elements as defined in the preview.
 - The input image is a floorplan preview. You MUST strictly preserve the exact room layout, wall positions, doors, windows and furniture arrangement.
-- Do NOT add, remove, or rearrange any furniture.
 - Keep all architectural proportions correct.
 - The result should look like a high-quality 3D floorplan render, with clear floor surfaces, walls, and subtle shadows.
 - Focus on the floorplan and spatial organization, not on photographic interior detail.
@@ -3912,20 +3953,17 @@ Requirements:
 - Avoid realistic photographic staging, people, or repeated interior decoration details.
 - Output should resemble a professional 3D floorplan/axonometric render, not a typical interior photograph. Negative prompt: white clay model, monochrome, grayscale, raw plaster, all-white rendering, untextured model.`
         : `You are a professional 3D architectural visualizer.
-Your task is to transform the provided 3D spatial layout preview of the [${roomForRender}] into a hyper-realistic, photorealistic interior render.
+Your task is to transform the provided 3D camera perspective layout preview of the [${roomForRender}] into a hyper-realistic, photorealistic interior render.
 Style: ${currentRoom?.style || selectedStyle || gatherInfo.extras || "Modern Vietnamese contemporary"}.
 
-Strict Layout & Furniture Preservation Guidelines:
-- The design style (${currentRoom?.style || selectedStyle || "None"}) must only change the aesthetic finishes, colors, and textures of the walls, floors, and furniture. It MUST NOT alter, shift, or replace the architectural structure (walls, doors, windows, staircases) or the spatial layout of the furniture.
-- The input image is a 3D layout preview of the room. You MUST strictly preserve the exact layout, structure, and positions of all walls, doors, windows, and furniture items visible.
-- Do NOT add, remove, or rearrange any furniture.
-- A sofa in the preview must remain a sofa of the exact same size, shape, and orientation.
-- A dining table with chairs must remain a dining table with the exact same count and arrangement of chairs (e.g. a 6-seat dining table must render with exactly 6 seats in the same positions).
-- Do not substitute furniture for different types (e.g. keep wardrobes as wardrobes, beds as beds).
-- Keep the exact proportions and dimensions of all items.
+Strict Camera Perspective & Spatial Preservation Guidelines:
+- The input image is a 3D camera perspective preview of the room. You MUST strictly preserve the exact perspective angle, camera view field, and overall room architecture. Even if the camera is placed close to a wall, you must render the view from that exact camera standpoint.
+- Preserve the layout, placement, and relative scale of any furniture and objects visible in the input image. If there are objects present, render them in their corresponding locations with textures and finishes matching the chosen style. Do not invent unrelated furniture if a space is empty.
+- Do NOT add any people or animals (unless explicitly requested in the custom prompt instructions below).
+- The design style (${currentRoom?.style || selectedStyle || "None"}) must only change the aesthetic finishes, textures, materials, and colors of the walls, floors, and furniture.
 
 Requirements:
-- Natural light flooding in, warm shadows, 8K photorealistic quality, realistic textures (polished wood, fabric, metal, marble).
+- Natural realistic lighting, soft shadows, 8K photorealistic quality, realistic physical textures (wood grain, fabric weave, metal sheen, polished marble).
 - Magazine-quality composition (ArchDaily style).
 - Pure photorealistic render only, absolutely NO lines, sketch boundaries, dimensions, or UI text from the preview interface.${cameraPrompt}${customRoomPrompt}${customFurniturePrompt}`;
 
@@ -3943,7 +3981,7 @@ Requirements:
           prompt: renderPrompt,
           numImages: 1,
           aspectRatio: (activeTab === "visualize" && selectedCameraRoomId && cameras[selectedCameraRoomId]?.aspectRatio) || "4:3",
-          model: "openrouter-nano-banana-2",
+          model: "gemini-3.1-flash-image",
           resolution: "1K",
         },
       };
@@ -3962,12 +4000,14 @@ Requirements:
           toast.success("Render 3D hoàn tất!");
           addMessage("assistant", "✅ Phối cảnh 3D đã hoàn thành! Bạn có thể tải về bên dưới.");
         }
+        fetchRenderJobs();
         setIsRendering3D(false);
         setActiveJobId(null);
       } else {
         setActiveJobId(jobId);
         setRenderProgress(newJob.progress || 10);
         setRenderStatusMessage(newJob.statusMessage || "Khởi tạo...");
+        fetchRenderJobs();
         
         addMessage("assistant", "🎨 Đang gửi yêu cầu tạo phối cảnh 3D lên hệ thống...");
         toast.info("Đã gửi yêu cầu kết xuất 3D!");
@@ -3980,7 +4020,12 @@ Requirements:
       setIsRendering3D(false);
       setActiveJobId(null);
     }
-  }, [floorPlan, selectedRoomId, gatherInfo, user, addMessage]);
+  }, [floorPlan, selectedRoomId, gatherInfo, user, addMessage, selectedCameraRoomId, cameras, activeTab, renderMode, fetchRenderJobs]);
+
+  const handleRender3DRef = useRef(handleRender3D);
+  useEffect(() => {
+    handleRender3DRef.current = handleRender3D;
+  }, [handleRender3D]);
 
   // ── Auto-initialize furniture for existing floor plans ───────────────────
   useEffect(() => {
@@ -5191,7 +5236,7 @@ Requirements:
   };
 
   // ── Render Furniture Vector for Room ───────────────────────────────────
-  const renderFurnitureForRoom = (room: Room, scale: number) => {
+  const _renderFurnitureForRoom = (room: Room, scale: number) => {
     const rx = pan.x + room.x * scale;
     const ry = pan.y + room.y * scale;
     const rw = room.w * scale;
@@ -5458,7 +5503,7 @@ Requirements:
     roomId: string,
     targetType: "style" | "flooring" | "walls" | "ceiling" | "doors" | "windows",
     value: string,
-    isColor = false
+    _isColor = false
   ) => {
     if (floorPlan) {
       pushHistory(floorPlan);
@@ -5636,7 +5681,7 @@ Requirements:
     flipX: boolean = false
   ): { x: number; y: number; rotation: number } => {
     const SNAP_RADIUS = snapRadius;
-    const thick = 0; // Snap exactly on the centerline of the wall boundary
+
 
     let bestDist = SNAP_RADIUS;
     let bestX = px;
@@ -5748,7 +5793,7 @@ Requirements:
   const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
   const [furnitureSearch, setFurnitureSearch] = useState("");
 
-  const handleAddRoomManually = (roomName: string) => {
+  const _handleAddRoomManually = (roomName: string) => {
     if (!floorPlan) {
       toast.error("Vui lòng tạo mặt bằng trước!");
       return;
@@ -6285,7 +6330,7 @@ Requirements:
           {/* Wall lines with smart gaps where doors/windows overlap */}
           {(() => {
             const lines = [];
-            const threshold = 0.08;
+
 
             // 1. TOP WALL (y = room.y, local Y = ry)
             const wallThreshold = 0.15; // Increased threshold for alignment safety
@@ -7392,7 +7437,7 @@ Requirements:
 
           {floorPlan && (
             <button
-              onClick={handleRender3D}
+              onClick={() => handleRender3DRef.current()}
               disabled={isRendering3D}
               className="flex items-center gap-2 px-4 py-1.5 bg-[#d4a853] hover:bg-[#c49843] disabled:opacity-50 text-[#1a1612] text-xs font-bold rounded-lg transition-all cursor-pointer"
             >
@@ -8485,7 +8530,7 @@ Requirements:
                     onClick={() => {
                       const room = selectedRoom;
                       addMessage("assistant", `Đang render phối cảnh cho **${room.name}**...`);
-                      handleRender3D();
+                      handleRender3DRef.current();
                     }}
                     disabled={isRendering3D}
                     className="mt-3 flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-600 text-xs font-semibold rounded-lg transition-all disabled:opacity-40"
@@ -8527,9 +8572,15 @@ Requirements:
         <div className="w-[380px] h-full flex-shrink-0 flex flex-col bg-slate-50 border-l border-slate-200 pt-12 z-20 text-slate-800 font-sans overflow-y-auto">
           {activeTab === "visualize" ? (() => {
             const selectedCam = selectedCameraRoomId ? cameras[selectedCameraRoomId] : null;
-            const targetRoomName = selectedCameraRoomId && floorPlan
-              ? floorPlan.rooms.find(r => r.id === selectedCameraRoomId)?.name || "Kitchen"
-              : "Room Camera";
+            let targetRoomName = "Room Camera";
+            if (selectedCam && floorPlan) {
+              const containingRoom = floorPlan.rooms.find(
+                (r) => selectedCam.x >= r.x && selectedCam.x <= r.x + r.w && selectedCam.y >= r.y && selectedCam.y <= r.y + r.h
+              ) || (selectedCameraRoomId ? floorPlan.rooms.find(r => r.id === selectedCameraRoomId) : null);
+              if (containingRoom) {
+                targetRoomName = containingRoom.name;
+              }
+            }
 
             return (
               <div className="p-6 space-y-6">
@@ -8541,8 +8592,9 @@ Requirements:
                     ? "aspect-[4/3]"
                     : "aspect-square"
                 }`}>
-                  {sidebarTab === "scene" ? (
-                    selectedCameraRoomId || renderMode === "Floorplan to 3D Floorplan" ? (
+                  {/* Keep 3D Viewer mounted at all times to prevent canvas loss, hide via CSS when renders tab is active */}
+                  <div className={sidebarTab === "scene" ? "w-full h-full" : "hidden"}>
+                    {selectedCameraRoomId || renderMode === "Floorplan to 3D Floorplan" ? (
                       <FloorPlan3DViewer
                         floorPlan={floorPlan}
                         wallThickness={wallThickness}
@@ -8578,28 +8630,33 @@ Requirements:
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">No active camera</span>
                         <span className="text-[9px] text-slate-400 mt-1 max-w-[180px]">Select a room camera to view the 3D scene</span>
                       </div>
-                    )
-                  ) : (
-                    isRendering3D ? (
-                      <div className="flex flex-col items-center text-center p-4">
-                        <div className="w-8 h-8 border-2 border-[#00b5cd] border-t-transparent rounded-full animate-spin mb-2" />
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">AI Rendering...</span>
-                        {renderProgress > 0 && (
-                          <span className="text-xs font-bold text-[#00b5cd] mt-1">{renderProgress}%</span>
-                        )}
-                        {renderStatusMessage && (
-                          <span className="text-[9px] text-slate-400 mt-1 max-w-[180px] truncate">{renderStatusMessage}</span>
-                        )}
-                      </div>
-                    ) : renderResult ? (
-                      <img src={renderResult} alt="Render Preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="flex flex-col items-center text-center p-4">
-                        <Sparkles className="w-8 h-8 text-slate-300 mb-2 animate-pulse" />
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">No active render</span>
-                        <span className="text-[9px] text-slate-400 mt-1 max-w-[180px]">Go to Scene tab and click Render scene</span>
-                      </div>
-                    )
+                    )}
+                  </div>
+
+                  {/* Render loading/results panel only when in Renders tab */}
+                  {sidebarTab === "renders" && (
+                    <div className="w-full h-full flex flex-col items-center justify-center">
+                      {isRendering3D ? (
+                        <div className="flex flex-col items-center text-center p-4">
+                          <div className="w-8 h-8 border-2 border-[#00b5cd] border-t-transparent rounded-full animate-spin mb-2" />
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">AI Rendering...</span>
+                          {renderProgress > 0 && (
+                            <span className="text-xs font-bold text-[#00b5cd] mt-1">{renderProgress}%</span>
+                          )}
+                          {renderStatusMessage && (
+                            <span className="text-[9px] text-slate-400 mt-1 max-w-[180px] truncate">{renderStatusMessage}</span>
+                          )}
+                        </div>
+                      ) : renderResult ? (
+                        <img src={renderResult} alt="Render Preview" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="flex flex-col items-center text-center p-4">
+                          <Sparkles className="w-8 h-8 text-slate-300 mb-2 animate-pulse" />
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">No active render</span>
+                          <span className="text-[9px] text-slate-400 mt-1 max-w-[180px]">Go to Scene tab and click Render scene</span>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -8702,6 +8759,62 @@ Requirements:
                           </span>
                         </div>
                       </div>
+
+                      {/* Prompt */}
+                      <div className="space-y-1.5 pt-1">
+                        <span className="text-xs font-bold text-slate-700 block">Prompt</span>
+                        <div className="relative border border-slate-200 bg-white rounded-xl p-3 focus-within:border-[#00b5cd]/50">
+                          <textarea
+                            value={selectedCam.prompt || ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCameras(prev => ({
+                                ...prev,
+                                [selectedCameraRoomId!]: {
+                                  ...prev[selectedCameraRoomId!],
+                                  prompt: val
+                                }
+                              }));
+                            }}
+                            placeholder="Mô tả phối cảnh (ví dụ: thêm một chú chó)..."
+                            className="w-full min-h-[70px] text-xs text-slate-700 outline-none resize-none border-none p-0 placeholder-slate-400"
+                          />
+                          <div className="mt-2 flex items-center justify-between">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const fileInput = document.createElement("input");
+                                fileInput.type = "file";
+                                fileInput.accept = "image/*";
+                                fileInput.onchange = () => {
+                                  toast.info("Đã đính kèm ảnh thành công!");
+                                };
+                                fileInput.click();
+                              }}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 transition-all cursor-pointer"
+                            >
+                              <Paperclip className="w-3.5 h-3.5 text-slate-500" />
+                              Đính kèm
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Render button */}
+                      <button
+                        onClick={async () => {
+                          setRenderMode("Floorplan to 3D");
+                          setSelectedRoomId(selectedCameraRoomId);
+                          setTimeout(() => {
+                            handleRender3DRef.current("Floorplan to 3D");
+                          }, 100);
+                        }}
+                        disabled={isRendering3D}
+                        className="w-full py-3 bg-[#0a65cc] hover:bg-[#0854ab] text-white text-xs font-bold rounded-full transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed mt-3"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        {isRendering3D ? "Đang xử lý..." : "Render phối cảnh"}
+                      </button>
                     </div>
                   ) : (
                     <div className="text-center py-8 text-xs text-slate-400 font-medium">
@@ -8710,48 +8823,80 @@ Requirements:
                   )
                 ) : (
                   // Renders tab
-                  <div className="space-y-5">
-                    {/* CONFIGURATION Header */}
-                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">RENDER OPTIONS</span>
+                  <div className="space-y-4">
+                    {(() => {
+                      const cameraJobs = renderJobs.filter((job) => {
+                        if (job.status !== "completed" || !job.outputImageUrls?.[0]) {
+                          return false;
+                        }
+                        const promptLower = (job.prompt || "").toLowerCase();
+                        return promptLower.includes(`[${targetRoomName.toLowerCase()}]`) || promptLower.includes(targetRoomName.toLowerCase());
+                      });
 
-                    {/* Render Mode */}
-                    <div className="space-y-1.5">
-                      <span className="text-xs font-bold text-slate-700 block">Chế độ render</span>
-                      <div className="relative">
-                        <select
-                          value={renderMode}
-                          onChange={(e) => setRenderMode(e.target.value as "Floorplan to 3D" | "Floorplan to 3D Floorplan")}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-[#00b5cd]/50 cursor-pointer appearance-none pr-8"
-                        >
-                          <option value="Floorplan to 3D">Floorplan to 3D</option>
-                          <option value="Floorplan to 3D Floorplan">Floorplan to 3D Floorplan</option>
-                        </select>
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                          <ChevronDown className="w-4 h-4" />
-                        </span>
-                      </div>
-                    </div>
-
-                    {renderMode === "Floorplan to 3D Floorplan" || selectedCam ? (
-                      /* Render Scene Button */
-                      <button
-                        onClick={async () => {
-                          setSelectedRoomId(selectedCameraRoomId);
-                          setTimeout(() => {
-                            handleRender3D();
-                          }, 100);
-                        }}
-                        disabled={isRendering3D}
-                        className="w-full py-3 bg-[#00b5cd] hover:bg-[#00a3b8] text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <Sparkles className="w-4 h-4" />
-                        {isRendering3D ? "Rendering..." : "Render scene"}
-                      </button>
-                    ) : (
-                      <div className="text-center py-4 px-2 border border-dashed border-slate-200 rounded-xl text-xs text-slate-400 font-medium">
-                        Vui lòng chọn một camera trên bản vẽ để thực hiện render phối cảnh phòng.
-                      </div>
-                    )}
+                      return (
+                        <>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">LỊCH SỬ TẠO ẢNH ({cameraJobs.length})</span>
+                          
+                          {cameraJobs.length === 0 ? (
+                            <div className="text-center py-8 px-4 border border-dashed border-slate-200 rounded-xl text-xs text-slate-400 font-medium">
+                              Chưa có ảnh phối cảnh nào được kết xuất cho {targetRoomName}.
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-2 gap-2 max-h-[350px] overflow-y-auto pr-1">
+                              {cameraJobs.map((job) => {
+                                const imgUrl = job.outputImageUrls[0];
+                                const dateStr = new Date(job.createdAt).toLocaleDateString("vi-VN", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  hour: "2-digit",
+                                  minute: "2-digit"
+                                });
+                                const isSelected = renderResult === imgUrl;
+                                
+                                return (
+                                  <div 
+                                    key={job._id || job.id} 
+                                    className={`group relative aspect-[4/3] rounded-lg overflow-hidden border cursor-pointer transition-all ${
+                                      isSelected ? 'border-[#00b5cd] ring-2 ring-[#00b5cd]/20' : 'border-slate-200 hover:border-slate-400'
+                                    }`}
+                                    onClick={() => setRenderResult(imgUrl)}
+                                  >
+                                    <img src={imgUrl} alt="Render history item" className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setRenderResult(imgUrl);
+                                        }}
+                                        className="p-1 bg-white/90 hover:bg-white text-slate-700 rounded transition-colors"
+                                        title="Xem trên khung xem thử"
+                                      >
+                                        <Eye className="w-3.5 h-3.5" />
+                                      </button>
+                                      <a
+                                        href={imgUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="p-1 bg-white/90 hover:bg-white text-slate-700 rounded transition-colors"
+                                        title="Mở tab mới"
+                                      >
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                      </a>
+                                    </div>
+                                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-1">
+                                      <span className="text-[8px] text-white/90 font-medium block truncate">
+                                        {dateStr}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>

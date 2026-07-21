@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Icon } from "../Icon";
 import { toast } from "sonner";
 import { useAuth } from "../../context/useAuth";
@@ -241,27 +241,47 @@ export const EnhanceRenderTabContent: React.FC = () => {
 
   const { user, socket } = useAuth();
 
+  const fetchJobs = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await apiClient.get<ApiResponse<RenderJob[]>>(`/api/v1/render-jobs?type=${encodeURIComponent(activeSubTab)}&limit=50`);
+      if (res.success && Array.isArray(res.data)) {
+        setRenderJobs(res.data);
+      }
+    } catch (e) {
+      console.error("Error fetching render jobs:", e);
+    }
+  }, [user, activeSubTab]);
+
   useEffect(() => {
     if (!user) {
       setTimeout(() => setRenderJobs([]), 0);
       return;
     }
 
-    const fetchJobs = async () => {
-      try {
-        const res = await apiClient.get<ApiResponse<RenderJob[]>>(`/api/v1/render-jobs?type=${encodeURIComponent(activeSubTab)}&limit=50`);
-        if (res.success && Array.isArray(res.data)) {
-          setRenderJobs(res.data);
-        }
-      } catch (e) {
-        console.error("Error fetching render jobs:", e);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchJobs();
+
+    // Refetch when the tab becomes active/visible again or window gains focus
+    const handleRefetch = () => {
+      if (document.visibilityState === "visible") {
+        fetchJobs();
       }
     };
-    fetchJobs();
-  }, [user, activeSubTab]);
+
+    window.addEventListener("focus", fetchJobs);
+    document.addEventListener("visibilitychange", handleRefetch);
+
+    return () => {
+      window.removeEventListener("focus", fetchJobs);
+      document.removeEventListener("visibilitychange", handleRefetch);
+    };
+  }, [user, fetchJobs]);
 
   useEffect(() => {
     if (!socket) return;
+
+    socket.on("connect", fetchJobs);
     
     const handleJobUpdate = (updatedJob: RenderJob) => {
       if (updatedJob.type !== activeSubTab) return;
@@ -277,9 +297,10 @@ export const EnhanceRenderTabContent: React.FC = () => {
 
     socket.on("renderJobUpdated", handleJobUpdate);
     return () => {
+      socket.off("connect", fetchJobs);
       socket.off("renderJobUpdated", handleJobUpdate);
     };
-  }, [socket, activeSubTab]);
+  }, [socket, activeSubTab, fetchJobs]);
 
   const handleImageUpload = async (
     event: React.ChangeEvent<HTMLInputElement>,
