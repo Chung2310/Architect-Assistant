@@ -23,18 +23,30 @@ export function composeRenderPrompt(
   activeSubTab: string,
   resultObject: Record<string, unknown>,
 ): string {
-  const finalPrompt =
-    getString(resultObject.prompt_tieng_viet_toi_uu) ||
-    getString(resultObject.optimized_english_prompt);
+  const isGroundedFloorplan = activeSubTab === "Floorplan to 3D Floorplan";
+  const finalPrompt = isGroundedFloorplan
+    ? getString(resultObject.optimized_english_prompt) ||
+      getString(resultObject.prompt_tieng_viet_toi_uu)
+    : getString(resultObject.prompt_tieng_viet_toi_uu) ||
+      getString(resultObject.optimized_english_prompt);
   const negativePrompt =
     getString(resultObject.prompt_phu_dinh) ||
     getString(resultObject.negative_prompt);
   const sections = [finalPrompt];
 
-  if (activeSubTab === "Floorplan to 3D Floorplan") {
+  if (isGroundedFloorplan) {
     sections.push(photorealPbrDirective);
+    sections.push([
+      "SINGLE MODEL OUTPUT — HARD CONSTRAINT:",
+      "Render exactly one unified 3D floorplan model, centered in the frame as the only subject on the canvas.",
+      "Keep all rooms, stairs, corridors, walls, and wings joined in their original architectural relationship.",
+      "No second floorplan, no duplicate model, no detached fragment, no floating plan component, no side-by-side layout, no split screen, no inset, no comparison, no presentation board, and no exploded arrangement.",
+      "Ignore every sheet border, title block, revision table, signature, logo, dimension, grid, section marker, annotation, and surrounding white space; none may become another subject or panel.",
+    ].join("\n"));
     const manifest = getStringList(resultObject.room_manifest);
     const roomCount = getString(resultObject.room_count_validation);
+    const furnitureManifest = getStringList(resultObject.furniture_manifest);
+    const furnitureCount = getString(resultObject.furniture_count_validation);
     const supportingAnalysis = [
       getString(resultObject.phan_tich_huong_ban_ve),
       getString(resultObject.phan_tich_phong_va_chuc_nang),
@@ -53,6 +65,17 @@ export function composeRenderPrompt(
         "Every labeled room must remain inside its original enclosing walls and retain its original adjacency.",
         "Room labels override furniture-based guesses. Do not create a fourth bedroom or infer any extra room not listed in this manifest.",
         "Only materials, colors, lighting, and 3D presentation may change.",
+      ].filter(Boolean).join("\n"));
+    }
+
+    if (furnitureManifest.length > 0 || furnitureCount) {
+      sections.push([
+        "IMMUTABLE FURNITURE MANIFEST — SOURCE OF TRUTH:",
+        ...furnitureManifest.map((item, index) => `${index + 1}. ${item}`),
+        furnitureCount ? `EXACT FURNITURE COUNT: ${furnitureCount}` : "",
+        "Render every manifest entry exactly once, including all fixed fixtures and built-ins.",
+        "Never omit, duplicate, group, replace, relocate, or rotate any manifest item.",
+        "Do not summarize items as etc., other furniture, a dining set, or a furnished room.",
       ].filter(Boolean).join("\n"));
     }
   }
