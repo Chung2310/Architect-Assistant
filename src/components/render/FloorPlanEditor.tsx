@@ -23,6 +23,7 @@ import {
 import { ChooseShapeModal } from "./ChooseShapeModal";
 import { ChooseRoomsModal } from "./ChooseRoomsModal";
 import { FloorPlan3DViewer } from "./FloorPlan3DViewer";
+import { buildAIFloorPlanFilename } from "./floorPlanDownload";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const METER_TO_PX = 48;
@@ -2670,6 +2671,24 @@ export const FloorPlanEditor: React.FC = () => {
       toast.error("Không thể xuất bản vẽ.");
     }
   }, [projectName]);
+
+  const handleDownloadAIFloorPlan = useCallback(() => {
+    if (!stageRef.current || !floorPlan) return;
+
+    try {
+      const dataURL = stageRef.current.toDataURL({
+        pixelRatio: 2,
+        mimeType: "image/png",
+      });
+      const link = document.createElement("a");
+      link.download = buildAIFloorPlanFilename(projectName, activeFloorIndex);
+      link.href = dataURL;
+      link.click();
+      toast.success(`Đã tải xuống bản vẽ AI tầng ${activeFloorIndex + 1}!`);
+    } catch {
+      toast.error("Không thể tải xuống bản vẽ AI.");
+    }
+  }, [activeFloorIndex, floorPlan, projectName]);
 
   // ── Add message helper ──────────────────────────────────────────────────
   const addMessage = useCallback(
@@ -7884,27 +7903,40 @@ Requirements:
           </div>
         )}
 
-        {/* Floor tabs */}
-        {floorPlans.length > 1 && (
-          <div className="absolute top-16 right-4 flex items-center gap-1 z-10 bg-slate-100/80 backdrop-blur border border-slate-200 rounded-xl p-1 shadow-sm">
-            {floorLabels.map((label, i) => (
-              <button
-                key={i}
-                onClick={() => {
-                  setActiveFloorIndex(i);
-                  setFloorPlan(floorPlans[i]);
-                  setSelectedRoomId(null);
-                  setSelectedCameraRoomId(null);
-                }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  activeFloorIndex === i
-                    ? "bg-[#d4a853] text-white shadow-sm"
-                    : "text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+        {/* Floor tabs and active-floor download */}
+        {floorPlan && (
+          <div className="absolute top-16 right-4 z-10 flex flex-col items-end gap-2">
+            {floorPlans.length > 1 && (
+              <div className="flex items-center gap-1 bg-slate-100/80 backdrop-blur border border-slate-200 rounded-xl p-1 shadow-sm">
+                {floorLabels.map((label, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setActiveFloorIndex(i);
+                      setFloorPlan(floorPlans[i]);
+                      setSelectedRoomId(null);
+                      setSelectedCameraRoomId(null);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      activeFloorIndex === i
+                        ? "bg-[#d4a853] text-white shadow-sm"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={handleDownloadAIFloorPlan}
+              title="Tải xuống bản vẽ AI của tầng hiện tại"
+              className="flex items-center gap-1.5 rounded-lg border border-[#d4a853]/40 bg-white/95 px-3 py-2 text-xs font-bold text-[#b48834] shadow-sm backdrop-blur transition-colors hover:bg-[#d4a853] hover:text-white cursor-pointer"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Tải xuống bản vẽ AI
+            </button>
           </div>
         )}
 
