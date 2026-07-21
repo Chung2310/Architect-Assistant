@@ -36,6 +36,13 @@ export function composeRenderPrompt(
 
   if (isGroundedFloorplan) {
     sections.push(photorealPbrDirective);
+    sections.push([
+      "SINGLE MODEL OUTPUT — HARD CONSTRAINT:",
+      "Render exactly one unified 3D floorplan model, centered in the frame as the only subject on the canvas.",
+      "Keep all rooms, stairs, corridors, walls, and wings joined in their original architectural relationship.",
+      "No second floorplan, no duplicate model, no detached fragment, no floating plan component, no side-by-side layout, no split screen, no inset, no comparison, no presentation board, and no exploded arrangement.",
+      "Ignore every sheet border, title block, revision table, signature, logo, dimension, grid, section marker, annotation, and surrounding white space; none may become another subject or panel.",
+    ].join("\n"));
     const manifest = getStringList(resultObject.room_manifest);
     const roomCount = getString(resultObject.room_count_validation);
     const furnitureManifest = getStringList(resultObject.furniture_manifest);

@@ -77,6 +77,12 @@ assert.match(
   inventoryPrompt,
   /Never omit, duplicate, group, replace, relocate, or rotate/i,
 );
+assert.match(inventoryPrompt, /SINGLE MODEL OUTPUT.*HARD CONSTRAINT/is);
+assert.match(inventoryPrompt, /exactly one unified 3D floorplan model/i);
+assert.match(inventoryPrompt, /centered.*only subject/is);
+assert.match(inventoryPrompt, /no second floorplan.*no duplicate model/is);
+assert.match(inventoryPrompt, /no detached fragment.*no side-by-side layout/is);
+assert.match(inventoryPrompt, /ignore.*title block.*white space/is);
 
 const unrelatedInventoryPrompt = composeRenderPrompt(
   "Floorplan to 3D",
@@ -85,4 +91,8 @@ const unrelatedInventoryPrompt = composeRenderPrompt(
 assert.doesNotMatch(
   unrelatedInventoryPrompt,
   /IMMUTABLE FURNITURE MANIFEST/,
+);
+assert.doesNotMatch(
+  unrelatedInventoryPrompt,
+  /SINGLE MODEL OUTPUT.*HARD CONSTRAINT/is,
 );
