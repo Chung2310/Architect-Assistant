@@ -25,6 +25,28 @@ assert.match(
   schema.properties.optimized_english_prompt.description,
   /every detected room.*every detected furniture item/is,
 );
+assert.match(systemInstruction, /PASS A.*MOVABLE FURNITURE/is);
+assert.match(systemInstruction, /PASS B.*FIXED FIXTURES AND BUILT-INS/is);
+assert.match(systemInstruction, /top-to-bottom.*left-to-right/is);
+assert.match(systemInstruction, /classify it exactly once/is);
+assert.match(
+  systemInstruction,
+  /toilet.*lavatory.*bathtub.*shower.*hob.*sink/is,
+);
+assert.match(systemInstruction, /never collapse repeated items into a set/i);
+assert.ok(schema.properties.furniture_manifest);
+assert.equal(schema.properties.furniture_manifest.type, "ARRAY");
+assert.ok(schema.properties.furniture_count_validation);
+assert.ok(schema.required.includes("furniture_manifest"));
+assert.ok(schema.required.includes("furniture_count_validation"));
+assert.match(
+  schema.properties.furniture_manifest.description,
+  /exactly one visible item.*quantity 1.*CAD evidence/is,
+);
+assert.match(
+  schema.properties.optimized_english_prompt.description,
+  /etc.*other furniture.*a dining set.*a furnished room/is,
+);
 
 const other = resolvePromptTemplate("render_tab_prompt", {
   activeSubTab: "Floorplan to 3D",

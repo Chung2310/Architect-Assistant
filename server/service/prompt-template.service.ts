@@ -387,6 +387,10 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
       referenceImages.length > 0
         ? "Khi có ảnh tham khảo nội thất: từng món đồ tham khảo chỉ được dùng để khóa đúng chủng loại, hướng và vị trí tương ứng theo mặt bằng; không tự ý thêm bớt hay di chuyển."
         : "Nếu không có ảnh tham khảo nội thất, bố trí đồ đạc phải bám logic mặt bằng và chỉ dựng những gì suy ra chắc chắn từ bản vẽ.",
+      "FURNITURE COVERAGE ORDER: Process every enclosed room from top-to-bottom and left-to-right. Complete both passes for one room before moving to the next room.",
+      "PASS A — MOVABLE FURNITURE: Inventory every visible bed, nightstand, sofa, armchair, table, individual chair, desk, movable cabinet, shelf, bench, and other recognizable loose object.",
+      "PASS B — FIXED FIXTURES AND BUILT-INS: Inventory every visible toilet, lavatory, bathtub, shower, kitchen hob, sink, counter, built-in kitchen cabinet, wardrobe, and other recognizable fixed item.",
+      "COVERAGE AUDIT: Inspect every footprint or CAD symbol that is not a wall, opening, text, dimension, or annotation and classify it exactly once. Correct every omission and duplicate before composing the final prompt. Never collapse repeated items into a set; list each chair and every other repeated object separately.",
       "LAYER 1 — LOCKED INVENTORY: Before writing the render prompt, inspect the source floorplan and lock one evidence-grounded inventory containing every enclosed room, its readable label or inferred function, boundary, relative position, adjacency, openings, circulation, and every visible furniture item mapped to its enclosing room with position and orientation.",
       "LAYER 2 — CONSISTENCY VERIFICATION: Compare the proposed final description against the locked inventory. Correct every mismatch in room count, function, boundary, adjacency, orientation, opening, circulation, furniture type, furniture position, and furniture direction before emitting the final prompt.",
       "When a label or CAD symbol is unclear, choose the single most plausible interpretation using geometry, CAD conventions, nearby objects, and spatial context. A guess still requires visible supporting evidence and must never create an additional unsupported room or furniture item.",
@@ -404,10 +408,16 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
         },
         room_count_validation: stringField("Exact room count theo từng nhãn/công năng; xác nhận tổng số khớp với room_manifest và không có phòng tự sinh."),
         nhan_dien_noi_that_theo_phong: stringField("LIỆT KÊ TỪNG MÓN ĐỒ NỘI THẤT theo từng phòng: tên đồ vật được map từ ký hiệu CAD, vị trí trong phòng (góc nào, tựa tường nào), hướng đặt (xoay về phía nào), kích thước ước tính. Đây là ràng buộc cứng cho vị trí và loại đồ vật trong prompt cuối."),
+        furniture_manifest: {
+          type: "ARRAY",
+          description: "Immutable inventory with exactly one visible item per entry, formatted as room | normalized item type | quantity 1 | relative position | orientation | visible CAD evidence. Include movable furniture, fixed fixtures and built-ins. Never group repeated items.",
+          items: { type: "STRING" },
+        },
+        furniture_count_validation: stringField("Exact furniture and fixture counts by room and item type; confirm the grand total matches furniture_manifest with no omitted or duplicate CAD footprint."),
         logic_phong_cach_va_cong_trinh: stringField("Tổng hợp phong cách và logic công trình."),
         thiet_lap_anh_sang_va_studio: stringField("Thiết lập ánh sáng và cách trình bày."),
         prompt_tieng_viet_toi_uu: stringField("Prompt render cuối cùng. PHẢI mô tả rõ: (1) xác nhận hướng bố cục không thay đổi so với bản vẽ gốc, (2) vị trí cụ thể từng phòng, (3) từng món đồ nội thất đúng vị trí và hướng như đã nhận diện."),
-        optimized_english_prompt: stringField("Final renderer-ready English analytical prose in several compact paragraphs. It must describe every detected room with position, boundary and adjacency; every detected furniture item grouped by room with position and orientation; the exact camera and source orientation; selected style, materials, lighting and photoreal PBR quality; and explicit prohibitions against adding, deleting, splitting, merging, relabeling, relocating or resizing rooms and adding, deleting, replacing or moving furniture."),
+        optimized_english_prompt: stringField("Final renderer-ready English analytical prose in several compact paragraphs. It must describe every detected room with position, boundary and adjacency; every detected furniture item grouped by room with position and orientation; the exact camera and source orientation; selected style, materials, lighting and photoreal PBR quality; and explicit prohibitions against adding, deleting, splitting, merging, relabeling, relocating or resizing rooms and adding, deleting, replacing or moving furniture. Never summarize the inventory with etc., other furniture, a dining set, or a furnished room."),
         prompt_phu_dinh: stringField("Các lỗi cần tránh, bao gồm: rotated layout, flipped plan, mirrored orientation, wrong furniture placement, misidentified room function, missing furniture, added furniture not in plan, rotated floor plan."),
       },
       [
@@ -416,6 +426,8 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
         "room_manifest",
         "room_count_validation",
         "nhan_dien_noi_that_theo_phong",
+        "furniture_manifest",
+        "furniture_count_validation",
         "logic_phong_cach_va_cong_trinh",
         "thiet_lap_anh_sang_va_studio",
         "prompt_tieng_viet_toi_uu",
