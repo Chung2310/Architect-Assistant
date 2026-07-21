@@ -25,3 +25,22 @@ assert.match(negative, /cartoon/i);
 assert.match(negative, /dollhouse/i);
 assert.match(negative, /toy-like/i);
 assert.match(negative, /plastic materials/i);
+assert.match(cleanup, /FURNITURE PREFLIGHT/i);
+assert.match(cleanup, /movable furniture.*fixed fixture.*built-in/is);
+assert.match(cleanup, /exactly once/i);
+assert.match(cleanup, /furniture manifest total/i);
+assert.match(negative, /missing furniture/i);
+assert.match(negative, /missing fixed fixture/i);
+assert.match(negative, /grouped repeated furniture/i);
+
+const otherCleanup = appendFloorplanCleanupDirective(
+  "Floorplan to 3D",
+  "base",
+);
+assert.doesNotMatch(otherCleanup, /FURNITURE PREFLIGHT/i);
+
+const otherNegative = appendFloorplanNegativePrompt(
+  "Floorplan to 3D",
+  "base",
+);
+assert.doesNotMatch(otherNegative, /grouped repeated furniture/i);
