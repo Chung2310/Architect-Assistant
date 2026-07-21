@@ -52,3 +52,37 @@ assert.doesNotMatch(groundedPrompt, /Vietnamese legacy prompt/);
 
 const legacyPrompt = composeRenderPrompt("Render Nội Thất", bilingualAnalysis);
 assert.match(legacyPrompt, /Vietnamese legacy prompt/);
+
+const completeInventory = {
+  ...bilingualAnalysis,
+  furniture_manifest: [
+    "Bedroom 1 | double bed | quantity 1 | center-left | headboard north | rectangular CAD footprint",
+    "Bathroom | toilet | quantity 1 | lower-right corner | faces west | WC CAD symbol",
+    "Kitchen | sink | quantity 1 | north counter | faces south | basin CAD symbol",
+  ],
+  furniture_count_validation:
+    "Bedroom 1: 1 double bed; Bathroom: 1 toilet; Kitchen: 1 sink; grand total 3; manifest total 3; no omissions or duplicates.",
+};
+
+const inventoryPrompt = composeRenderPrompt(
+  "Floorplan to 3D Floorplan",
+  completeInventory,
+);
+assert.match(inventoryPrompt, /IMMUTABLE FURNITURE MANIFEST/);
+assert.match(inventoryPrompt, /Bedroom 1 \| double bed \| quantity 1/);
+assert.match(inventoryPrompt, /Bathroom \| toilet \| quantity 1/);
+assert.match(inventoryPrompt, /Kitchen \| sink \| quantity 1/);
+assert.match(inventoryPrompt, /EXACT FURNITURE COUNT.*grand total 3/is);
+assert.match(
+  inventoryPrompt,
+  /Never omit, duplicate, group, replace, relocate, or rotate/i,
+);
+
+const unrelatedInventoryPrompt = composeRenderPrompt(
+  "Floorplan to 3D",
+  completeInventory,
+);
+assert.doesNotMatch(
+  unrelatedInventoryPrompt,
+  /IMMUTABLE FURNITURE MANIFEST/,
+);

@@ -38,6 +38,8 @@ export function composeRenderPrompt(
     sections.push(photorealPbrDirective);
     const manifest = getStringList(resultObject.room_manifest);
     const roomCount = getString(resultObject.room_count_validation);
+    const furnitureManifest = getStringList(resultObject.furniture_manifest);
+    const furnitureCount = getString(resultObject.furniture_count_validation);
     const supportingAnalysis = [
       getString(resultObject.phan_tich_huong_ban_ve),
       getString(resultObject.phan_tich_phong_va_chuc_nang),
@@ -56,6 +58,17 @@ export function composeRenderPrompt(
         "Every labeled room must remain inside its original enclosing walls and retain its original adjacency.",
         "Room labels override furniture-based guesses. Do not create a fourth bedroom or infer any extra room not listed in this manifest.",
         "Only materials, colors, lighting, and 3D presentation may change.",
+      ].filter(Boolean).join("\n"));
+    }
+
+    if (furnitureManifest.length > 0 || furnitureCount) {
+      sections.push([
+        "IMMUTABLE FURNITURE MANIFEST — SOURCE OF TRUTH:",
+        ...furnitureManifest.map((item, index) => `${index + 1}. ${item}`),
+        furnitureCount ? `EXACT FURNITURE COUNT: ${furnitureCount}` : "",
+        "Render every manifest entry exactly once, including all fixed fixtures and built-ins.",
+        "Never omit, duplicate, group, replace, relocate, or rotate any manifest item.",
+        "Do not summarize items as etc., other furniture, a dining set, or a furnished room.",
       ].filter(Boolean).join("\n"));
     }
   }
