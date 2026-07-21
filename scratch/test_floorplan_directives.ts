@@ -44,3 +44,14 @@ const otherNegative = appendFloorplanNegativePrompt(
   "base",
 );
 assert.doesNotMatch(otherNegative, /grouped repeated furniture/i);
+assert.match(cleanup, /SINGLE MODEL PREFLIGHT/i);
+assert.match(cleanup, /exactly one unified 3D floorplan model/i);
+assert.match(cleanup, /only subject on the canvas/i);
+assert.match(cleanup, /merge.*detached.*before generating/is);
+assert.match(negative, /second floorplan/i);
+assert.match(negative, /duplicate model/i);
+assert.match(negative, /detached plan fragment/i);
+assert.match(negative, /side-by-side models/i);
+assert.match(negative, /split-screen/i);
+assert.doesNotMatch(otherCleanup, /SINGLE MODEL PREFLIGHT/i);
+assert.doesNotMatch(otherNegative, /second floorplan/i);

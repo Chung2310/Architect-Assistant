@@ -86,6 +86,8 @@ export function appendFloorplanCleanupDirective(type: string, prompt: string) {
     " IMPORTANT: chi giu bo cuc khong gian, tuong, cua, cua so, cau thang va vi tri noi that theo ban ve. INPUT ANALYSIS ORDER (MANDATORY): First read and OCR every room-name label in the source floorplan. Match each label to its exact enclosed wall boundary, written area, position and adjacency. Room labels override furniture-based guesses. Build and lock the immutable room manifest before rendering. ROOM PREFLIGHT (MANDATORY): compare the exact room count by function against the manifest; verify every room remains inside the same enclosing walls and has the same neighbors. Never split, never merge, never relabel, never relocate, never add and never delete a room. If any count, function, boundary or adjacency differs, correct the internal plan before generating the image. VISUAL QUALITY (MANDATORY): high-end photorealistic architectural visualization using true-scale PBR materials with physically correct roughness, reflection, normal detail and texture scale; physically plausible natural lighting, neutral exposure and white balance, soft contact shadows, restrained ambient occlusion, realistic indirect bounce light and subtle surface imperfections. Only after this semantic validation is complete, remove all visible text, room-label glyphs, dimensions and CAD annotations from the final image. Tuyet doi khong duoc them, bot, doi cho, tach, noi, mo rong, thu hep, xoay hoac tai cau truc bat ky thanh phan kien truc nao so voi ban ve goc. Anh cuoi phai la phoi canh 3D sach, khong con annotation hay text ky thuat.";
   const furniturePreflight =
     " FURNITURE PREFLIGHT (MANDATORY): Read the immutable furniture manifest and verify every movable furniture item, fixed fixture, and built-in appears exactly once in its specified room, position, and orientation. Compare counts by room and item type against furniture_count_validation and confirm the rendered furniture total equals the furniture manifest total. Correct every missing, duplicated, grouped, replaced, relocated, or rotated item before generating the image.";
+  const singleModelPreflight =
+    " SINGLE MODEL PREFLIGHT (MANDATORY): The final image must contain exactly one unified 3D floorplan model, centered as the only subject on the canvas. Verify all rooms, stairs, corridors, walls, and wings remain joined. If any duplicate, second model, or detached fragment exists, remove the duplicate or merge the detached region back into the one primary model before generating the image.";
 
   let result = prompt;
   if (!result.includes(cleanupDirective.trim())) {
@@ -97,6 +99,13 @@ export function appendFloorplanCleanupDirective(type: string, prompt: string) {
     !result.includes(furniturePreflight.trim())
   ) {
     result += furniturePreflight;
+  }
+
+  if (
+    normalizedType === "floorplan to 3d floorplan" &&
+    !result.includes(singleModelPreflight.trim())
+  ) {
+    result += singleModelPreflight;
   }
 
   return result;
@@ -115,6 +124,8 @@ export function appendFloorplanNegativePrompt(type: string, prompt: string) {
     " Negative prompt: do not ignore room labels during input analysis, extra room, missing room, split room, merged rooms, changed room function, relabeled room, relocated room, wrong room count, furniture overriding room label, cartoon, illustration, anime, dollhouse, toy-like, miniature model, plastic materials, game asset, low-poly, stylized CGI, pastel toy palette, exaggerated textures, fake lighting, flat shading, uniform materials, oversaturated colors, no room-label glyphs in the final image, no dimensions, no dimension lines, no annotations, no arrows, no hatch patterns, no CAD lines, no dashed lines, no blueprint look, no technical drawing overlay, no title block, no watermark, no 2D graphic remnants, no missing walls, no extra walls, no shifted doors, no shifted windows, no altered room boundaries, no changed circulation, no invented architectural elements, no deleted architectural elements.";
   const furnitureNegativePrompt =
     " Furniture negative prompt: missing furniture, missing fixed fixture, missing built-in, duplicated furniture, grouped repeated furniture, replaced furniture, relocated furniture, rotated furniture, furniture count mismatch.";
+  const singleModelNegativePrompt =
+    " Single-model negative prompt: second floorplan, duplicate floorplan, duplicate model, detached plan fragment, floating plan component, side-by-side models, split-screen, inset plan, comparison layout, before-and-after layout, presentation board, exploded arrangement, alternate design, auxiliary diagram.";
 
   let result = prompt;
   if (!result.includes(negativePrompt.trim())) {
@@ -126,6 +137,13 @@ export function appendFloorplanNegativePrompt(type: string, prompt: string) {
     !result.includes(furnitureNegativePrompt.trim())
   ) {
     result += furnitureNegativePrompt;
+  }
+
+  if (
+    normalizedType === "floorplan to 3d floorplan" &&
+    !result.includes(singleModelNegativePrompt.trim())
+  ) {
+    result += singleModelNegativePrompt;
   }
 
   return result;
