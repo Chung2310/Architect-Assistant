@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "motion/react";
 import { Icon } from "../Icon";
 import { toast } from "sonner";
@@ -6,6 +6,8 @@ import { useAuth } from "../../context/useAuth";
 import { apiClient, ApiResponse } from "../../services/apiClient";
 import { ImageLibraryModal } from "./ImageLibraryModal";
 import { getAIClient, safeJsonParse, checkUserCredits, generateContentWithRetry, getImageBase64, handleDownload, cacheImage, uploadMedia } from "../../lib/renderUtils";
+import { composeRenderPrompt } from "./floorplanPrompt";
+import { getInitialRenderResultId, upsertRenderJob } from "./renderResultState";
 import { convertPdfToImage } from "../../lib/pdfUtils";
 
 interface RenderJob {
@@ -101,7 +103,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
   const [isDraggingRef, setIsDraggingRef] = useState(false);
 
   const [selectedModel, setSelectedModel] = useState(
-    "openrouter-nano-banana-2",
+    "nano-banana-2",
   );
   const [selectedResolution, setSelectedResolution] = useState("1K");
 
@@ -156,10 +158,10 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
       // Set defaults based on activeSubTab
       if (activeSubTab === "Render Ngoại Thất") {
         setStyle("Ảnh chụp thực tế công trình");
-        setSelectedModel("openrouter-nano-banana-2");
+        setSelectedModel("nano-banana-2");
       } else if (activeSubTab === "Render Nội Thất") {
         setStyle("Ảnh chụp thực tế nội thất");
-        setSelectedModel("openrouter-nano-banana-2");
+        setSelectedModel("nano-banana-2");
       } else if (activeSubTab === "Render VR 360") {
         setStyle("Ảnh Panorama 360 độ");
         setAspectRatio("21:9 (Panorama)");
@@ -167,7 +169,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
       } else if (activeSubTab === "Floorplan to 3D") {
         setStyle("Phối cảnh thực tế");
         setCameraAngleStyle("Ảnh cầm tay ngang tầm mắt");
-        setSelectedModel("openrouter-nano-banana-2");
+        setSelectedModel("nano-banana-2");
       } else if (activeSubTab === "Floorplan to 3D Floorplan") {
         setStyle("Ảnh phối cảnh 3D mặt bằng");
         setInteriorStyle("");
@@ -177,7 +179,7 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
         setSelectedModel("openrouter-nano-banana-2");
       } else if (activeSubTab === "Masterplan to 3D") {
         setStyle("Ảnh phối cảnh 3D tổng thể");
-        setSelectedModel("openrouter-nano-banana-2");
+        setSelectedModel("nano-banana-2");
       }
     }, 0);
   }, [activeSubTab]);
@@ -346,44 +348,58 @@ export const RenderTabContent: React.FC<RenderTabContentProps> = ({ isAdmin: _is
 
   const { user, socket } = useAuth();
 
+  const fetchJobs = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await apiClient.get<ApiResponse<RenderJob[]>>("/api/v1/render-jobs?limit=50");
+      if (res.success && Array.isArray(res.data)) {
+        setRenderJobs(res.data);
+      }
+    } catch (e) {
+      console.error("Error fetching render jobs:", e);
+    }
+  }, [user]);
+
   useEffect(() => {
     if (!user) {
       setTimeout(() => setRenderJobs([]), 0);
       return;
     }
 
-    const fetchJobs = async () => {
-      try {
-        const res = await apiClient.get<ApiResponse<RenderJob[]>>("/api/v1/render-jobs?limit=50");
-        if (res.success && Array.isArray(res.data)) {
-          setRenderJobs(res.data);
-        }
-      } catch (e) {
-        console.error("Error fetching render jobs:", e);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchJobs();
+
+    // Refetch when the tab becomes active/visible again or window gains focus
+    const handleRefetch = () => {
+      if (document.visibilityState === "visible") {
+        fetchJobs();
       }
     };
-    fetchJobs();
-  }, [user]);
+
+    window.addEventListener("focus", fetchJobs);
+    document.addEventListener("visibilitychange", handleRefetch);
+
+    return () => {
+      window.removeEventListener("focus", fetchJobs);
+      document.removeEventListener("visibilitychange", handleRefetch);
+    };
+  }, [user, fetchJobs]);
 
   useEffect(() => {
     if (!socket) return;
 
+    socket.on("connect", fetchJobs);
+
     const handleJobUpdate = (updatedJob: RenderJob) => {
-      setRenderJobs((prevJobs) => {
-        const exists = prevJobs.some(j => (j._id || j.id) === (updatedJob._id || updatedJob.id));
-        if (exists) {
-          return prevJobs.map(j => (j._id || j.id) === (updatedJob._id || updatedJob.id) ? updatedJob : j);
-        } else {
-          return [updatedJob, ...prevJobs];
-        }
-      });
+      setRenderJobs((prevJobs) => upsertRenderJob(prevJobs, updatedJob));
     };
 
     socket.on("renderJobUpdated", handleJobUpdate);
     return () => {
+      socket.off("connect", fetchJobs);
       socket.off("renderJobUpdated", handleJobUpdate);
     };
-  }, [socket]);
+  }, [socket, fetchJobs]);
 
   const handleGeneratePrompt = async () => {
     setIsGeneratingPrompt(true);
@@ -528,7 +544,7 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
 - Quy tắc làm sạch bản vẽ: phải xóa hoàn toàn chữ, nhãn phòng, số đo, hatch, nét CAD, mũi tên, khung tên và mọi dấu vết 2D không thuộc mô hình 3D cuối.
 - Bố cục: giữ nguyên tuyệt đối vị trí tường, cửa, phòng và đồ đạc theo bản vẽ; không thêm cửa, không dịch chuyển hay mở rộng không gian.
 - Nếu tủ áo nằm sau bức tường, tủ phải ở trong phòng tương ứng và KHÔNG được đặt xuyên qua tường.
-- Yêu cầu màu sắc: mô hình 3D axonometric phải được tô màu sinh động và đầy đủ vật liệu (ví dụ: sàn gỗ ấm hoặc gạch men màu, tường sơn màu ấm/sáng/kem, đồ nội thất có chất liệu và màu sắc rõ ràng). Tuyệt đối không để mô hình đất sét trắng (white clay model) hay đơn sắc trắng toàn bộ.
+- Yêu cầu hình ảnh: photorealistic architectural visualization cao cấp, true-scale PBR materials, roughness/reflection/normal map đúng vật lý, texture không lặp và đúng tỷ lệ, ánh sáng tự nhiên theo vật lý, white balance trung tính, contact shadow mềm và indirect bounce light thực. Bề mặt có sai khác nhỏ tự nhiên, không bóng nhựa, không pastel đồ chơi. Cấm cartoon, illustration, anime, dollhouse, toy-like, miniature model, game asset, low-poly và stylized CGI.
 `
                 : `
 - Style ảnh: ${style || "Không có"}
@@ -588,28 +604,12 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
             ? (result as Record<string, unknown>)
             : null;
 
-        const finalPrompt =
-          (typeof resultObject?.prompt_tieng_viet_toi_uu === "string"
-            ? resultObject.prompt_tieng_viet_toi_uu
-            : "") ||
-          (typeof resultObject?.optimized_english_prompt === "string"
-            ? resultObject.optimized_english_prompt
-            : "");
+        const composedPrompt = resultObject
+          ? composeRenderPrompt(activeSubTab, resultObject)
+          : "";
 
-        const negativePrompt =
-          (typeof resultObject?.prompt_phu_dinh === "string"
-            ? resultObject.prompt_phu_dinh
-            : "") ||
-          (typeof resultObject?.negative_prompt === "string"
-            ? resultObject.negative_prompt
-            : "");
-
-        if (finalPrompt) {
-          setPrompt(
-            negativePrompt
-              ? `${finalPrompt}\n\nNegative prompt: ${negativePrompt}`
-              : finalPrompt,
-          );
+        if (composedPrompt) {
+          setPrompt(composedPrompt);
         } else if (rawText && rawText.trim() && rawText.trim() !== "{}") {
           setPrompt(rawText);
         } else {
@@ -701,6 +701,9 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
       if (!jobRes.success || !jobRes.data) {
         throw new Error("Không thể khởi tạo render job trên server.");
       }
+
+      setRenderJobs((prevJobs) => upsertRenderJob(prevJobs, jobRes.data));
+      setSelectedResultId(getInitialRenderResultId(jobRes.data));
 
       if (jobRes.data && jobRes.data.status === "completed") {
         toast.success("Kết xuất thành công bằng Gemini!");
@@ -1266,7 +1269,15 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                       <select
                         className="w-full bg-surface-container-low/50 border border-outline-variant/20 focus:border-primary rounded-lg p-3 text-sm text-on-surface appearance-none outline-none cursor-pointer pr-10 text-ellipsis overflow-hidden whitespace-nowrap"
                         value={cameraAngleStyle}
-                        onChange={(e) => setCameraAngleStyle(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCameraAngleStyle(val);
+                          if (val === "Top-down View") {
+                            setSelectedModel("openrouter-nano-banana-2");
+                          } else if (val === "Phối cảnh Trục đo (Isometric)") {
+                            setSelectedModel("nano-banana-pro");
+                          }
+                        }}
                       >
                         <option>Top-down View</option>
                         <option>Phối cảnh Trục đo (Isometric)</option>

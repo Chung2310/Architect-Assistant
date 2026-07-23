@@ -121,7 +121,7 @@ function buildFloorplanCleanupDirective(mode: "space" | "axonometric") {
     "Tuyệt đối không được thêm, bớt, đổi chỗ, tách, nối, mở rộng, thu hẹp hay xoay bất kỳ thành phần kiến trúc nào so với bản vẽ gốc.",
     "Mọi thành phần kiến trúc phải khóa cùng theo bản vẽ: tường, cột, vách, cửa đi, cửa sổ, lối thông tầng, lối đi, trục giao thông, lối thoát hiểm, WC, hộp kỹ thuật, sàn trong và ranh giới từng phòng.",
     "Phải xóa hoàn toàn chữ, nhãn phòng, số đo kích thước, hatch, ký hiệu CAD, đường tim, nét đứt, ký hiệu mở cửa, khung bản vẽ và mọi dấu vết đồ họa 2D không thuộc vật thể 3D.",
-    "Không được để ảnh cuối trong giống bản vẽ 2D được tô màu; phải là mô hình 3D có màu sắc sinh động và vật liệu rõ ràng, sạch, rõ, không còn annotation.",
+    "Kết quả phải là photorealistic architectural visualization cao cấp, không phải bản vẽ tô màu, minh họa hay mô hình đồ chơi.",
   ].join(" ");
 }
 
@@ -174,6 +174,22 @@ function buildFloorplanNegativePrompt(mode: "space" | "axonometric") {
     "raw plaster",
     "all-white rendering",
     "untextured model",
+    "cartoon",
+    "illustration",
+    "anime",
+    "dollhouse",
+    "toy-like",
+    "miniature model",
+    "plastic materials",
+    "game asset",
+    "low-poly",
+    "stylized CGI",
+    "pastel toy palette",
+    "exaggerated textures",
+    "fake lighting",
+    "flat shading",
+    "uniform materials",
+    "oversaturated colors",
   ].join(", ");
 }
 
@@ -349,7 +365,7 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
       ],
     );
   } else if (activeSubTabKey === "floorplan to 3d floorplan") {
-    textPrompt += `Loại ảnh: floorplan 2D kỹ thuật.\nStyle công trình: ${buildingStyle}\nPhong cách: ${interiorStyle}\nKhông được biến floorplan thành ảnh nội thất thông thường.\nYêu cầu làm sạch bản vẽ: ${floorplanAxonometricCleanupDirective}\nYêu cầu màu sắc: Mô hình phối cảnh 3D axonometric phải có màu sắc chân thực, tự nhiên và hài hòa, đầy đủ vật liệu với bề mặt vật lý thực tế (như gỗ tự nhiên vân mịn, vải dệt, da thật, đá tự nhiên, gạch lát có vân, tường sơn màu pastel ấm/sáng/kem dịu mát), tuyệt đối không dùng màu sắc quá rực rỡ hay sặc sỡ giả tạo, và tuyệt đối không để màu trắng toàn bộ (clay model) hay đơn sắc monochrome.\nYêu cầu phân tích phòng: BẮT BUỘC nhận diện tất cả các nhãn chữ chỉ tên phòng hoặc công năng viết trên bản vẽ (ví dụ: Phòng khách, Phòng ngủ, WC, Bếp, Thang...). Hãy mô tả rõ bố cục và vị trí các phòng này trong prompt để mô hình sinh ảnh dựng đúng công năng phòng.\nQuy tắc bảo toàn hướng bản vẽ: TUYỆT ĐỐI KHÔNG được xoay (rotate), lật (flip) hay phản chiếu (mirror) bố cục mặt bằng. Hướng của bản vẽ 2D gốc phải được giữ nguyên 100% trong ảnh 3D output — phía trên bản vẽ = phía trên ảnh output, phía phải bản vẽ = phía phải ảnh output. Không tự ý xoay bố cục để 'nhìn đẹp hơn' hay 'phù hợp với góc isometric'.\nYêu cầu nhận diện nội thất chặt chẽ: BẮT BUỘC nhận diện và liệt kê từng ký hiệu đồ nội thất/thiết bị trong từng phòng theo hình dạng ký hiệu CAD tiêu chuẩn trong bản vẽ (hình chữ nhật dài tựa tường = giường; hình cung tròn cạnh tường = cửa xoay; hình chữ nhật nhỏ trong WC = toilet/lavabo; hình bán cầu/oval lớn = bồn tắm; hình oval/chữ nhật bo cạnh giữa phòng = bàn ăn; hình chữ L/U = sofa góc; hình vuông nhỏ quanh bàn = ghế; hình chữ nhật song song tựa tường = kệ/tủ). Trong ảnh 3D output, từng món đồ PHẢI xuất hiện đúng loại, đúng vị trí và đúng hướng như trong bản vẽ 2D.\n`;
+    textPrompt += `Loại ảnh: floorplan 2D kỹ thuật.\nStyle công trình: ${buildingStyle}\nPhong cách: ${interiorStyle}\nKhông được biến floorplan thành ảnh nội thất thông thường.\nYêu cầu làm sạch bản vẽ: ${floorplanAxonometricCleanupDirective}\nPHOTOREAL PBR BẮT BUỘC: Create a high-end photorealistic architectural visualization. Use true-scale PBR materials with correct roughness, reflection, normal/bump detail and non-repeating textures. Use physically plausible natural lighting, neutral exposure and white balance, soft contact shadows, restrained ambient occlusion and realistic indirect bounce light. Bề mặt có sai khác nhỏ tự nhiên, không quá sạch hoặc bóng nhựa.\nROOM MANIFEST BẮT BUỘC: Đọc/OCR từng nhãn phòng, xác định ranh giới tường khép kín chứa nhãn, vị trí, diện tích ghi trên bản vẽ và các phòng tiếp giáp. Room labels are the source of truth and override furniture-based guesses. Tạo exact room count theo từng công năng. Never split, never merge, never relabel, never relocate, never add and never delete any labeled room. Prompt render cuối phải nhúng nguyên room_manifest và room_count_validation.\nQuy tắc bảo toàn hướng: không rotate, flip hoặc mirror; trên, dưới, trái, phải phải giữ nguyên.\nNội thất phải được map vào phòng sau khi room manifest đã khóa; không được dùng nội thất để đổi công năng ghi trên nhãn.\n`;
     if (referenceImages.length > 0) {
       textPrompt += `Quy tắc ảnh tham khảo nội thất: Giữ nguyên tuyệt đối vị trí, loại và sắp xếp của từng món đồ nội thất có trong ảnh tham khảo. TUYỆT ĐỐI không di chuyển, xoay, thêm hoặc bỏ bất kỳ món đồ nào. Chỉ được áp dụng phong cách hoàn thiện bề mặt từ ảnh tham khảo lên vị trí đồ vật đã cố định theo bản vẽ.\n`;
     }
@@ -363,31 +379,62 @@ function buildRenderTabPrompt(input: Record<string, unknown>): PromptTemplatePar
       "BẮT BUỘC NHẬN DIỆN NỘI THẤT CHẶT CHẼ: Phân tích và map từng ký hiệu đồ nội thất trong bản vẽ 2D theo chuẩn ký hiệu CAD kiến trúc: hình chữ nhật dài (≥1.5m) tựa tường = giường (single/double); hình cung tròn cạnh tường = cửa xoay (door swing); hình chữ nhật nhỏ tựa tường trong phòng vệ sinh = toilet; hình chữ nhật nhỏ hơn ở góc = lavabo; hình bán cầu/oval lớn = bồn tắm; hình oval/chữ nhật bo cạnh trung tâm phòng = bàn ăn; hình chữ L/U với đệm = sofa góc; hình vuông/chữ nhật nhỏ quanh bàn = ghế riêng lẻ; hình chữ nhật dài song song tựa tường = kệ sách/tủ quần áo/tủ bếp; hình vuông nhỏ với vòng tròn = bếp hob. Mỗi ký hiệu PHẢI được map đúng sang đồ vật 3D và đặt đúng vị trí, đúng hướng xoay trong output.",
       "BẮT BUỘC TUÂN THỦ GÓC CHỤP: Bạn PHẢI tuân thủ tuyệt đối 'Style góc chụp' (cameraAngleStyle) được chỉ định. Nếu là 'Top-down View', prompt BẮT BUỘC phải mô tả góc nhìn thẳng đứng trực diện từ trên xuống (flat 3D floor plan layout, straight top-down view, 90-degree bird's-eye view, no perspective distortion of walls, looking directly down at the floor, orthographic layout view). Nếu là 'Phối cảnh Trực đo (Isometric)', prompt BẮT BUỘC phải mô tả phối cảnh trục đo 3D (3D isometric cutaway perspective, axonometric cutaway view, tilted angle view). Tuyệt đối không được nhầm lẫn giữa hai góc nhìn này.",
       "BẮT BUỘC NHẬN DIỆN PHÒNG: Hãy đọc kỹ ảnh mặt bằng, tìm và nhận diện đúng tất cả nhãn chữ chỉ tên/công năng phòng. Mô tả chi tiết vị trí từng khu vực chức năng trong prompt cuối cùng. Tuyệt đối không được tự ý đổi công năng phòng (không biến WC thành phòng ngủ, không vẽ nhầm phòng ngủ thành phòng khách).",
+      "ROOM MANIFEST IS IMMUTABLE: Room labels are the source of truth. Produce one manifest entry per labeled enclosed space, preserve its exact label, boundary, position, adjacency and written area, then calculate the exact room count by function. Never split a room, never merge rooms, never relabel a room, never relocate a room, and never add or delete a room. Furniture symbols may refine furniture only; they must never override a room label. Embed the complete manifest and count validation verbatim in the final render prompt.",
+      "VISUAL QUALITY IS PHOTOREAL PBR: The final prompt must demand a high-end photorealistic architectural visualization with true-scale PBR materials and physically plausible natural lighting. Preserve realistic roughness, reflections, texture scale, contact shadows, indirect bounce light and subtle surface imperfections. Explicitly reject cartoon, illustration, anime, dollhouse, toy-like, miniature, plastic, low-poly and stylized CGI aesthetics.",
       "Mặt bằng là sự thật tuyệt đối: tường, cửa, thang, vách và nhãn phòng phải được tôn trọng. Không được phép bổ sung, xóa bỏ hoặc sửa đổi bất kỳ thành phần kiến trúc nào không có trong bản vẽ; nếu không chắc, phải giữ nguyên thay vì tự bịa.",
       "Nhãn phòng và ký hiệu chỉ dùng để suy luận bố trí, không được xuất hiện lại trong ảnh kết quả.",
       "Mô hình 3D axonometric phải được tô màu chân thực, tự nhiên và chính xác cho sàn, tường, và đồ nội thất theo phong cách thiết kế đã chọn. KHÔNG được tạo mô hình đất sét trắng (white clay model) hay đơn sắc trắng.",
       referenceImages.length > 0
         ? "Khi có ảnh tham khảo nội thất: từng món đồ tham khảo chỉ được dùng để khóa đúng chủng loại, hướng và vị trí tương ứng theo mặt bằng; không tự ý thêm bớt hay di chuyển."
         : "Nếu không có ảnh tham khảo nội thất, bố trí đồ đạc phải bám logic mặt bằng và chỉ dựng những gì suy ra chắc chắn từ bản vẽ.",
-      "Tất cả đầu ra bằng tiếng Việt, ưu tiên prompt cuối dùng được ngay.",
+      "FURNITURE COVERAGE ORDER: Process every enclosed room from top-to-bottom and left-to-right. Complete both passes for one room before moving to the next room.",
+      "PASS A — MOVABLE FURNITURE: Inventory every visible bed, nightstand, sofa, armchair, table, individual chair, desk, movable cabinet, shelf, bench, and other recognizable loose object.",
+      "PASS B — FIXED FIXTURES AND BUILT-INS: Inventory every visible toilet, lavatory, bathtub, shower, kitchen hob, sink, counter, built-in kitchen cabinet, wardrobe, and other recognizable fixed item.",
+      "COVERAGE AUDIT: Inspect every footprint or CAD symbol that is not a wall, opening, text, dimension, or annotation and classify it exactly once. Correct every omission and duplicate before composing the final prompt. Never collapse repeated items into a set; list each chair and every other repeated object separately.",
+      "SINGLE MODEL OUTPUT — EXACTLY ONE UNIFIED 3D FLOORPLAN MODEL: Render the complete reconstruction as one centered model and the only subject on the canvas. All rooms, stairs, corridors, walls, and wings must remain joined in their original architectural relationship.",
+      "Never create a second floorplan, duplicate model, detached fragment, floating plan component, side-by-side layout, split screen, inset, comparison, before-and-after view, presentation board, exploded arrangement, alternate design, or auxiliary diagram.",
+      "Treat sheet borders, title blocks, revision tables, signatures, company logos, dimensions, grids, section markers, annotations, and surrounding white space only as technical-document graphics. Ignore them during reconstruction and never turn them into another subject or panel.",
+      "LAYER 1 — LOCKED INVENTORY: Before writing the render prompt, inspect the source floorplan and lock one evidence-grounded inventory containing every enclosed room, its readable label or inferred function, boundary, relative position, adjacency, openings, circulation, and every visible furniture item mapped to its enclosing room with position and orientation.",
+      "LAYER 2 — CONSISTENCY VERIFICATION: Compare the proposed final description against the locked inventory. Correct every mismatch in room count, function, boundary, adjacency, orientation, opening, circulation, furniture type, furniture position, and furniture direction before emitting the final prompt.",
+      "When a label or CAD symbol is unclear, choose the single most plausible interpretation using geometry, CAD conventions, nearby objects, and spatial context. A guess still requires visible supporting evidence and must never create an additional unsupported room or furniture item.",
+      "Write the final render prompt as compact professional English analytical prose in several coherent paragraphs. It must describe every detected room and every detected furniture item, then state the camera, styling, materials, lighting, PBR quality, and immutable preservation constraints.",
+      "Return only the selected interpretation. Do not expose chain-of-thought, alternative guesses, confidence scores, JSON field names, or internal verification notes in the final prompt.",
     ].join(" ");
     responseSchema = objectSchema(
       {
         phan_tich_huong_ban_ve: stringField("XÁC NHẬN HƯỚNG BẮT BUỘC: Mô tả chính xác orientation của bản vẽ 2D đầu vào (góc trên-trái là khu vực nào, góc trên-phải là khu vực nào). Ghi rõ cam kết: hướng này SẼ ĐƯỢC GIỮ NGUYÊN trong ảnh output, không xoay, không lật."),
         phan_tich_phong_va_chuc_nang: stringField("Nhận diện và liệt kê tất cả các phòng/khu vực chức năng kèm nhãn tên và vị trí tương ứng trong bản vẽ (góc nào, cạnh nào, tiếp giáp phòng nào)."),
+        room_manifest: {
+          type: "ARRAY",
+          description: "Danh sách bất biến, mỗi phần tử cho đúng một không gian có nhãn: tên nhãn nguyên văn | diện tích ghi trên bản vẽ | vị trí | ranh giới | tiếp giáp. Không chia, gộp, đổi tên hoặc dịch phòng.",
+          items: { type: "STRING" },
+        },
+        room_count_validation: stringField("Exact room count theo từng nhãn/công năng; xác nhận tổng số khớp với room_manifest và không có phòng tự sinh."),
         nhan_dien_noi_that_theo_phong: stringField("LIỆT KÊ TỪNG MÓN ĐỒ NỘI THẤT theo từng phòng: tên đồ vật được map từ ký hiệu CAD, vị trí trong phòng (góc nào, tựa tường nào), hướng đặt (xoay về phía nào), kích thước ước tính. Đây là ràng buộc cứng cho vị trí và loại đồ vật trong prompt cuối."),
+        furniture_manifest: {
+          type: "ARRAY",
+          description: "Immutable inventory with exactly one visible item per entry, formatted as room | normalized item type | quantity 1 | relative position | orientation | visible CAD evidence. Include movable furniture, fixed fixtures and built-ins. Never group repeated items.",
+          items: { type: "STRING" },
+        },
+        furniture_count_validation: stringField("Exact furniture and fixture counts by room and item type; confirm the grand total matches furniture_manifest with no omitted or duplicate CAD footprint."),
         logic_phong_cach_va_cong_trinh: stringField("Tổng hợp phong cách và logic công trình."),
         thiet_lap_anh_sang_va_studio: stringField("Thiết lập ánh sáng và cách trình bày."),
         prompt_tieng_viet_toi_uu: stringField("Prompt render cuối cùng. PHẢI mô tả rõ: (1) xác nhận hướng bố cục không thay đổi so với bản vẽ gốc, (2) vị trí cụ thể từng phòng, (3) từng món đồ nội thất đúng vị trí và hướng như đã nhận diện."),
+        optimized_english_prompt: stringField("Final renderer-ready English analytical prose in several compact paragraphs. It must describe every detected room with position, boundary and adjacency; every detected furniture item grouped by room with position and orientation; the exact camera and source orientation; selected style, materials, lighting and photoreal PBR quality; and explicit prohibitions against adding, deleting, splitting, merging, relabeling, relocating or resizing rooms and adding, deleting, replacing or moving furniture. Never summarize the inventory with etc., other furniture, a dining set, or a furnished room. The prompt must require exactly one centered unified 3D floorplan model as the only canvas subject, with every architectural region joined and no second, duplicate, detached, inset, or side-by-side model."),
         prompt_phu_dinh: stringField("Các lỗi cần tránh, bao gồm: rotated layout, flipped plan, mirrored orientation, wrong furniture placement, misidentified room function, missing furniture, added furniture not in plan, rotated floor plan."),
       },
       [
         "phan_tich_huong_ban_ve",
         "phan_tich_phong_va_chuc_nang",
+        "room_manifest",
+        "room_count_validation",
         "nhan_dien_noi_that_theo_phong",
+        "furniture_manifest",
+        "furniture_count_validation",
         "logic_phong_cach_va_cong_trinh",
         "thiet_lap_anh_sang_va_studio",
         "prompt_tieng_viet_toi_uu",
+        "optimized_english_prompt",
         "prompt_phu_dinh",
       ],
     );
