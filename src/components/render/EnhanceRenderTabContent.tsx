@@ -335,7 +335,7 @@ export const EnhanceRenderTabContent: React.FC = () => {
       }
     }
 
-    setInputImages((prev) => [...prev, ...newImageUrls]);
+    setInputImages(newImageUrls.slice(0, 1));
     clearInterval(progressInterval);
     setUploadProgress(100);
     setTimeout(() => {
@@ -675,35 +675,32 @@ ${
                 ref={fileInputRef}
                 className="hidden"
                 accept="image/png, image/jpeg, image/webp"
-                multiple
                 onChange={handleImageUpload}
               />
 
               {inputImages.length > 0 ? (
-                <div className="absolute inset-0 p-2 grid grid-cols-2 gap-2 bg-surface-container-lowest overflow-y-auto">
-                  {inputImages.map((url, index) => (
-                    <div
-                      key={index}
-                      className="relative group rounded-lg overflow-hidden border border-outline-variant/20"
-                    >
-                      <img
-                        src={url}
-                        alt={`Upload ${index}`}
-                        className="w-full h-full object-contain"
-                        referrerPolicy="no-referrer"
-                      />
-                      <button
-                        onClick={(e) => handleDeleteInputImage(url, index, e)}
-                        className="absolute top-2 right-2 w-6 h-6 bg-black/50 hover:bg-error/80 rounded-full text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
-                      >
-                        <Icon name="close" className="text-[14px]" />
-                      </button>
-                    </div>
-                  ))}
+                <div className="absolute inset-0 p-2 flex items-center justify-center bg-surface-container-lowest group">
+                  <img
+                    src={inputImages[0]}
+                    alt="Upload"
+                    className="w-full h-full max-h-[260px] object-contain rounded-lg shadow-sm cursor-zoom-in hover:opacity-95 transition-opacity"
+                    referrerPolicy="no-referrer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPreviewImageUrl(inputImages[0]);
+                    }}
+                  />
+                  <button
+                    onClick={(e) => handleDeleteInputImage(inputImages[0], 0, e)}
+                    className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 text-white rounded-full p-2 opacity-80 hover:opacity-100 transition-all shadow-md z-10"
+                    title="Xóa ảnh"
+                  >
+                    <Icon name="delete" className="text-[18px]" />
+                  </button>
                   {isUploading && (
-                    <div className="relative rounded-lg overflow-hidden border border-outline-variant/20 bg-surface-container-low flex items-center justify-center">
+                    <div className="absolute inset-0 bg-black/30 backdrop-blur-xs flex items-center justify-center">
                       <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                      <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-primary">
+                      <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white">
                         {Math.round(uploadProgress)}%
                       </div>
                     </div>

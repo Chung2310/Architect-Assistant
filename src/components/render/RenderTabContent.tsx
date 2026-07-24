@@ -776,7 +776,7 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
         downloadURLs.push(url);
       }
 
-      setInputImages((prev) => [...prev, ...downloadURLs]);
+      setInputImages(downloadURLs.slice(0, 1));
       clearInterval(progressInterval);
       setUploadProgress(100);
       setTimeout(() => {
@@ -864,7 +864,7 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
         downloadURLs.push(url);
       }
 
-      setReferenceImages((prev) => [...prev, ...downloadURLs]);
+      setReferenceImages(downloadURLs.slice(0, 1));
       clearInterval(progressInterval);
       setUploadProgressRef(100);
       setTimeout(() => {
@@ -1001,45 +1001,35 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                 ref={fileInputRef}
                 className="hidden"
                 accept="image/png, image/jpeg, image/webp, application/pdf"
-                multiple
                 onChange={handleImageUpload}
               />
 
               {isUploading ? (
-                <div className="flex flex-col items-center">
+                <div className="flex flex-col items-center p-6">
                   <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-3"></div>
                   <p className="text-sm font-semibold text-primary">
                     Đang tải lên... {Math.round(smoothUploadProgress)}%
                   </p>
                 </div>
               ) : inputImages.length > 0 ? (
-                <div className="relative w-full h-full flex flex-wrap gap-2 p-2 overflow-y-auto">
-                  {inputImages.map((img, idx) => (
-                    <div
-                      key={idx}
-                      className="relative w-20 h-20 rounded-lg overflow-hidden group/item cursor-zoom-in"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPreviewImageUrl(img);
-                      }}
-                    >
-                      <img
-                        src={img}
-                        alt={`Uploaded ${idx}`}
-                        className="w-full h-full object-contain"
-                        referrerPolicy="no-referrer"
-                      />
-                      <button
-                        onClick={(e) => handleDeleteInputImage(img, idx, e)}
-                        className="absolute top-1 right-1 bg-black/50 hover:bg-black/80 text-white rounded-full p-1 opacity-70 hover:opacity-100 transition-all"
-                      >
-                        <Icon name="close" className="text-[14px]" />
-                      </button>
-                    </div>
-                  ))}
-                  <div className="w-20 h-20 rounded-lg border-2 border-dashed border-outline-variant/40 flex items-center justify-center text-on-surface-variant hover:text-primary hover:border-primary/50 transition-colors cursor-pointer">
-                    <Icon name="add" className="text-2xl" />
-                  </div>
+                <div className="relative w-full h-full p-2 flex items-center justify-center bg-white/50 group">
+                  <img
+                    src={inputImages[0]}
+                    alt="Uploaded"
+                    className="max-h-[280px] w-full object-contain rounded-lg shadow-sm cursor-zoom-in hover:opacity-95 transition-opacity"
+                    referrerPolicy="no-referrer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPreviewImageUrl(inputImages[0]);
+                    }}
+                  />
+                  <button
+                    onClick={(e) => handleDeleteInputImage(inputImages[0], 0, e)}
+                    className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 text-white rounded-full p-2 opacity-80 hover:opacity-100 transition-all shadow-md z-10"
+                    title="Xóa ảnh"
+                  >
+                    <Icon name="delete" className="text-[18px]" />
+                  </button>
                 </div>
               ) : (
                 <>
@@ -1085,7 +1075,7 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                   </button>
                 </div>
                 <div
-                  className={`min-h-[5rem] max-h-[15rem] h-auto border border-dashed rounded-lg flex flex-col items-center justify-center text-center cursor-pointer transition-colors relative overflow-hidden group ${isDraggingRef
+                  className={`min-h-[6rem] max-h-[16rem] h-auto border border-dashed rounded-lg flex flex-col items-center justify-center text-center cursor-pointer transition-colors relative overflow-hidden group ${isDraggingRef
                     ? "border-primary bg-primary/10"
                     : "border-outline-variant/40 hover:border-primary/50 bg-surface-container-low/30 hover:bg-surface-container-low"
                     }`}
@@ -1099,44 +1089,34 @@ ${floorplanStylePrompt}${floorplanCleanupPrompt}- Quy tắc bố cục: giữ ng
                     ref={refInputRef}
                     className="hidden"
                     accept="image/png, image/jpeg, image/webp"
-                    multiple
                     onChange={handleRefImageUpload}
                   />
                   {isUploadingRef ? (
-                    <div className="flex flex-col items-center">
+                    <div className="flex flex-col items-center p-3">
                       <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mb-1"></div>
                       <p className="text-[10px] font-semibold text-primary">
                         {Math.round(smoothUploadProgressRef)}%
                       </p>
                     </div>
                   ) : referenceImages.length > 0 ? (
-                    <div className="relative w-full h-full flex flex-wrap gap-1 p-1 overflow-y-auto">
-                      {referenceImages.map((img, idx) => (
-                        <div
-                          key={idx}
-                          className="relative w-16 h-16 rounded-md overflow-hidden group/item cursor-zoom-in"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPreviewImageUrl(img);
-                          }}
-                        >
-                          <img
-                            src={img}
-                            alt={`Reference ${idx}`}
-                            className="w-full h-full object-contain"
-                            referrerPolicy="no-referrer"
-                          />
-                          <button
-                            onClick={(e) => handleDeleteRefImage(img, idx, e)}
-                            className="absolute top-0.5 right-0.5 bg-black/50 hover:bg-black/80 text-white rounded-full p-0.5 opacity-70 hover:opacity-100 transition-all"
-                          >
-                            <Icon name="close" className="text-[10px]" />
-                          </button>
-                        </div>
-                      ))}
-                      <div className="w-16 h-16 rounded-md border border-dashed border-outline-variant/40 flex items-center justify-center text-on-surface-variant hover:text-primary hover:border-primary/50 transition-colors cursor-pointer">
-                        <Icon name="add" className="text-lg" />
-                      </div>
+                    <div className="relative w-full h-full p-2 flex items-center justify-center bg-white/50 group">
+                      <img
+                        src={referenceImages[0]}
+                        alt="Reference"
+                        className="max-h-[180px] w-full object-contain rounded-md cursor-zoom-in hover:opacity-95 transition-opacity"
+                        referrerPolicy="no-referrer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPreviewImageUrl(referenceImages[0]);
+                        }}
+                      />
+                      <button
+                        onClick={(e) => handleDeleteRefImage(referenceImages[0], 0, e)}
+                        className="absolute top-2.5 right-2.5 bg-black/60 hover:bg-black/80 text-white rounded-full p-1.5 opacity-80 hover:opacity-100 transition-all shadow-md z-10"
+                        title="Xóa ảnh"
+                      >
+                        <Icon name="delete" className="text-[16px]" />
+                      </button>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-4">

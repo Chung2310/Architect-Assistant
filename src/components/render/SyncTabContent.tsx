@@ -298,19 +298,17 @@ export const SyncTabContent: React.FC = () => {
     e.preventDefault();
     setIsDraggingContext(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      Array.from(e.dataTransfer.files).forEach((file: File) => {
-        if (!file.type.startsWith("image/")) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          if (ev.target?.result) {
-            setCharacterContextImages((prev) => [
-              ...prev,
-              { url: ev.target!.result as string, prompt: "" },
-            ]);
-          }
-        };
-        reader.readAsDataURL(file);
-      });
+      const file = e.dataTransfer.files[0];
+      if (!file.type.startsWith("image/")) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        if (ev.target?.result) {
+          setCharacterContextImages([
+            { url: ev.target.result as string, prompt: "" },
+          ]);
+        }
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -344,20 +342,18 @@ export const SyncTabContent: React.FC = () => {
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const files = event.target.files;
-    if (!files) return;
+    if (!files || files.length === 0) return;
 
-    Array.from(files).forEach((file: File) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        if (e.target?.result) {
-          setCharacterContextImages((prev) => [
-            ...prev,
-            { url: e.target!.result as string, prompt: "" },
-          ]);
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+    const file = files[0];
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      if (ev.target?.result) {
+        setCharacterContextImages([
+          { url: ev.target.result as string, prompt: "" },
+        ]);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleCharacterImageUpload = async (
@@ -1376,7 +1372,13 @@ export const SyncTabContent: React.FC = () => {
                   </button>
                 </div>
                 <div
-                  className={`h-48 ${!inputImage ? "border-2 border-dashed cursor-pointer hover:border-primary/50 hover:bg-surface-container-low" : "border border-outline-variant/20"} ${isDragging && !inputImage ? "border-primary bg-primary/5" : !inputImage ? "border-outline-variant/40 bg-surface-container-low/50" : "bg-surface-container-lowest"} rounded-xl flex flex-col items-center justify-center text-center group transition-colors relative overflow-hidden`}
+                  className={`min-h-[12rem] border-2 border-dashed rounded-2xl flex flex-col items-center justify-center text-center group transition-colors cursor-pointer relative overflow-hidden p-6 ${
+                    isDragging && !inputImage
+                      ? "border-primary bg-primary/10"
+                      : !inputImage
+                      ? "border-outline-variant/40 hover:border-primary/50 bg-surface-container-low/50 hover:bg-surface-container-low"
+                      : "bg-surface-container-lowest border-outline-variant/20"
+                  }`}
                   onClick={() => !inputImage && fileInputRef.current?.click()}
                   onDragOver={(e) => {
                     if (!inputImage) handleDragOver(e);
@@ -1392,23 +1394,23 @@ export const SyncTabContent: React.FC = () => {
                     type="file"
                     ref={fileInputRef}
                     className="hidden"
-                    accept="image/png, image/jpeg, image/webp"
+                    accept="image/png, image/jpeg, image/webp, application/pdf"
                     onChange={handleImageUpload}
                   />
 
                   {isUploading ? (
-                    <div className="flex flex-col items-center">
+                    <div className="flex flex-col items-center p-6">
                       <div className="w-12 h-12 border-4 border-[#00BCD4] border-t-transparent rounded-full animate-spin mb-3"></div>
                       <p className="text-sm font-semibold text-[#00BCD4]">
                         Đang tải lên... {Math.round(uploadProgress)}%
                       </p>
                     </div>
                   ) : inputImage ? (
-                    <div className="relative w-full h-full p-2 group bg-surface-container-low/30">
+                    <div className="relative w-full h-full p-2 flex items-center justify-center bg-white/50 group">
                       <img
                         src={inputImage}
                         alt="Uploaded"
-                        className="w-full h-full object-contain rounded-lg cursor-zoom-in hover:opacity-90 transition-opacity"
+                        className="max-h-[280px] w-full object-contain rounded-xl cursor-zoom-in hover:opacity-95 transition-opacity"
                         referrerPolicy="no-referrer"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1420,18 +1422,25 @@ export const SyncTabContent: React.FC = () => {
                           e.stopPropagation();
                           handleDeleteInputImage(e);
                         }}
-                        className="absolute top-4 right-4 bg-black/50 hover:bg-black/80 text-white rounded-full p-1.5 opacity-70 hover:opacity-100 transition-all z-10"
+                        className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 text-white rounded-full p-2 opacity-80 hover:opacity-100 transition-all shadow-md z-10"
+                        title="Xóa ảnh"
                       >
-                        <Icon name="close" className="text-[16px]" />
+                        <Icon name="delete" className="text-[18px]" />
                       </button>
                     </div>
                   ) : (
                     <>
-                      <p className="text-sm font-medium text-on-surface mb-1">
+                      <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center shadow-sm mb-3 group-hover:scale-110 transition-transform">
+                        <Icon
+                          name="image"
+                          className="text-2xl text-on-surface-variant group-hover:text-primary transition-colors"
+                        />
+                      </div>
+                      <p className="text-sm font-semibold text-on-surface mb-1">
                         Nhấp hoặc kéo tệp vào đây
                       </p>
                       <p className="text-xs text-on-surface-variant">
-                        PNG, JPG, WEBP
+                        PNG, JPG, WEBP, PDF
                       </p>
                     </>
                   )}
@@ -1974,54 +1983,28 @@ export const SyncTabContent: React.FC = () => {
                   onDrop={handleContextDrop}
                 >
                   {characterContextImages.length > 0 ? (
-                    <div className="w-full grid grid-cols-2 sm:grid-cols-3 gap-4">
-                      {characterContextImages.map((img, idx) => (
-                        <div
-                          key={idx}
-                          className="relative rounded-xl overflow-hidden border border-outline-variant/20 bg-surface-container-low shadow-sm flex flex-col group/item"
+                    <div className="relative w-full h-full min-h-[220px] max-h-[300px] p-2 flex flex-col items-center justify-center bg-surface-container-low/30 rounded-xl overflow-hidden group">
+                      <div className="relative w-full h-full flex flex-col items-center justify-center">
+                        <img
+                          src={characterContextImages[0].url}
+                          alt="Context"
+                          className="max-h-[240px] w-full object-contain rounded-lg shadow-sm cursor-zoom-in hover:opacity-95 transition-opacity"
+                          referrerPolicy="no-referrer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPreviewImageUrl(characterContextImages[0].url);
+                          }}
+                        />
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCharacterContextImages([]);
+                          }}
+                          className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 text-white rounded-full p-2 opacity-80 hover:opacity-100 transition-all shadow-md z-10"
+                          title="Xóa ảnh"
                         >
-                          <div className="relative aspect-square w-full">
-                            <img
-                              src={img.url}
-                              alt={`Context ${idx}`}
-                              className="w-full h-full object-contain cursor-zoom-in"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setPreviewImageUrl(img.url);
-                              }}
-                            />
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCharacterContextImages((prev) =>
-                                  prev.filter((_, i) => i !== idx),
-                                );
-                              }}
-                              className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1.5 opacity-0 group-hover/item:opacity-100 transition-opacity hover:bg-black/80 z-10"
-                            >
-                              <Icon name="close" className="text-[16px]" />
-                            </button>
-                          </div>
-                          <textarea
-                            value={img.prompt}
-                            onChange={(e) => {
-                              const newImages = [...characterContextImages];
-                              newImages[idx].prompt = e.target.value;
-                              setCharacterContextImages(newImages);
-                            }}
-                            placeholder="Hành động/Trang phục..."
-                            className="w-full p-3 text-xs bg-[#4a4a32]/20 text-on-surface border-t border-outline-variant/20 resize-none focus:outline-none focus:bg-[#4a4a32]/30 transition-colors placeholder:text-on-surface-variant/50 h-20"
-                          />
-                        </div>
-                      ))}
-                      <div
-                        onClick={() => contextFileInputRef.current?.click()}
-                        className="aspect-square rounded-xl border-2 border-dashed border-outline-variant/40 flex flex-col items-center justify-center text-on-surface-variant hover:text-[#00BCD4] hover:border-[#00BCD4]/50 transition-colors bg-surface-container-lowest cursor-pointer"
-                      >
-                        <Icon name="add" className="text-3xl" />
-                        <span className="text-xs mt-2 font-medium">
-                          Thêm ảnh
-                        </span>
+                          <Icon name="delete" className="text-[18px]" />
+                        </button>
                       </div>
                     </div>
                   ) : (
@@ -2034,10 +2017,10 @@ export const SyncTabContent: React.FC = () => {
                         className="text-3xl text-on-surface-variant/50 mb-2"
                       />
                       <p className="text-sm font-medium text-on-surface mb-1">
-                        Nhấp hoặc kéo các ảnh bối cảnh vào đây
+                        Nhấp hoặc kéo tệp vào đây
                       </p>
                       <p className="text-[10px] text-on-surface-variant">
-                        Bạn có thể chọn nhiều ảnh cùng lúc
+                        PNG, JPG, WEBP
                       </p>
                     </div>
                   )}
@@ -2045,7 +2028,6 @@ export const SyncTabContent: React.FC = () => {
                     type="file"
                     ref={contextFileInputRef}
                     className="hidden"
-                    multiple
                     accept="image/*"
                     onChange={handleContextImagesUpload}
                   />
@@ -2097,11 +2079,11 @@ export const SyncTabContent: React.FC = () => {
                       onDrop={handleCharacterDrop}
                     >
                       {characterImage ? (
-                        <div className="relative w-full h-full p-2 flex justify-center">
+                        <div className="relative w-full h-full p-2 flex justify-center items-center">
                           <img
                             src={characterImage}
                             alt="Character"
-                            className="h-auto object-contain max-h-[240px] rounded-lg cursor-zoom-in"
+                            className="h-auto object-contain max-h-[240px] rounded-lg cursor-zoom-in hover:opacity-95 transition-opacity"
                             onClick={(e) => {
                               e.stopPropagation();
                               setPreviewImageUrl(characterImage);
@@ -2112,9 +2094,10 @@ export const SyncTabContent: React.FC = () => {
                               e.stopPropagation();
                               setCharacterImage(null);
                             }}
-                            className="absolute top-4 right-4 bg-black/50 hover:bg-black/80 text-white rounded-full p-1.5 opacity-70 hover:opacity-100 transition-all"
+                            className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 text-white rounded-full p-2 opacity-80 hover:opacity-100 transition-all shadow-md z-10"
+                            title="Xóa ảnh"
                           >
-                            <Icon name="close" className="text-[16px]" />
+                            <Icon name="delete" className="text-[18px]" />
                           </button>
                         </div>
                       ) : (
