@@ -414,7 +414,13 @@ export const UpscaleTabContent: React.FC = () => {
               </button>
             </div>
             <div
-              className={`h-48 ${!inputImage ? "border-2 border-dashed cursor-pointer hover:border-primary/50 hover:bg-surface-container-low" : "border border-outline-variant/20"} ${isDragging && !inputImage ? "border-primary bg-primary/10" : !inputImage ? "border-outline-variant/40 bg-surface-container-low/50" : "bg-surface-container-lowest"} rounded-xl flex flex-col items-center justify-center text-center group transition-colors relative overflow-hidden`}
+              className={`min-h-[12rem] border-2 border-dashed rounded-2xl flex flex-col items-center justify-center text-center group transition-colors cursor-pointer relative overflow-hidden p-6 ${
+                isDragging && !inputImage
+                  ? "border-primary bg-primary/10"
+                  : !inputImage
+                  ? "border-outline-variant/40 hover:border-primary/50 bg-surface-container-low/50 hover:bg-surface-container-low"
+                  : "bg-surface-container-lowest border-outline-variant/20"
+              }`}
               onClick={() => !inputImage && fileInputRef.current?.click()}
               onDragOver={(e) => {
                 if (!inputImage) handleDragOver(e);
@@ -435,18 +441,18 @@ export const UpscaleTabContent: React.FC = () => {
               />
 
               {isUploading ? (
-                <div className="flex flex-col items-center">
+                <div className="flex flex-col items-center p-6">
                   <div className="w-12 h-12 border-4 border-[#00BCD4] border-t-transparent rounded-full animate-spin mb-3"></div>
                   <p className="text-sm font-semibold text-[#00BCD4]">
                     Đang tải lên... {Math.round(uploadProgress)}%
                   </p>
                 </div>
               ) : inputImage ? (
-                <div className="relative w-full h-full p-2 group">
+                <div className="relative w-full h-full p-2 flex items-center justify-center bg-white/50 group">
                   <img
                     src={inputImage}
                     alt="Uploaded"
-                    className="w-full h-full object-contain rounded-lg cursor-zoom-in"
+                    className="max-h-[280px] w-full object-contain rounded-xl cursor-zoom-in hover:opacity-95 transition-opacity"
                     referrerPolicy="no-referrer"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -458,23 +464,25 @@ export const UpscaleTabContent: React.FC = () => {
                       e.stopPropagation();
                       handleDeleteInputImage(e);
                     }}
-                    className="absolute top-4 right-4 bg-black/50 hover:bg-black/80 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-all z-10"
+                    className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 text-white rounded-full p-2 opacity-80 hover:opacity-100 transition-all shadow-md z-10"
                     title="Xóa ảnh"
                   >
-                    <Icon name="close" className="text-[16px]" />
+                    <Icon name="delete" className="text-[18px]" />
                   </button>
                 </div>
               ) : (
                 <>
-                  <Icon
-                    name="cloud_upload"
-                    className="text-4xl text-on-surface-variant/50 mb-4"
-                  />
-                  <p className="text-sm font-medium text-on-surface mb-1">
-                    {isDragging ? "Thả ảnh vào đây" : "Tải Lên Ảnh Cần Upscale"}
+                  <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center shadow-sm mb-3 group-hover:scale-110 transition-transform">
+                    <Icon
+                      name="image"
+                      className="text-2xl text-on-surface-variant group-hover:text-primary transition-colors"
+                    />
+                  </div>
+                  <p className="text-sm font-semibold text-on-surface mb-1">
+                    Nhấp hoặc kéo tệp vào đây
                   </p>
                   <p className="text-xs text-on-surface-variant">
-                    Kéo thả hoặc nhấp để tải lên (PNG, JPG, WEBP, PDF)
+                    PNG, JPG, WEBP, PDF
                   </p>
                 </>
               )}

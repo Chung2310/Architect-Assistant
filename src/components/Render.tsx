@@ -2349,19 +2349,19 @@ ${cropInfo}
       ) : activeSubTab === "Thay Thế Model" ? (
         <div className="flex flex-col lg:flex-row gap-8 flex-1 min-h-[400px]">
           {/* Left Column */}
-          <div className="w-full lg:w-[420px] flex flex-col gap-8 shrink-0">
+          <div className="w-full lg:w-[460px] flex flex-col gap-8 shrink-0">
             {/* Panel 1: Tải Lên Ảnh & Chọn Vùng */}
-            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 flex flex-col p-6 shadow-sm">
+            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 flex flex-col p-5 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-base font-bold text-on-surface">
                   1. Tải Lên Ảnh & Chọn Vùng
                 </h3>
               </div>
-              <div className="flex gap-4">
+              <div className="flex gap-3">
                 {/* Ảnh Gốc */}
-                <div className="flex-1 flex flex-col">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-on-surface-variant">
+                <div className="flex-1 min-w-0 flex flex-col">
+                  <div className="flex items-center justify-between mb-2 h-7 min-h-[28px] gap-1">
+                    <span className="text-xs font-bold text-on-surface-variant truncate min-w-0" title="Ảnh Gốc">
                       Ảnh Gốc
                     </span>
                     <button
@@ -2370,10 +2370,10 @@ ${cropInfo}
                         setLibraryTarget("input");
                         setShowLibraryModal(true);
                       }}
-                      className="text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                      className="text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded-md transition-colors flex items-center gap-1 shrink-0 whitespace-nowrap"
                     >
                       <Icon name="photo_library" className="text-[12px]" />
-                      Thư viện ảnh
+                      Thư viện
                     </button>
                   </div>
                   <div
@@ -2450,9 +2450,9 @@ ${cropInfo}
                 </div>
 
                 {/* Ảnh Model Thay Thế */}
-                <div className="flex-1 flex flex-col">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-on-surface-variant">
+                <div className="flex-1 min-w-0 flex flex-col">
+                  <div className="flex items-center justify-between mb-2 h-7 min-h-[28px] gap-1">
+                    <span className="text-xs font-bold text-on-surface-variant truncate min-w-0" title="Ảnh Model Thay Thế">
                       Ảnh Model Thay Thế
                     </span>
                     <button
@@ -2461,10 +2461,10 @@ ${cropInfo}
                         setLibraryTarget("reference");
                         setShowLibraryModal(true);
                       }}
-                      className="text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                      className="text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded-md transition-colors flex items-center gap-1 shrink-0 whitespace-nowrap"
                     >
                       <Icon name="photo_library" className="text-[12px]" />
-                      Thư viện ảnh
+                      Thư viện
                     </button>
                   </div>
                   <div
@@ -2827,19 +2827,19 @@ ${cropInfo}
       ) : activeSubTab === "Thêm Đối Tượng" ? (
         <div className="flex flex-col lg:flex-row gap-8 flex-1 min-h-[400px]">
           {/* Left Column */}
-          <div className="w-full lg:w-[420px] flex flex-col gap-8 shrink-0">
+          <div className="w-full lg:w-[460px] flex flex-col gap-8 shrink-0">
             {/* Panel 1: Tải Lên Ảnh & Chọn Vùng */}
-            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 flex flex-col p-6 shadow-sm">
+            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 flex flex-col p-5 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-base font-bold text-on-surface">
                   1. Tải Lên Ảnh & Chọn Vùng
                 </h3>
               </div>
-              <div className="flex gap-4">
+              <div className="flex gap-3">
                 {/* Ảnh Nền */}
-                <div className="flex-1 flex flex-col">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-on-surface-variant">
+                <div className="flex-1 min-w-0 flex flex-col">
+                  <div className="flex items-center justify-between mb-2 h-7 min-h-[28px] gap-1">
+                    <span className="text-xs font-bold text-on-surface-variant truncate min-w-0" title="Ảnh Nền">
                       Ảnh Nền
                     </span>
                     <button
@@ -2848,10 +2848,10 @@ ${cropInfo}
                         setLibraryTarget("input");
                         setShowLibraryModal(true);
                       }}
-                      className="text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                      className="text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded-md transition-colors flex items-center gap-1 shrink-0 whitespace-nowrap"
                     >
                       <Icon name="photo_library" className="text-[12px]" />
-                      Thư viện ảnh
+                      Thư viện
                     </button>
                   </div>
                   <div
@@ -2941,9 +2941,9 @@ ${cropInfo}
                 </div>
 
                 {/* Ảnh Đối Tượng */}
-                <div className="flex-1 flex flex-col">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-on-surface-variant">
+                <div className="flex-1 min-w-0 flex flex-col">
+                  <div className="flex items-center justify-between mb-2 h-7 min-h-[28px] gap-1">
+                    <span className="text-xs font-bold text-on-surface-variant truncate min-w-0" title="Ảnh Đối Tượng">
                       Ảnh Đối Tượng
                     </span>
                     <button
@@ -2952,10 +2952,10 @@ ${cropInfo}
                         setLibraryTarget("reference");
                         setShowLibraryModal(true);
                       }}
-                      className="text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                      className="text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded-md transition-colors flex items-center gap-1 shrink-0 whitespace-nowrap"
                     >
                       <Icon name="photo_library" className="text-[12px]" />
-                      Thư viện ảnh
+                      Thư viện
                     </button>
                   </div>
                   <div
@@ -3335,19 +3335,19 @@ ${cropInfo}
       ) : activeSubTab === "Đổi Vật Liệu" ? (
         <div className="flex flex-col lg:flex-row gap-8 flex-1 min-h-[400px]">
           {/* Left Column */}
-          <div className="w-full lg:w-[420px] flex flex-col gap-8 shrink-0">
+          <div className="w-full lg:w-[460px] flex flex-col gap-8 shrink-0">
             {/* Panel 1: Tải Lên Ảnh & Chọn Vùng */}
-            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 flex flex-col p-6 shadow-sm">
+            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 flex flex-col p-5 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-base font-bold text-on-surface">
                   1. Tải Lên Ảnh & Chọn Vùng
                 </h3>
               </div>
-              <div className="flex gap-4">
+              <div className="flex gap-3">
                 {/* Ảnh Gốc */}
-                <div className="flex-1 flex flex-col">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-on-surface-variant">
+                <div className="flex-1 min-w-0 flex flex-col">
+                  <div className="flex items-center justify-between mb-2 h-7 min-h-[28px] gap-1">
+                    <span className="text-xs font-bold text-on-surface-variant truncate min-w-0" title="Ảnh Gốc">
                       Ảnh Gốc
                     </span>
                     <button
@@ -3356,10 +3356,10 @@ ${cropInfo}
                         setLibraryTarget("input");
                         setShowLibraryModal(true);
                       }}
-                      className="text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                      className="text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded-md transition-colors flex items-center gap-1 shrink-0 whitespace-nowrap"
                     >
                       <Icon name="photo_library" className="text-[12px]" />
-                      Thư viện ảnh
+                      Thư viện
                     </button>
                   </div>
                   <div
@@ -3436,10 +3436,10 @@ ${cropInfo}
                 </div>
 
                 {/* Ảnh Tham Khảo */}
-                <div className="flex-1 flex flex-col">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-on-surface-variant">
-                      Ảnh Tham Khảo (Tùy chọn)
+                <div className="flex-1 min-w-0 flex flex-col">
+                  <div className="flex items-center justify-between mb-2 h-7 min-h-[28px] gap-1">
+                    <span className="text-xs font-bold text-on-surface-variant truncate min-w-0" title="Ảnh Tham Khảo (Tùy chọn)">
+                      Ảnh Tham Khảo 
                     </span>
                     <button
                       onClick={(e) => {
@@ -3447,10 +3447,10 @@ ${cropInfo}
                         setLibraryTarget("reference");
                         setShowLibraryModal(true);
                       }}
-                      className="text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                      className="text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded-md transition-colors flex items-center gap-1 shrink-0 whitespace-nowrap"
                     >
                       <Icon name="photo_library" className="text-[12px]" />
-                      Thư viện ảnh
+                      Thư viện
                     </button>
                   </div>
                   <div
@@ -4207,6 +4207,7 @@ const LayoutTabContent: React.FC = () => {
   const [inputImage, setInputImage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [selectedModel, setSelectedModel] = useState("nano-banana-2");
   const [presentationStyle, setPresentationStyle] = useState(
@@ -4670,82 +4671,78 @@ const LayoutTabContent: React.FC = () => {
           {/* 1. Tải Lên Ảnh Công Trình */}
           <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 flex flex-col p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-on-surface flex items-center gap-2">
-                <Icon name="image" className="text-primary" />
+              <h3 className="text-base font-bold text-on-surface">
                 1. Tải Lên Ảnh Công Trình
               </h3>
               <button
                 onClick={() => setShowLibraryModal(true)}
-                className="text-primary text-sm font-semibold hover:underline flex items-center gap-1"
+                className="text-xs font-bold text-primary bg-primary/10 hover:bg-primary/20 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
               >
-                <Icon name="photo_library" className="text-[16px]" /> Thư viện
+                <Icon name="photo_library" className="text-[16px]" /> Thư viện ảnh
               </button>
             </div>
 
             <div
-              className={`relative aspect-video rounded-xl border-2 border-dashed flex flex-col items-center justify-center overflow-hidden transition-colors ${
-                isDragging
-                  ? "border-primary bg-primary/5"
-                  : "border-outline-variant/30 bg-surface-container-low/50 hover:bg-surface-container-low"
+              className={`min-h-[12rem] border-2 border-dashed rounded-2xl flex flex-col items-center justify-center text-center group transition-colors cursor-pointer relative overflow-hidden p-6 ${
+                isDragging && !inputImage
+                  ? "border-primary bg-primary/10"
+                  : !inputImage
+                  ? "border-outline-variant/40 hover:border-primary/50 bg-surface-container-low/50 hover:bg-surface-container-low"
+                  : "bg-surface-container-lowest border-outline-variant/20"
               }`}
+              onClick={() => !inputImage && fileInputRef.current?.click()}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
             >
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept="image/png, image/jpeg, image/webp, application/pdf"
+                onChange={handleImageUpload}
+              />
+
               {isUploading ? (
-                <div className="flex flex-col items-center justify-center p-6 w-full">
-                  <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
-                  <p className="text-sm font-medium text-primary mb-2">
-                    Đang tải ảnh lên...
+                <div className="flex flex-col items-center p-6">
+                  <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-3"></div>
+                  <p className="text-sm font-semibold text-primary">
+                    Đang tải lên... {Math.round(uploadProgress)}%
                   </p>
-                  <div className="w-full max-w-[200px] bg-surface-container-highest rounded-full h-2 overflow-hidden">
-                    <div
-                      className="bg-primary h-full transition-all duration-300"
-                      style={{ width: `${uploadProgress}%` }}
-                    ></div>
-                  </div>
                 </div>
               ) : inputImage ? (
-                <div className="relative w-full h-full group">
+                <div className="relative w-full h-full p-2 flex items-center justify-center bg-white/50 group">
                   <img
                     src={inputImage}
                     alt="Input"
-                    className="w-full h-full object-contain"
+                    className="max-h-[280px] w-full object-contain rounded-xl cursor-zoom-in hover:opacity-95 transition-opacity"
+                    referrerPolicy="no-referrer"
                   />
-                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <label className="bg-white text-on-surface px-4 py-2 rounded-lg text-sm font-bold cursor-pointer hover:bg-gray-100 transition-colors flex items-center gap-2">
-                      <Icon name="edit" className="text-[18px]" />
-                      Thay ảnh
-                      <input
-                        type="file"
-                        className="hidden"
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                      />
-                    </label>
-                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setInputImage(null);
+                    }}
+                    className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 text-white rounded-full p-2 opacity-80 hover:opacity-100 transition-all shadow-md z-10"
+                    title="Xóa ảnh"
+                  >
+                    <Icon name="delete" className="text-[18px]" />
+                  </button>
                 </div>
               ) : (
                 <>
-                  <Icon
-                    name="add_photo_alternate"
-                    className="text-4xl text-on-surface-variant/50 mb-4"
-                  />
-                  <p className="text-sm font-medium text-on-surface-variant mb-2">
-                    Kéo thả hoặc nhấp để tải ảnh công trình
-                  </p>
-                  <p className="text-xs text-on-surface-variant/70 mb-4">
-                    Dùng ảnh phối cảnh hoặc sketch
-                  </p>
-                  <label className="bg-primary text-white px-4 py-2 rounded-lg text-sm font-bold cursor-pointer hover:bg-primary/90 transition-colors">
-                    Tải ảnh lên
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept="image/*"
-                      onChange={handleImageUpload}
+                  <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center shadow-sm mb-3 group-hover:scale-110 transition-transform">
+                    <Icon
+                      name="image"
+                      className="text-2xl text-on-surface-variant group-hover:text-primary transition-colors"
                     />
-                  </label>
+                  </div>
+                  <p className="text-sm font-semibold text-on-surface mb-1">
+                    Nhấp hoặc kéo tệp vào đây
+                  </p>
+                  <p className="text-xs text-on-surface-variant">
+                    PNG, JPG, WEBP, PDF
+                  </p>
                 </>
               )}
             </div>
